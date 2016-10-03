@@ -5,6 +5,7 @@ Command line tool for MetSim
 """
 
 import sys
+import pprint
 import multiprocessing
 
 def main():
@@ -13,10 +14,13 @@ def main():
     from metsim import methods
     from metsim import io
     options.init(options.parse(sys.argv[1:])) 
-    io.read_config(metsim.config)
+  
     metsim.manager = multiprocessing.Manager()
-    metsim.write_queue = manager.Queue()
-    process_handles = [] #TODO
+    metsim.write_queue = metsim.manager.Queue()
+    process_handles = [
+            multiprocessing.Process(target=metsim.method, args=(flist, metsim.write_queue))
+            for flist in metsim.forcing_chunks
+            ]
     for p in process_handles:
         p.start()
     for p in process_handles:

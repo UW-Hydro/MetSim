@@ -2,12 +2,19 @@
 Handles IO for MetSim
 """
 
+import os
+from configparser import ConfigParser
+
 def read_config(fname):
     """
     TODO
     """
-    pass
-
+    if not os.path.isfile(fname):
+        return dict()
+    cfp = ConfigParser()
+    cfp.read(fname)
+    return cfp 
+    
 
 def read_ascii_forcing(fname):
     """
