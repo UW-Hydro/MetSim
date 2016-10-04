@@ -35,7 +35,8 @@ def read_binary_forcng(fname):
     wind   = [] # Short int
     
     # Pack these for nicer syntax in the loop
-    vars = [precip, t_min, t_max, wind]
+    var_name = [precip, t_min, t_max, wind]
+    scale = [40.0, 100.0, 100.0, 100.0]
 
     # Data types referred to: 'H' - unsigned short ; 'h' - short
     types = ['H', 'h', 'h', 'h']
@@ -45,7 +46,7 @@ def read_binary_forcng(fname):
             bytes = f.read(2)
             if bytes:
                 # Get correct variable and data type with i, then unpack
-                vars[i].append(struct.unpack(types[i], bytes)[0])
+                var_name[i].append(struct.unpack(types[i], bytes)[0]/scale[i])
                 i = (i+1)%4
             else:
                 break
