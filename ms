@@ -17,7 +17,7 @@ def main():
     options.init(options.parse(sys.argv[1:])) 
   
     ms = MetSim(methods.mtclim, metsim.forcing_files, metsim.proc_count)
-    ms.run()
+    ms.launch_processes()
 
 if __name__ == '__main__':
     main()
