@@ -3,6 +3,7 @@ Handles IO for MetSim
 """
 
 import os
+import time
 import struct
 from configparser import ConfigParser
 
@@ -10,10 +11,9 @@ def read_config(fname):
     """
     TODO
     """
-    if not os.path.isfile(fname):
-        return dict()
     cfp = ConfigParser()
-    cfp.read(fname)
+    if os.path.isfile(fname):
+        cfp.read(fname)
     return cfp 
     
 
@@ -65,4 +65,27 @@ def init_netcdf(fname):
     TODO
     """
     pass
+
+
+def hold_lock(data, fname, timeout=10):
+    """
+    A dummy method to hold the IO lock for some amount of time.
+    """ 
+    print("Holding lock")
+    time.sleep(timeout)
+    print(data)
+
+def sync_io(writable, io_function, io_data, io_fname):
+    """
+    Simple wrapper to make it easy to check when to do IO
+    """
+    # Wait until "lock" is released
+    if writable.value == 0:
+        print("Waiting for lock...")
+        time.sleep(3)
+    # Grab the lock and start doing IO
+    writable.value = False
+    io_function(io_data, io_fname)
+    writable.value = True
+
 

@@ -10,22 +10,14 @@ import multiprocessing
 
 def main():
     import metsim
+    from metsim import io
     from metsim import options
     from metsim import methods
-    from metsim import io
+    from metsim.metsim import MetSim 
     options.init(options.parse(sys.argv[1:])) 
   
-    metsim.manager = multiprocessing.Manager()
-    metsim.write_queue = metsim.manager.Queue()
-    process_handles = [
-            multiprocessing.Process(target=metsim.method, args=(flist, metsim.write_queue))
-            for flist in metsim.forcing_chunks
-            ]
-    for p in process_handles:
-        p.start()
-    for p in process_handles:
-        p.join()
-
+    ms = MetSim(methods.mtclim, metsim.forcing_files, metsim.proc_count)
+    ms.run()
 
 if __name__ == '__main__':
     main()
