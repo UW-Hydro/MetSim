@@ -53,11 +53,11 @@ def read_binary_forcng(fname):
     return vars
 
 
-def write_to_netcdf(data, fname):
+def write_netcdf(data, fname):
     """
     TODO
     """
-    pass
+    hold_lock(data, fname) 
 
 
 def init_netcdf(fname):
@@ -75,7 +75,8 @@ def hold_lock(data, fname, timeout=10):
     time.sleep(timeout)
     print(data)
 
-def sync_io(writable, io_function, io_data, io_fname):
+
+def sync_io(io_function, io_data, writable, io_fname):
     """
     Simple wrapper to make it easy to check when to do IO
     """

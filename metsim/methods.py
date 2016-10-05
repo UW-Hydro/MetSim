@@ -8,11 +8,11 @@ import time
 import metsim
 import metsim.io
 
-def mtclim(flist, writable=True):
-    for f in flist:
-        data = f
-        metsim.io.sync_io(writable, metsim.io.hold_lock, data, "na")
-
+def mtclim(fname):
+    # Read input forcing
+    # Do the disagg
+    # Return a pandas or xray object
+    pass
 
 # A mapping from the config variable to the function handle
 mapping = {
