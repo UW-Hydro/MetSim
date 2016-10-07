@@ -22,8 +22,7 @@ class MetSim(object):
         self.writable = Value('b', True, lock=False)
         
         # Set up the distribution of jobs and create process handles
-        self.method = analysis_method
-        self.io_method = metsim.io.write_netcdf
+        self.method = analysis_method.run
         n_jobs = len(job_list) 
         job_size = int(n_jobs / min(n_processes, n_jobs))
         self.jobs = [job_list[i:i+job_size] for i in range(0, n_jobs, job_size)]
@@ -42,7 +41,7 @@ class MetSim(object):
         data = []
         for job in job_list:
             data.append(self.method(job))    
-        metsim.io.sync_io(self.io_method, data, self.writable, "") 
+        metsim.io.sync_io(metsim.io.write_netcdf, data, self.writable, "") 
 
 
     def launch_processes(self):
