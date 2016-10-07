@@ -31,7 +31,7 @@ def init(opts):
     metsim.config = io.read_config(opts.config)
 
     #NOTE: This will silently override invalid methods in the configuration file
-    metsim.method = methods.mapping.get(metsim.config['Output']['disagg_method'], 'mtclim')
+    metsim.method = metsim.get_method.get(metsim.config['Output']['disagg_method'], 'mtclim')
 
     # Split up the list of forcing files for the desired number of processes
     # Note here that we auto force the number of processes to be at most

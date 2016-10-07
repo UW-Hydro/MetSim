@@ -53,6 +53,13 @@ def read_binary_forcng(fname):
     return vars
 
 
+def read_netcdf_forcing(fname):
+    """
+    TODO
+    """
+    pass
+
+
 def write_netcdf(data, fname):
     """
     TODO
