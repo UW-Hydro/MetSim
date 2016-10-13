@@ -40,7 +40,9 @@ class MetSim(object):
         """
         data = []
         for job in job_list:
-            data.append(self.method(job))    
+            #TODO: Fix this so the correct file format is chosen - multiple dispatch?
+            forcing = metsim.io.read_binary_forcng(job)
+            data.append(self.method(forcing))    
         metsim.io.sync_io(metsim.io.write_netcdf, data, self.writable, "") 
 
 

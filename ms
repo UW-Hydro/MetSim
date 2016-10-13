@@ -10,7 +10,6 @@ def main():
     import metsim
     from metsim import io
     from metsim import options
-    from metsim import methods
     from metsim.metsim import MetSim 
     options.init(options.parse(sys.argv[1:])) 
  
