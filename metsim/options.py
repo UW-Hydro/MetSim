@@ -8,7 +8,8 @@ import glob
 import argparse
 import metsim
 from metsim import io
-from metsim import methods
+from metsim import METHODS as methods 
+from metsim import defaults
 
 def parse(args):
     parser = argparse.ArgumentParser()
@@ -29,14 +30,16 @@ def init(opts):
     if not os.path.isfile(opts.config):
         exit("Invalid configuration given.  Use `ms -h` for more information.")
     metsim.config = io.read_config(opts.config)
+    metsim.input_format = metsim.config['IO']['force_format']
 
     #NOTE: This will silently override invalid methods in the configuration file
-    metsim.method = metsim.get_method.get(metsim.config['Output']['disagg_method'], 'mtclim')
+    metsim.method = methods.get(metsim.config['Output']['disagg_method'], 'mtclim')
 
     # Split up the list of forcing files for the desired number of processes
     # Note here that we auto force the number of processes to be at most
     # the number of forcing files.
-    metsim.forcing_files = os.listdir(metsim.config['IO']['forcing_dir']) 
+    metsim.forcing_files = [os.path.join(metsim.config['IO']['forcing_dir'], f) for f in 
+        os.listdir(metsim.config['IO']['forcing_dir'])] 
     metsim.proc_count = min(opts.n_processes, len(metsim.forcing_files))    
     chunk = int(len(metsim.forcing_files) / metsim.proc_count)
     metsim.forcing_chunks = [metsim.forcing_files[i:i+chunk] for i in 

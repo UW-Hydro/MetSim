@@ -3,8 +3,10 @@ Handles IO for MetSim
 """
 
 import os
+import csv
 import time
 import struct
+import pandas as pd
 from configparser import ConfigParser
 
 def read_config(fname):
@@ -21,21 +23,29 @@ def read_ascii_forcing(fname):
     """
     TODO
     """
-    pass
+    precip = []
+    t_min = []
+    t_max = []
+    wind = []
+
+    with open(fname, 'r') as f:
+        for line in csv.reader(f, delimiter='\t'):
+            print(line)
+            break
 
 
 def read_binary_forcng(fname):
     """
     TODO
     """
-    #TODO: There are scale factors that still need to be applied
+    # TODO: Why is wind a single int - should it be a vector?
     precip = [] # Short unsigned int
-    t_min  = [] # Short int
     t_max  = [] # Short int
+    t_min  = [] # Short int
     wind   = [] # Short int
     
     # Pack these for nicer syntax in the loop
-    var_name = [precip, t_min, t_max, wind]
+    var_name = [precip, t_max, t_min, wind]
     scale = [40.0, 100.0, 100.0, 100.0]
 
     # Data types referred to: 'H' - unsigned short ; 'h' - short
@@ -50,8 +60,11 @@ def read_binary_forcng(fname):
                 i = (i+1)%4
             else:
                 break
-    return vars
-
+    df = pd.DataFrame(data={"precip" : precip, 
+                            "t_min"  : t_min, 
+                            "t_max"  : t_max, 
+                            "wind"   : wind})
+    return df
 
 def read_netcdf_forcing(fname):
     """
