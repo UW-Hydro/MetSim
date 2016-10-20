@@ -2,7 +2,9 @@
 Handles the synchronization of multiple processes for MetSim
 """
 
+import os
 import time
+import pandas as pd
 from multiprocessing import Value, Process
 
 import metsim.io
@@ -38,12 +40,21 @@ class MetSim(object):
 
         TODO: Figure out how often to write out.
         """
-        data = []
+        data = pd.DataFrame()
         for job in job_list:
             #TODO: Fix this so the correct file format is chosen - multiple dispatch?
             forcing = metsim.io.read_binary_forcng(job)
-            data.append(self.method(forcing))    
-        metsim.io.sync_io(metsim.io.write_netcdf, data, self.writable, "") 
+            data = pd.concat([data, self.method(forcing)])
+        self.disaggregate(data)
+        metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
+                    os.path.join(metsim.out_dir, os.path.basename(job))) 
+
+
+    def disaggregate(self, df):
+        """
+        TODO
+        """
+        pass
 
 
     def launch_processes(self):

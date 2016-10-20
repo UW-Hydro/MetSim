@@ -8,6 +8,7 @@ import time
 import struct
 import pandas as pd
 from configparser import ConfigParser
+import metsim
 
 def read_config(fname):
     """
@@ -38,7 +39,6 @@ def read_binary_forcng(fname):
     """
     TODO
     """
-    # TODO: Why is wind a single int - should it be a vector?
     precip = [] # Short unsigned int
     t_max  = [] # Short int
     t_min  = [] # Short int
@@ -52,18 +52,22 @@ def read_binary_forcng(fname):
     types = ['H', 'h', 'h', 'h']
     with open(fname, 'rb') as f:
         i = 0
-        while True:
+        points_read = 0
+        points_needed = 4*len(metsim.dates)
+        while points_read != points_needed:
             bytes = f.read(2)
             if bytes:
                 # Get correct variable and data type with i, then unpack
                 var_name[i].append(struct.unpack(types[i], bytes)[0]/scale[i])
                 i = (i+1)%4
+                points_read += 1
             else:
                 break
     df = pd.DataFrame(data={"precip" : precip, 
                             "t_min"  : t_min, 
                             "t_max"  : t_max, 
-                            "wind"   : wind})
+                            "wind"   : wind},
+                      index=metsim.dates)
     return df
 
 def read_netcdf_forcing(fname):
@@ -71,6 +75,13 @@ def read_netcdf_forcing(fname):
     TODO
     """
     pass
+
+
+def write_ascii(data, fname):
+    """
+    TODO
+    """
+    data.to_csv(fname, sep='\t')
 
 
 def write_netcdf(data, fname):

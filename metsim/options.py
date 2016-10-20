@@ -6,6 +6,7 @@ import os
 import sys
 import glob
 import argparse
+import pandas as pd
 import metsim
 from metsim import io
 from metsim import METHODS as methods 
@@ -31,6 +32,12 @@ def init(opts):
         exit("Invalid configuration given.  Use `ms -h` for more information.")
     metsim.config = io.read_config(opts.config)
     metsim.input_format = metsim.config['IO']['force_format']
+    metsim.out_dir = metsim.config['IO']['out_dir']
+    try:
+        os.mkdir(metsim.out_dir)
+    except:
+        print("ERROR: Could not create directory: " + metsim.out_dir)
+        exit()
 
     #NOTE: This will silently override invalid methods in the configuration file
     metsim.method = methods.get(metsim.config['Output']['disagg_method'], 'mtclim')
@@ -44,4 +51,13 @@ def init(opts):
     chunk = int(len(metsim.forcing_files) / metsim.proc_count)
     metsim.forcing_chunks = [metsim.forcing_files[i:i+chunk] for i in 
             range(0,len(metsim.forcing_files),chunk)]
+
+    # Generate the date range that will be put into the data frame
+    start = pd.datetime(int(metsim.config['IO']['start_year']),
+                        int(metsim.config['IO']['start_month']),
+                        int(metsim.config['IO']['start_day']))
+    end   = pd.datetime(int(metsim.config['IO']['end_year']),
+                        int(metsim.config['IO']['end_month']),
+                        int(metsim.config['IO']['end_day']))
+    metsim.dates = pd.date_range(start, end)
 
