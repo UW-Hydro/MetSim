@@ -9,6 +9,8 @@ from metsim.defaults import PARAMS  as params
 from metsim.defaults import CONSTS  as consts
 from metsim.defaults import OPTIONS as options
 
+from metsim.physics import svp, calc_pet, atm_pres
+
 def run(data):
     """
     TODO
@@ -19,8 +21,7 @@ def run(data):
     calc_snowpack(data)
     calc_srad_hum_it(data)
     calc_longwave(data)
-    # Write out the data in here
-    # write_data(data, new_fname)
+    return data
 
 
 def calc_t_air(df):
@@ -149,6 +150,7 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
 
     trans1 = _calc_trans()
     lat = np.clip(params['site_lat']*consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
+    coslat = np.cos(lat)
     sinlat = np.sin(lat)
     cosslp = np.cos(params['site_slope']  * consts['RADPERDEG'])
     sinslp = np.sin(params['site_slope']  * consts['RADPERDEG'])
@@ -187,6 +189,7 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
             sinh = np.sin(h)
             cza = cosegeom * cosh + sinegeom
             cbsa = sinh * bsg1 + cosh * bsg2 + bsg3
+
 
             if (cza > 0.):
                 dir_flat_topa = dir_beam_topa * cza
@@ -265,15 +268,12 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     t_fmax[inds] *= params['RAIN_SCALAR']
     df['s_tfmax'] = t_fmax
 
-    if 'tdew' in df:
-        tdew = df['tdew']
-    else:
-        tdew = df['s_t_min']
-    
-    if 's_hum' in df:
-        pva = df['s_hum']
-    else:
-        pva = svp(tdew)
+    tdew = df.get('tdew', 's_t_min')
+    pva = df['s_hum'] if 's_hum' in df else svp(tdew)
+    #if 's_hum' in df:
+    #    pva = df['s_hum']
+    #else:
+    #    pva = svp(tdew)
 
     pa = atm_pres(params['site_elev'])
     yday = df.index.dayofyear - 1
