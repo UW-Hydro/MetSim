@@ -4,6 +4,8 @@ MTCLIM
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import minimize_scalar
+from statsmodels.tools.eval_measures import rmse
 
 from metsim.defaults import PARAMS  as params
 from metsim.defaults import CONSTS  as consts
@@ -120,6 +122,7 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
         eff_ann_precip = np.maximum(eff_ann_precip, 8.0)
         parray = eff_ann_precip
     else:
+        parray = np.zeros(n_days)
         start_yday = df.index.dayofyear[0]
         end_yday = df.index.dayofyear[n_days - 1]
         if start_yday != 1:
@@ -141,7 +144,8 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
             for j in range(90):
                 sum_precip += window[i+j]
                 sum_precip = (sum_precip / 90.) * consts['DAYS_PER_YEAR']
-
+            sum_precip = np.maximum(sum_precip, 8.0)
+            parray[i] = sum_precip
 
     #------------------------------------------------------------------------------------
     # From here on to end note no data is needed from input - can we put this elsewhere?
@@ -268,12 +272,8 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     t_fmax[inds] *= params['RAIN_SCALAR']
     df['s_tfmax'] = t_fmax
 
-    tdew = df.get('tdew', 's_t_min')
+    tdew = df.get('tdew', df['s_t_min'])
     pva = df['s_hum'] if 's_hum' in df else svp(tdew)
-    #if 's_hum' in df:
-    #    pva = df['s_hum']
-    #else:
-    #    pva = svp(tdew)
 
     pa = atm_pres(params['site_elev'])
     yday = df.index.dayofyear - 1
@@ -284,7 +284,7 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     # FIXME: This function has lots of inputs and outputs 
     tdew, pva, pet = _compute_srad_humidity_onetime(
         tdew, pva, tt_max0, flat_potrad, slope_potrad, sky_prop, daylength,
-        parray, pa, dtr)
+        parray, pa, dtr, df)
 
     sum_pet = pet.values.sum()
     ann_pet = (sum_pet / n_days) * consts['DAYS_PER_YEAR'] 
@@ -310,19 +310,24 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
 
     #FIXME: Strange internal function here just returns another function call
     def f(tdew, *args):
-        return rmse(_compute_srad_humidity_onetime(tdew, *args), tdew)
+        print(rmse(_compute_srad_humidity_onetime(tdew, *args)[0], tdew))
+        return rmse(_compute_srad_humidity_onetime(tdew, *args)[0], tdew)
 
-    res = minimize_scalar(f, tdew, args=(pva, tt_max0, flat_potrad,
-                                         slope_potrad, sky_prop, daylength,
-                                         parray, pa, dtr),
-                          tol=rmse_tdew, options={'maxiter': max_iter})
-    tdew = res.x
+    arglist=(pva, tt_max0, flat_potrad,
+          slope_potrad, sky_prop, daylength,
+          parray, pa, dtr, df)
+    f(tdew, arglist)
+    #res = minimize_scalar(f, tdew, args=(pva, tt_max0, flat_potrad,
+    #                                     slope_potrad, sky_prop, daylength,
+    #                                     parray, pa, dtr, df),
+    #                      tol=rmse_tdew, options={'maxiter': max_iter})
+    #tdew = res.x
     pva = svp(tdew)
     
     if 's_hum' not in df:
         df['s_hum'] = pva
     
-    pvs = svp(df['s_tday'])
+    pvs = svp(df['s_t_day'])
     vpd = pvs - pva
     df['s_vpd'] = np.maximum(vpd, 0.)
 
@@ -337,13 +342,64 @@ def _calc_trans():
 
 
 #FIXME: This function has lots of inputs and outputs (see above for call)
-def _compute_srad_humidity_onetime(self, tdew, pva, tt_max0, flat_potrad,
+def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
                                    slope_potrad, sky_prop, daylength,
-                                   parray, pa, dtr):
+                                   parray, pa, dtr, df):
     """
     TODO
     """
-    return (0,0,0)
+    yday = df.index.dayofyear - 1
+    t_tmax = tt_max0[yday] + (params['ABASE'] * pva)
+    t_tmax = np.minimum(t_tmax, 0.0001)
+    df['s_ttmax'] = t_tmax
+    t_final = t_tmax * df['s_tfmax']
+
+    pdif = np.clip(-1.25 * t_final + 1.25, 0., 1.)
+    pdir = 1.0 - pdif
+
+    srad1 = slope_potrad[yday] * t_final * pdir
+    srad2 = (flat_potrad[yday] * t_final * pdif) * \
+        (sky_prop + params['DIF_ALB'] * (1.0 - sky_prop))
+
+    sc = np.zeros_like(df['s_swe'])
+    if (options['MTCLIM_SWE_CORR']):
+        inds = np.nonzero(df['s_swe'] > 0. * daylength[yday] > 0.)
+        sc[inds] = (1.32 + 0.096 * df['s_swe'][inds]) *\
+            1.0e6 / daylength[yday][inds]
+        sc = np.maximum(sc, 100.)  # JJH - this is fishy
+
+    if 's_swrad' in df:
+        potrad = (srad1 + srad2 + sc) * daylength[yday] / t_final / 86400
+        df['s_tfmax'] = 1.0
+        inds = np.nonzero((potrad > 0.) * (df['s_swrad'] > 0.) *
+                          (daylength[yday] > 0))[0]
+        df['s_tfmax'][inds] = (df['s_swrad'][inds] /
+                                      (potrad[inds] * t_tmax[inds]))
+        df['s_tfmax'] = np.maximum(df['s_tfmax'], 1.)
+    else:
+        df['s_swrad'] = srad1 + srad2 + sc
+
+    if (options['LW_CLOUD'].upper() == 'LW_CLOUD_DEARDORFF'):
+        df['s_tskc'] = (1. - df['s_tfmax'])
+    else:
+        df['s_tskc'] = np.sqrt((1. - df['s_tfmax']) / 0.65)
+    df['s_fdir'] = pdir
+
+    # Compute PET using SW radiation estimate, and update Tdew, pva **
+    tmink = df['s_t_min'] + consts['KELVIN']
+    pet = calc_pet(df['s_swrad'], df['s_t_day'], pa,
+                   df['s_dayl'])
+
+    # calculate ratio (PET/effann_prcp) and correct the dewpoint
+    ratio = pet / parray
+    df['s_ppratio'] = ratio * 365.25
+    tdewk = tmink * (-0.127 + 1.121 *
+                     (1.003 - 1.444 * ratio + 12.312 *
+                      np.power(ratio, 2) - 32.766 * np.power(ratio, 3)) +
+                     0.0006 * dtr)
+    tdew = tdewk - consts['KELVIN']
+
+    return tdew, pva, pet
 
 
 def calc_longwave(df):
