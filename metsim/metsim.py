@@ -48,7 +48,7 @@ class MetSim(object):
         self.disaggregate(data)
         metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
                     os.path.join(metsim.out_dir, os.path.basename(job))) 
-
+        print(data.info())
 
     def disaggregate(self, df):
         """

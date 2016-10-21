@@ -4,7 +4,7 @@ MTCLIM
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize_scalar
+from scipy.optimize import minimize
 from statsmodels.tools.eval_measures import rmse
 
 from metsim.defaults import PARAMS  as params
@@ -56,15 +56,13 @@ def calc_snowpack(df):
     """
     TODO
     """
-    # Some initialization
     df['s_swe'] = 0.
     _simple_snowpack(df)
     n_days = len(df['precip'])
-    
     swe_sum = 0.0
     count = 0
     for i in range(n_days):
-        if False: #FIXME
+        if False: #FIXME What's going on here?
             count += 1
             swe_sum += df['s_swe'][i]
 
@@ -73,19 +71,18 @@ def calc_snowpack(df):
         _simple_snowpack(df, snowpack=sp)
      
 
-def _simple_snowpack(df, snowpack=0.0):
+def _simple_snowpack(df, sp=0.0):
     """
     TODO
     """
     n_days = len(df['precip']) 
     for i in range(n_days):
         if df['s_t_min'][i] <= params['SNOW_TCRIT']:
-            snowpack += df['s_precip'][i]
+            sp += df['s_precip'][i]
         else:
-            snowpack -= (params['SNOW_TRATE'] * 
-                         (df['s_t_min'][i] - params['SNOW_TCRIT']))
-        snowpack = np.maximum(snowpack, 0.0)
-        df['s_swe'][i] = snowpack
+            sp -= (params['SNOW_TRATE'] * (df['s_t_min'][i] - params['SNOW_TCRIT']))
+        sp = np.maximum(sp, 0.0)
+        df['s_swe'][i] = sp 
 
 
 def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
@@ -151,7 +148,6 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     # From here on to end note no data is needed from input - can we put this elsewhere?
     #------------------------------------------------------------------------------------
 
-
     trans1 = _calc_trans()
     lat = np.clip(params['site_lat']*consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
     coslat = np.cos(lat)
@@ -194,10 +190,8 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
             cza = cosegeom * cosh + sinegeom
             cbsa = sinh * bsg1 + cosh * bsg2 + bsg3
 
-
             if (cza > 0.):
                 dir_flat_topa = dir_beam_topa * cza
-
                 am = 1.0 / (cza + 0.0000001)
                 if (am > 2.9):
                     ami = int((np.cos(cza) / consts['RADPERDEG'])) - 69
@@ -210,7 +204,7 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
                 trans2 = np.power(trans1, am)
                 sum_trans += trans2 * dir_flat_topa
                 sum_flat_potrad += dir_flat_topa
-
+                # FIXME: This is a long conditional
                 if ((h < 0. and cza > coszeh and cbsa > 0.) or
                         (h >= 0. and cza > coszwh and cbsa > 0.)):
                     sum_slope_potrad += dir_beam_topa * cbsa
@@ -262,11 +256,9 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     b = params['B0'] + params['B1'] * np.exp(-params['B2'] * sm_dtr)
     t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, params['C']))
 
-
     #------------------------------------------------------------------------------------
     # End portion of the code that doesn't have any reference to the input dataframe
     #------------------------------------------------------------------------------------
-
 
     inds = np.nonzero(df['precip'] > options['SW_PREC_THRESH'])[0]
     t_fmax[inds] *= params['RAIN_SCALAR']
@@ -305,23 +297,14 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
             max_iter = 2
     else:
         max_iter = 1
-
+    
+    #FIXME Still want to reduce the number of args here
     rmse_tdew = tol + 1
-
-    #FIXME: Strange internal function here just returns another function call
-    def f(tdew, *args):
-        print(rmse(_compute_srad_humidity_onetime(tdew, *args)[0], tdew))
-        return rmse(_compute_srad_humidity_onetime(tdew, *args)[0], tdew)
-
-    arglist=(pva, tt_max0, flat_potrad,
-          slope_potrad, sky_prop, daylength,
-          parray, pa, dtr, df)
-    f(tdew, arglist)
-    #res = minimize_scalar(f, tdew, args=(pva, tt_max0, flat_potrad,
-    #                                     slope_potrad, sky_prop, daylength,
-    #                                     parray, pa, dtr, df),
-    #                      tol=rmse_tdew, options={'maxiter': max_iter})
-    #tdew = res.x
+    f = lambda x : rmse(_compute_srad_humidity_onetime(x, pva, tt_max0, flat_potrad,
+                                         slope_potrad, sky_prop, daylength,
+                                         parray, pa, dtr, df)[0], tdew)
+    res = minimize(f, tdew, tol=rmse_tdew, options={'maxiter': max_iter})
+    tdew = res.x
     pva = svp(tdew)
     
     if 's_hum' not in df:
@@ -379,7 +362,7 @@ def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
     else:
         df['s_swrad'] = srad1 + srad2 + sc
 
-    if (options['LW_CLOUD'].upper() == 'LW_CLOUD_DEARDORFF'):
+    if (options['LW_CLOUD'].upper() == 'CLOUD_DEARDORFF'):
         df['s_tskc'] = (1. - df['s_tfmax'])
     else:
         df['s_tskc'] = np.sqrt((1. - df['s_tfmax']) / 0.65)
@@ -398,12 +381,12 @@ def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
                       np.power(ratio, 2) - 32.766 * np.power(ratio, 3)) +
                      0.0006 * dtr)
     tdew = tdewk - consts['KELVIN']
-
     return tdew, pva, pet
 
 
 def calc_longwave(df):
     emissivity_calc = {
+            'DEFAULT'    : lambda x : x,
             'TVA'        : lambda x : 0.74 + 0.0049 * x,
             'ANDERSON'   : lambda x : 0.68 + 0.036 * np.power(x, 0.5),
             'BRUTSAERT'  : lambda x : 1.24 * np.power(x/air_temp, 0.14285714),
@@ -412,16 +395,13 @@ def calc_longwave(df):
             'PRATA'      : lambda x : (1 - (1 + (46.5 * x/air_temp)) *
                 np.exp(-1*np.power((1.2 + 3 * (46.5*x/air_temp)), 0.5))),
             }
-
+    cloud_calc = {
+            'DEFAULT' : lambda x : (1.0 + (0.17 * tskc**2)) * x,
+            'CLOUD_DEARDORFF' : lambda x : tskc * 1.0 + (1-tskc) * x
+            }
     air_temp = df['s_t_day'] + consts['KELVIN'] 
+    tskc = df['s_tskc']
     emissivity_clear = emissivity_calc[options['LW_TYPE'].upper()](air_temp)
-    tskc = df['s_tsck']
-
-    if options['LW_CLOUD'].upper() == "LW_CLOUD_DEARDORFF":
-        emissivity = tsck * 1.0 + (1-tsck) * emissivity_clear
-    else:
-        emissivity = (1.0 + (0.17 * tsck**2)) * emissivity_clear
-
+    emissivity = cloud_calc[options['LW_CLOUD'].upper()](emissivity_clear) 
     df['s_lwrad'] = emissivity * consts['STEFAN_B'] * np.power(air_temp, 4)
-
 

@@ -26,7 +26,8 @@ CONSTS = {
                             12.44, 15.36, 19.79, 26.96, 30.00]),
           'KELVIN': 273.15,
           'EPS': 0.62196351,
-          'DAYS_PER_YEAR' : 365.25
+          'DAYS_PER_YEAR' : 365.25,
+          'STEFAN_B' : 5.669e-8  # (W m^-22 K^-4) Stefan Boltzmann constant 
         }
 
 PARAMS = {
@@ -66,7 +67,7 @@ OPTIONS = {
            'SW_PREC_THRESH': 0.,
            'VP_ITER': 'VP_ITER_ALWAYS',
            'MTCLIM_SWE_CORR': False,
-           'LW_CLOUD': 'LW_CLOUD_DEARDORFF',
-           'LW_TYPE': 'LW_PRATA'
+           'LW_CLOUD': 'CLOUD_DEARDORFF',
+           'LW_TYPE': 'PRATA'
           }
 
