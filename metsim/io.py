@@ -35,10 +35,11 @@ def read_ascii_forcing(fname):
             break
 
 
-def read_binary_forcng(fname):
+def read_binary_forcing(fname):
     """
     TODO
     """
+    dates = pd.date_range(metsim.start, metsim.stop)
     precip = [] # Short unsigned int
     t_max  = [] # Short int
     t_min  = [] # Short int
@@ -53,7 +54,7 @@ def read_binary_forcng(fname):
     with open(fname, 'rb') as f:
         i = 0
         points_read = 0
-        points_needed = 4*len(metsim.dates)
+        points_needed = 4*len(dates)
         while points_read != points_needed:
             bytes = f.read(2)
             if bytes:
@@ -67,7 +68,7 @@ def read_binary_forcng(fname):
                             "t_min"  : t_min, 
                             "t_max"  : t_max, 
                             "wind"   : wind},
-                      index=metsim.dates)
+                      index=dates)
     return df
 
 def read_netcdf_forcing(fname):

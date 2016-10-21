@@ -53,11 +53,11 @@ def init(opts):
             range(0,len(metsim.forcing_files),chunk)]
 
     # Generate the date range that will be put into the data frame
-    start = pd.datetime(int(metsim.config['IO']['start_year']),
+    metsim.start = pd.datetime(int(metsim.config['IO']['start_year']),
                         int(metsim.config['IO']['start_month']),
-                        int(metsim.config['IO']['start_day']))
-    end   = pd.datetime(int(metsim.config['IO']['end_year']),
+                        int(metsim.config['IO']['start_day']),
+                        int(metsim.config['IO']['start_hour']))
+    metsim.stop  = pd.datetime(int(metsim.config['IO']['end_year']),
                         int(metsim.config['IO']['end_month']),
                         int(metsim.config['IO']['end_day']))
-    metsim.dates = pd.date_range(start, end)
 
