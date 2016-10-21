@@ -135,12 +135,9 @@ def svp(temp, a=0.61078, b=17.269, c=237.3):
     * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc., 1992.
       Equation 4.2.2.
     '''
-
     svp = a * np.exp((b * temp) / (c + temp))
-
     inds = np.nonzero(temp < 0.)[0]
     svp[inds] *= 1.0 + .00972 * temp[inds] + .000042 * np.power(temp[inds], 2)
-
     return svp * 1000.
 
 
