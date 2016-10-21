@@ -19,10 +19,10 @@ def run(data):
     """
     print("Trying to do mtclim")
     calc_t_air(data)
-    calc_precip(data)
-    calc_snowpack(data)
-    calc_srad_hum_it(data)
-    calc_longwave(data)
+    #calc_precip(data)
+    #calc_snowpack(data)
+    #calc_srad_hum_it(data)
+    #calc_longwave(data)
     return data
 
 
@@ -52,11 +52,13 @@ def calc_precip(df):
     df['s_precip'] = df['precip'] * factor
 
 
+
 def calc_snowpack(df):
     """
     TODO
     """
     df['s_swe'] = 0.
+
     _simple_snowpack(df)
     n_days = len(df['precip'])
     swe_sum = 0.0
