@@ -9,18 +9,36 @@ import struct
 import pandas as pd
 from configparser import ConfigParser
 import metsim
+from metsim import multi, method
 
-def read_config(fname):
+@multi
+def read(fpath):
+    ext_to_fmt = {
+            '.txt'   : 'ASCII',
+            '.ascii' : 'ASCII',
+            '.bin'   : 'binary',
+            ''      : 'binary',
+            '.nc'    : 'NetCDF',
+            '.nc4'   : 'NetCDF',
+            '.conf'  : 'Config',
+            '.ini'   : 'Config'
+            }
+    return ext_to_fmt[os.path.splitext(fpath)[-1]] 
+
+
+@method(read, 'Config')
+def read(fpath):
     """
     TODO
     """
     cfp = ConfigParser()
-    if os.path.isfile(fname):
-        cfp.read(fname)
+    if os.path.isfile(fpath):
+        cfp.read(fpath)
     return cfp 
     
 
-def read_ascii_forcing(fname):
+@method(read, 'ASCII')
+def read(fpath):
     """
     TODO
     """
@@ -29,13 +47,14 @@ def read_ascii_forcing(fname):
     t_max = []
     wind = []
 
-    with open(fname, 'r') as f:
+    with open(fpath, 'r') as f:
         for line in csv.reader(f, delimiter='\t'):
             print(line)
             break
 
 
-def read_binary_forcing(fname):
+@method(read, 'binary')
+def read(fpath):
     """
     TODO
     """
@@ -51,7 +70,7 @@ def read_binary_forcing(fname):
 
     # Data types referred to: 'H' - unsigned short ; 'h' - short
     types = ['H', 'h', 'h', 'h']
-    with open(fname, 'rb') as f:
+    with open(fpath, 'rb') as f:
         i = 0
         points_read = 0
         points_needed = 4*len(dates)
@@ -71,35 +90,44 @@ def read_binary_forcing(fname):
                       index=dates)
     return df
 
-def read_netcdf_forcing(fname):
+
+@method(read, 'NetCDF')
+def read(fpath):
     """
     TODO
     """
     pass
 
 
-def write_ascii(data, fname):
+@method(read, None)
+def read(fpath):
+    raise TypeError("Could not determine file type for " + fpath)
+
+def write(data, fpath):
+    return fpath.split('.')[-1]
+
+def write_ascii(data, fpath):
     """
     TODO
     """
-    data.to_csv(fname, sep='\t')
+    data.to_csv(fpath, sep='\t')
 
 
-def write_netcdf(data, fname):
+def write_netcdf(data, fpath):
     """
     TODO
     """
-    hold_lock(data, fname) 
+    hold_lock(data, fpath) 
 
 
-def init_netcdf(fname):
+def init_netcdf(fpath):
     """
     TODO
     """
     pass
 
 
-def hold_lock(data, fname, timeout=10):
+def hold_lock(data, fpath, timeout=10):
     """
     A dummy method to hold the IO lock for some amount of time.
     """ 
@@ -108,7 +136,7 @@ def hold_lock(data, fname, timeout=10):
     print(data)
 
 
-def sync_io(io_function, io_data, writable, io_fname):
+def sync_io(io_function, io_data, writable, io_fpath):
     """
     Simple wrapper to make it easy to check when to do IO
     """
@@ -118,7 +146,7 @@ def sync_io(io_function, io_data, writable, io_fname):
         time.sleep(3)
     # Grab the lock and start doing IO
     writable.value = False
-    io_function(io_data, io_fname)
+    io_function(io_data, io_fpath)
     writable.value = True
 
 

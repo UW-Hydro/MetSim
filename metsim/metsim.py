@@ -42,7 +42,7 @@ class MetSim(object):
         data = pd.DataFrame()
         for job in job_list:
             #TODO: Fix this so the correct file format is chosen - multiple dispatch?
-            forcing = metsim.io.read_binary_forcing(job)
+            forcing = metsim.io.read(job)
             data = pd.concat([data, self.method(forcing)])
         #FIXME: This needs to either return data or set a class variable
         self.disaggregate(data)

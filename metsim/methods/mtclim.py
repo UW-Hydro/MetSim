@@ -19,10 +19,10 @@ def run(data):
     """
     print("Trying to do mtclim")
     calc_t_air(data)
-    #calc_precip(data)
-    #calc_snowpack(data)
-    #calc_srad_hum_it(data)
-    #calc_longwave(data)
+    calc_precip(data)
+    calc_snowpack(data)
+    calc_srad_hum_it(data)
+    calc_longwave(data)
     return data
 
 
