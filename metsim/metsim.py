@@ -9,6 +9,7 @@ import pandas as pd
 from multiprocessing import Value, Process
 
 import metsim.io
+from metsim.disaggregate import disaggregate
 
 class MetSim(object):
     """
@@ -41,11 +42,10 @@ class MetSim(object):
         """
         data = pd.DataFrame()
         for job in job_list:
-            #TODO: Fix this so the correct file format is chosen - multiple dispatch?
             forcing = metsim.io.read(job)
             data = pd.concat([data, self.method(forcing)])
-        #FIXME: This needs to either return data or set a class variable
-        self.disaggregate(data)
+        # Discard the daily data in favor of hourly data, then write
+        data = disaggregate(data)
         metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
                     os.path.join(metsim.out_dir, os.path.basename(job))) 
 
@@ -56,36 +56,4 @@ class MetSim(object):
             p.start()
         for p in self.process_handles:
             p.join()
-
-
-    def disaggregate(self, df_daily):
-        """
-        TODO
-        """
-        #FIXME: Can we use multiple dispatch here as well?
-        dates_hourly = pd.date_range(metsim.start, metsim.stop, freq='H') 
-        df_hourly = pd.DataFrame(index=dates_hourly)
-        df_hourly = (pd.concat(self._disagg_temp(   df_daily, df_hourly))
-                       .concat(self._disagg_precip( df_daily, df_hourly))
-                       .concat(self._disagg_thermal(df_daily, df_hourly))
-                       .concat(self._disagg_wind(   df_daily, df_hourly)))
-    
- 
-    def _disagg_precip(self, df_daily, df_hourly):
-        pass
-
-
-    def _disagg_temp(self, df_daily, df_hourly):
-        pass
-
-
-    def _disagg_thermal(self, df_daily, df_hourly):
-        pass
-
-
-    def _disagg_wind(self, df_daily, df_hourly):
-        pass
-
-
-   
 
