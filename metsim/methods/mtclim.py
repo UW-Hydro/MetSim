@@ -13,17 +13,17 @@ from metsim.defaults import OPTIONS as options
 
 from metsim.physics import svp, calc_pet, atm_pres
 
-def run(data):
+def run(forcings):
     """
     TODO
     """
     print("Trying to do mtclim")
-    calc_t_air(data)
-    calc_precip(data)
-    calc_snowpack(data)
-    calc_srad_hum_it(data)
-    calc_longwave(data)
-    return data
+    calc_t_air(forcings)
+    calc_precip(forcings)
+    calc_snowpack(forcings)
+    calc_srad_hum_it(forcings)
+    calc_longwave(forcings)
+    return forcings
 
 
 def calc_t_air(df):
@@ -87,16 +87,94 @@ def _simple_snowpack(df, sp=0.0):
         df['s_swe'][i] = sp 
 
 
+def calc_solar_geom(df):
+    """
+    TODO
+    """
+    tt_max0 = np.zeros(366)
+    daylength = np.zeros(366)
+    flat_potrad = np.zeros(366) 
+    slope_potrad = np.zeros(366) 
+    trans = np.power(params['TBASE'], np.power((1.0-(consts['LR_STD'] * params['site_elev'])/consts['T_STD']),
+                 (consts['G_STD'] / (consts['LR_STD'] * (consts['R'] / consts['MA'])))))
+    lat    = np.clip(params['site_lat']*consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
+    coslat = np.cos(lat)
+    sinlat = np.sin(lat)
+    cosslp = np.cos(params['site_slope']  * consts['RADPERDEG'])
+    sinslp = np.sin(params['site_slope']  * consts['RADPERDEG'])
+    cosasp = np.cos(params['site_aspect'] * consts['RADPERDEG'])
+    sinasp = np.sin(params['site_aspect'] * consts['RADPERDEG'])
+    coszeh = np.cos(np.pi / 2.-(params['site_east_horiz'] * consts['RADPERDEG']))
+    coszwh = np.cos(np.pi / 2.-(params['site_west_horiz'] * consts['RADPERDEG']))
+    dt     = consts['SRADDT']  
+    dh     = dt / consts['SECPERRAD']  
+    tiny_step_per_day = 86400 / consts['SRADDT']
+    tiny_rad_fract    = np.zeros(shape=(366, tiny_step_per_day), dtype=np.float64)
+    for i in range(365):
+        decl = consts['MINDECL'] * np.cos((i + consts['DAYSOFF']) * consts['RADPERDAY'])
+        cosdecl = np.cos(decl)
+        sindecl = np.sin(decl)
+        bsg1 = -sinslp * sinasp * cosdecl
+        bsg2 = (-cosasp * sinslp * sinlat + cosslp * coslat) * cosdecl
+        bsg3 = (cosasp * sinslp * coslat + cosslp * sinlat) * sindecl
+        cosegeom = coslat * cosdecl
+        sinegeom = sinlat * sindecl
+        coshss = np.clip(-sinegeom / cosegeom, -1, 1)
+        hss = np.cos(coshss)  
+        daylength[i] = np.maximum(2.0 * hss * consts['SECPERRAD'], 86400)
+        dir_beam_topa = 1368.0 + 45.5 * np.sin((2.0 * np.pi * i / 365.25) + 1.7) * dt
+        sum_trans = 0.
+        sum_flat_potrad = 0.
+        sum_slope_potrad = 0.
+        for h in np.arange(-hss, hss, dh):
+            cosh = np.cos(h)
+            sinh = np.sin(h)
+            cza = cosegeom * cosh + sinegeom
+            cbsa = sinh * bsg1 + cosh * bsg2 + bsg3
+            if (cza > 0.):
+                dir_flat_topa = dir_beam_topa * cza
+                am = 1.0 / (cza + 0.0000001)
+                if (am > 2.9):
+                    ami = min(max(int((np.cos(cza) / consts['RADPERDEG'])) - 69,0),20)
+                    am = consts['OPTAM'][ami]
+                sum_trans += np.power(trans, am) * dir_flat_topa
+                sum_flat_potrad += dir_flat_topa
+                # FIXME: This is a long conditional
+                if ((h < 0. and cza > coszeh and cbsa > 0.) or
+                        (h >= 0. and cza > coszwh and cbsa > 0.)):
+                    sum_slope_potrad += dir_beam_topa * cbsa
+            else:
+                dir_flat_topa = -1
+            tinystep = np.clip(((12 * 3600 + h * consts['SECPERRAD'])/dt), 0, tiny_step_per_day - 1)
+            tiny_rad_fract[i, tinystep] = max(dir_flat_topa, 0)
+        if daylength[i] and sum_flat_potrad > 0:
+            tiny_rad_fract[i] /= sum_flat_potrad
+        if daylength[i]:
+            tt_max0[i] = sum_trans / sum_flat_potrad
+            flat_potrad[i] = sum_flat_potrad / daylength[i]
+            slope_potrad[i] = sum_slope_potrad / daylength[i]
+        else:
+            tt_max0[i] = 0.
+            flat_potrad[i] = 0.
+            slope_potrad[i] = 0.
+    tt_max0[365] = tt_max0[364]
+    flat_potrad[365] = flat_potrad[364]
+    slope_potrad[365] = slope_potrad[364]
+    daylength[365] = daylength[364]
+    tiny_rad_fract[365] = tiny_rad_fract[364]
+    return tt_max0, flat_potrad, slope_potrad, daylength, tiny_rad_fract
+
+
+def calc_shortwave(df):
+    pass
+
+
 def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     """
     TODO
     """
     n_days = len(df['precip'])
-    daylength = np.zeros(366)
     window = np.zeros(n_days + 90)
-    tt_max0 = np.zeros(366)
-    flat_potrad = np.zeros(366) 
-    slope_potrad = np.zeros(366) 
     t_fmax = np.zeros(n_days)
     df['s_tfmax'] = 0.0
 
@@ -146,122 +224,21 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
             sum_precip = np.maximum(sum_precip, 8.0)
             parray[i] = sum_precip
 
-    #------------------------------------------------------------------------------------
-    # From here on to end note no data is needed from input - can we put this elsewhere?
-    #------------------------------------------------------------------------------------
-
-    trans1 = _calc_trans()
-    lat = np.clip(params['site_lat']*consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
-    coslat = np.cos(lat)
-    sinlat = np.sin(lat)
-    cosslp = np.cos(params['site_slope']  * consts['RADPERDEG'])
-    sinslp = np.sin(params['site_slope']  * consts['RADPERDEG'])
-    cosasp = np.cos(params['site_aspect'] * consts['RADPERDEG'])
-    sinasp = np.sin(params['site_aspect'] * consts['RADPERDEG'])
-    coszeh = np.cos(np.pi / 2.-(params['site_east_horiz'] * consts['RADPERDEG']))
-    coszwh = np.cos(np.pi / 2.-(params['site_west_horiz'] * consts['RADPERDEG']))
-    dt = consts['SRADDT']  
-    dh = dt / consts['SECPERRAD']  
-    tiny_step_per_day = 86400 / consts['SRADDT']
-    tiny_rad_fract = np.zeros(shape=(366, tiny_step_per_day), dtype=np.float64)
-
-   
-    for i in range(365):
-        decl = consts['MINDECL'] * np.cos((i + consts['DAYSOFF']) *
-                                             consts['RADPERDAY'])
-        cosdecl = np.cos(decl)
-        sindecl = np.sin(decl)
-
-        bsg1 = -sinslp * sinasp * cosdecl
-        bsg2 = (-cosasp * sinslp * sinlat + cosslp * coslat) * cosdecl
-        bsg3 = (cosasp * sinslp * coslat + cosslp * sinlat) * sindecl
-        cosegeom = coslat * cosdecl
-        sinegeom = sinlat * sindecl
-        coshss = np.clip(-sinegeom / cosegeom, -1, 1)
-        hss = np.cos(coshss)  
-        daylength[i] = np.maximum(2.0 * hss * consts['SECPERRAD'], 86400)
-        sc = 1368.0 + 45.5 * np.sin((2.0 * np.pi * i / 365.25) + 1.7)
-        dir_beam_topa = sc * dt
-        sum_trans = 0.
-        sum_flat_potrad = 0.
-        sum_slope_potrad = 0.
-
-        for h in np.arange(-hss, hss, dh):
-            cosh = np.cos(h)
-            sinh = np.sin(h)
-            cza = cosegeom * cosh + sinegeom
-            cbsa = sinh * bsg1 + cosh * bsg2 + bsg3
-
-            if (cza > 0.):
-                dir_flat_topa = dir_beam_topa * cza
-                am = 1.0 / (cza + 0.0000001)
-                if (am > 2.9):
-                    ami = int((np.cos(cza) / consts['RADPERDEG'])) - 69
-                    if (ami < 0):
-                        ami = 0
-                    if (ami > 20):
-                        ami = 20
-                    am = consts['OPTAM'][ami]
-
-                trans2 = np.power(trans1, am)
-                sum_trans += trans2 * dir_flat_topa
-                sum_flat_potrad += dir_flat_topa
-                # FIXME: This is a long conditional
-                if ((h < 0. and cza > coszeh and cbsa > 0.) or
-                        (h >= 0. and cza > coszwh and cbsa > 0.)):
-                    sum_slope_potrad += dir_beam_topa * cbsa
-            else:
-                dir_flat_topa = -1
-
-            tinystep = np.clip(((12 * 3600 + h * consts['SECPERRAD']) /
-                                consts['SRADDT']),
-                               0, tiny_step_per_day - 1)
-
-            if dir_flat_topa > 0:
-                tiny_rad_fract[i, tinystep] = dir_flat_topa
-            else:
-                tiny_rad_fract[i, tinystep] = 0
-
-        if daylength[i] and sum_flat_potrad > 0:
-            tiny_rad_fract[i] /= sum_flat_potrad
-
-        if daylength[i]:
-            tt_max0[i] = sum_trans / sum_flat_potrad
-            flat_potrad[i] = sum_flat_potrad / daylength[i]
-            slope_potrad[i] = sum_slope_potrad / daylength[i]
-        else:
-            tt_max0[i] = 0.
-            flat_potrad[i] = 0.
-            slope_potrad[i] = 0.
-
-    tt_max0[365] = tt_max0[364]
-    flat_potrad[365] = flat_potrad[364]
-    slope_potrad[365] = slope_potrad[364]
-    daylength[365] = daylength[364]
-
-    tiny_rad_fract[365] = tiny_rad_fract[364]
+    tt_max0, flat_potrad, slope_potrad, daylength, tiny_rad_fract = calc_solar_geom(df)
 
     avg_horizon = (params['site_east_horiz'] + params['site_west_horiz']) / 2.0
     horizon_scalar = 1.0 - np.sin(avg_horizon * consts['RADPERDEG'])
-    
     if (params['site_slope'] > avg_horizon):
         slope_excess = params['site_slope'] - avg_horizon
     else:
         slope_excess = 0.
-
     if (2.0 * avg_horizon > 180.):
         slope_scalar = 0.
     else:
         slope_scalar = np.clip(1.-(slope_excess / (180.0-2.0 * avg_horizon)), 0, None)
-
     sky_prop = horizon_scalar * slope_scalar
     b = params['B0'] + params['B1'] * np.exp(-params['B2'] * sm_dtr)
     t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, params['C']))
-
-    #------------------------------------------------------------------------------------
-    # End portion of the code that doesn't have any reference to the input dataframe
-    #------------------------------------------------------------------------------------
-
     inds = np.nonzero(df['precip'] > options['SW_PREC_THRESH'])[0]
     t_fmax[inds] *= params['RAIN_SCALAR']
     df['s_tfmax'] = t_fmax
@@ -283,12 +260,14 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     sum_pet = pet.values.sum()
     ann_pet = (sum_pet / n_days) * consts['DAYS_PER_YEAR'] 
 
+    # FIXME: Another really long conditional
     if (('tdew' in df) or ('s_hum' in df) or
             (options['VP_ITER'].upper() == 'VP_ITER_ANNUAL' and
              ann_pet / ann_precip >= 2.5)):
         tdew = tdew_save[:]
         pva = pva_save[:]
 
+    # FIXME: Another really long conditional
     if (options['VP_ITER'].upper() == 'VP_ITER_ALWAYS' or
         (options['VP_ITER'].upper() == 'VP_ITER_ANNUAL' and
          ann_pet / ann_precip >= 2.5) or
@@ -308,22 +287,12 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     res = minimize(f, tdew, tol=rmse_tdew, options={'maxiter': max_iter})
     tdew = res.x
     pva = svp(tdew)
-    
     if 's_hum' not in df:
         df['s_hum'] = pva
     
     pvs = svp(df['s_t_day'])
     vpd = pvs - pva
     df['s_vpd'] = np.maximum(vpd, 0.)
-
-
-def _calc_trans():
-    """
-    TODO
-    """
-    pratio = np.power((1.0-(consts['LR_STD'] * params['site_elev'])/consts['T_STD']),
-                      (consts['G_STD'] / (consts['LR_STD'] * (consts['R'] / consts['MA']))))
-    return np.power(params['TBASE'], pratio)
 
 
 #FIXME: This function has lots of inputs and outputs (see above for call)
@@ -406,4 +375,6 @@ def calc_longwave(df):
     emissivity_clear = emissivity_calc[options['LW_TYPE'].upper()](air_temp)
     emissivity = cloud_calc[options['LW_CLOUD'].upper()](emissivity_clear) 
     df['s_lwrad'] = emissivity * consts['STEFAN_B'] * np.power(air_temp, 4)
+
+
 
