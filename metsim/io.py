@@ -9,15 +9,15 @@ import struct
 import pandas as pd
 from configparser import ConfigParser
 import metsim
-from metsim import multi, method
+from metsim.util import multi, method
 
 @multi
-def read(fpath):
+def read(fpath, n_days=-1):
     ext_to_fmt = {
             '.txt'   : 'ASCII',
             '.ascii' : 'ASCII',
             '.bin'   : 'binary',
-            ''      : 'binary',
+            ''       : 'binary',
             '.nc'    : 'NetCDF',
             '.nc4'   : 'NetCDF',
             '.conf'  : 'Config',
@@ -27,7 +27,7 @@ def read(fpath):
 
 
 @method(read, 'Config')
-def read(fpath):
+def read(fpath, n_days=-1):
     """
     TODO
     """
@@ -38,7 +38,7 @@ def read(fpath):
     
 
 @method(read, 'ASCII')
-def read(fpath):
+def read(fpath, n_days=-1):
     """
     TODO
     """
@@ -54,11 +54,10 @@ def read(fpath):
 
 
 @method(read, 'binary')
-def read(fpath):
+def read(fpath, n_days=-1):
     """
     TODO
     """
-    dates = pd.date_range(metsim.start, metsim.stop)
     precip = [] # Short unsigned int
     t_max  = [] # Short int
     t_min  = [] # Short int
@@ -73,7 +72,7 @@ def read(fpath):
     with open(fpath, 'rb') as f:
         i = 0
         points_read = 0
-        points_needed = 4*len(dates)
+        points_needed = 4*n_days
         while points_read != points_needed:
             bytes = f.read(2)
             if bytes:
@@ -86,13 +85,12 @@ def read(fpath):
     df = pd.DataFrame(data={"precip" : precip, 
                             "t_min"  : t_min, 
                             "t_max"  : t_max, 
-                            "wind"   : wind},
-                      index=dates)
+                            "wind"   : wind})
     return df
 
 
 @method(read, 'NetCDF')
-def read(fpath):
+def read(fpath, n_days=-1):
     """
     TODO
     """

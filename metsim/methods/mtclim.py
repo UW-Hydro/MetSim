@@ -7,6 +7,7 @@ import pandas as pd
 from scipy.optimize import minimize
 from statsmodels.tools.eval_measures import rmse
 
+import metsim.disaggregate as disaggregate
 from metsim.defaults import PARAMS  as params
 from metsim.defaults import CONSTS  as consts
 from metsim.defaults import OPTIONS as options
@@ -23,7 +24,6 @@ def run(forcings):
     calc_snowpack(forcings)
     calc_srad_hum_it(forcings)
     calc_longwave(forcings)
-    return forcings
 
 
 def calc_t_air(df):
@@ -57,8 +57,7 @@ def calc_snowpack(df):
     """
     TODO
     """
-    df['s_swe'] = 0.
-
+    #FIXME: This is definitely not the full algorithm
     _simple_snowpack(df)
     n_days = len(df['precip'])
     swe_sum = 0.0
@@ -73,18 +72,21 @@ def calc_snowpack(df):
         _simple_snowpack(df, snowpack=sp)
      
 
-def _simple_snowpack(df, sp=0.0):
+def _simple_snowpack(df, sp_init=0.0):
     """
     TODO
     """
-    n_days = len(df['precip']) 
+    n_days = len(df['precip'])
+    sp = np.full(n_days, sp_init)
+    # FIXME: Make this vectorized
     for i in range(n_days):
         if df['s_t_min'][i] <= params['SNOW_TCRIT']:
-            sp += df['s_precip'][i]
+            sp[i] += df['s_precip'][i]
         else:
-            sp -= (params['SNOW_TRATE'] * (df['s_t_min'][i] - params['SNOW_TCRIT']))
-        sp = np.maximum(sp, 0.0)
-        df['s_swe'][i] = sp 
+            sp[i] -= (params['SNOW_TRATE'] * (df['s_t_min'][i] - params['SNOW_TCRIT']))
+    sp = np.cumsum(sp)
+    sp = np.maximum(sp, 0.0)
+    df['s_swe'] = sp 
 
 
 def calc_solar_geom(df):
@@ -225,6 +227,7 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
             parray[i] = sum_precip
 
     tt_max0, flat_potrad, slope_potrad, daylength, tiny_rad_fract = calc_solar_geom(df)
+    disaggregate.tiny_rad_fract = tiny_rad_fract
 
     avg_horizon = (params['site_east_horiz'] + params['site_west_horiz']) / 2.0
     horizon_scalar = 1.0 - np.sin(avg_horizon * consts['RADPERDEG'])
@@ -268,23 +271,33 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
         pva = pva_save[:]
 
     # FIXME: Another really long conditional
-    if (options['VP_ITER'].upper() == 'VP_ITER_ALWAYS' or
-        (options['VP_ITER'].upper() == 'VP_ITER_ANNUAL' and
-         ann_pet / ann_precip >= 2.5) or
-            options['VP_ITER'].upper() == 'VP_ITER_CONVERGE'):
-        if (options['VP_ITER'].upper() == 'VP_ITER_CONVERGE'):
-            max_iter = 100
-        else:
-            max_iter = 2
-    else:
-        max_iter = 1
+    #if (options['VP_ITER'].upper() == 'VP_ITER_ALWAYS' or
+    #    (options['VP_ITER'].upper() == 'VP_ITER_ANNUAL' and
+    #     ann_pet / ann_precip >= 2.5) or
+    #        options['VP_ITER'].upper() == 'VP_ITER_CONVERGE'):
+    #    if (options['VP_ITER'].upper() == 'VP_ITER_CONVERGE'):
+    #        max_iter = 100
+    #    else:
+    #        max_iter = 2
+    #else:
+    #    max_iter = 1
     
     #FIXME Still want to reduce the number of args here
+    #FIXME This also takes up the majority of the mtclim runtime
     rmse_tdew = tol + 1
-    f = lambda x : rmse(_compute_srad_humidity_onetime(x, pva, tt_max0, flat_potrad,
+    #f = lambda x : rmse(_compute_srad_humidity_onetime(x, pva, tt_max0, flat_potrad,
+    #                                     slope_potrad, sky_prop, daylength,
+    #                                     parray, pa, dtr, df)[0], tdew)
+    def f(x):
+        tdew_calc = _compute_srad_humidity_onetime(x, pva, tt_max0, flat_potrad,
                                          slope_potrad, sky_prop, daylength,
-                                         parray, pa, dtr, df)[0], tdew)
-    res = minimize(f, tdew, tol=rmse_tdew, options={'maxiter': max_iter})
+                                         parray, pa, dtr, df)[0]
+        print(tdew_calc - tdew)
+        err = rmse(tdew_calc, tdew)
+        print(err)
+        return err
+
+    res = minimize(f, tdew, tol=rmse_tdew)
     tdew = res.x
     pva = svp(tdew)
     if 's_hum' not in df:
@@ -296,6 +309,7 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
 
 
 #FIXME: This function has lots of inputs and outputs (see above for call)
+#FIXME: This needs to not use module level variables inside
 def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
                                    slope_potrad, sky_prop, daylength,
                                    parray, pa, dtr, df):
@@ -317,15 +331,15 @@ def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
 
     sc = np.zeros_like(df['s_swe'])
     if (options['MTCLIM_SWE_CORR']):
-        inds = np.nonzero(df['s_swe'] > 0. * daylength[yday] > 0.)
+        inds = np.nonzero(df['s_swe'] > 0. & daylength[yday] > 0.)
         sc[inds] = (1.32 + 0.096 * df['s_swe'][inds]) *\
             1.0e6 / daylength[yday][inds]
         sc = np.maximum(sc, 100.)  # JJH - this is fishy
 
     if 's_swrad' in df:
         potrad = (srad1 + srad2 + sc) * daylength[yday] / t_final / 86400
-        df['s_tfmax'] = 1.0
-        inds = np.nonzero((potrad > 0.) * (df['s_swrad'] > 0.) *
+        df['s_tfmax'] = np.ones(len(sc)) 
+        inds = np.nonzero((potrad > 0.) & (df['s_swrad'] > 0.) &
                           (daylength[yday] > 0))[0]
         df['s_tfmax'][inds] = (df['s_swrad'][inds] /
                                       (potrad[inds] * t_tmax[inds]))

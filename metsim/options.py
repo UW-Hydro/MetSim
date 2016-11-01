@@ -9,7 +9,6 @@ import argparse
 import pandas as pd
 import metsim
 from metsim import io
-from metsim import METHODS as methods 
 from metsim import defaults
 
 def parse(args):
@@ -40,7 +39,8 @@ def init(opts):
         exit()
 
     #NOTE: This will silently override invalid methods in the configuration file
-    metsim.method = methods.get(metsim.config['Output']['disagg_method'], 'mtclim')
+    metsim.method = defaults.METHODS.get(metsim.config['Output']['disagg_method'], 
+                                        'mtclim')
 
     # Split up the list of forcing files for the desired number of processes
     # Note here that we auto force the number of processes to be at most
