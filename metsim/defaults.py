@@ -71,3 +71,11 @@ OPTIONS = {
            'LW_TYPE': 'PRATA'
           }
 
+from metsim.methods import mtclim
+
+METHODS = {
+           'mtclim': mtclim
+          }
+
+
+

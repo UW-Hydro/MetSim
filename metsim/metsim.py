@@ -29,25 +29,29 @@ class MetSim(object):
         self.method = analysis_method.run
         n_jobs = len(job_list) 
         job_size = int(n_jobs / min(n_processes, n_jobs))
-        self.jobs = [job_list[i:i+job_size] for i in range(0, n_jobs, job_size)]
-        self.process_handles = [
-                 Process(target=self.run, args=(self.method, job_list))
-                 for job_list in self.jobs
-                ]
+        self.run(self.method, job_list)
+        #self.jobs = [job_list[i:i+job_size] for i in range(0, n_jobs, job_size)]
+        #self.process_handles = [
+        #         Process(target=self.run, args=(self.method, job_list))
+        #         for job_list in self.jobs
+        #        ]
+        self.process_handles = []
 
 
     def run(self, method, job_list):
         """
         Kicks off the disaggregation and queues up data for IO
         """
-        data = pd.DataFrame()
         for job in job_list:
-            forcing = metsim.io.read(job)
-            data = pd.concat([data, self.method(forcing)])
+            dates = pd.date_range(metsim.start, metsim.stop)
+            forcing = metsim.io.read(job, len(dates))
+            forcing = forcing.set_index(dates)
+            forcing['day_of_year'] = dates.dayofyear
+            self.method(forcing)
         # Discard the daily data in favor of hourly data, then write
-        data = disaggregate(data)
-        metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
-                    os.path.join(metsim.out_dir, os.path.basename(job))) 
+        #data = disaggregate(data)
+        #metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
+        #            os.path.join(metsim.out_dir, os.path.basename(job))) 
 
 
     def launch_processes(self):
