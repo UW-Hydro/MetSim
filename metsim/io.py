@@ -11,23 +11,8 @@ from configparser import ConfigParser
 import metsim
 from metsim.util import multi, method
 
-@multi
-def read(fpath, n_days=-1):
-    ext_to_fmt = {
-            '.txt'   : 'ASCII',
-            '.ascii' : 'ASCII',
-            '.bin'   : 'binary',
-            ''       : 'binary',
-            '.nc'    : 'NetCDF',
-            '.nc4'   : 'NetCDF',
-            '.conf'  : 'Config',
-            '.ini'   : 'Config'
-            }
-    return ext_to_fmt[os.path.splitext(fpath)[-1]] 
 
-
-@method(read, 'Config')
-def read(fpath, n_days=-1):
+def read_config(fpath, n_days=-1):
     """
     TODO
     """
@@ -37,8 +22,7 @@ def read(fpath, n_days=-1):
     return cfp 
     
 
-@method(read, 'ASCII')
-def read(fpath, n_days=-1):
+def read_ascii(fpath, n_days=-1):
     """
     TODO
     """
@@ -53,8 +37,7 @@ def read(fpath, n_days=-1):
             break
 
 
-@method(read, 'binary')
-def read(fpath, n_days=-1):
+def read_binary(fpath, n_days=-1):
     """
     TODO
     """
@@ -89,12 +72,31 @@ def read(fpath, n_days=-1):
     return df
 
 
-@method(read, 'NetCDF')
-def read(fpath, n_days=-1):
+
+def read_netcdf(fpath, n_days=-1):
     """
     TODO
     """
     pass
+
+
+def read(fpath, n_days=-1):
+    """
+    TODO
+    """
+    ext_to_fun = {
+            '.txt'   : read_ascii,
+            '.ascii' : read_ascii,
+            '.bin'   : read_binary,
+            ''       : read_binary,
+            '.nc'    : read_netcdf,
+            '.nc4'   : read_netcdf,
+            '.conf'  : read_config,
+            '.ini'   : read_config
+            }
+    return ext_to_fun[os.path.splitext(fpath)[-1]](fpath, n_days) 
+
+
 
 
 @method(read, None)

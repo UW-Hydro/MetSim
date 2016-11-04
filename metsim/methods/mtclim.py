@@ -14,85 +14,65 @@ from metsim.defaults import OPTIONS as options
 
 from metsim.physics import svp, calc_pet, atm_pres
 
-def run(forcings):
+n_days = 0
+
+def run(f):
     """
     TODO
     """
+    # f is input forcings
     print("Trying to do mtclim")
-    calc_t_air(forcings)
-    calc_precip(forcings)
-    calc_snowpack(forcings)
-    calc_srad_hum_it(forcings)
-    calc_longwave(forcings)
+    # FIXME: Put this somewhere else
+    global n_days 
+    n_days = len(f['day_of_year'])
+    f = f.join(calc_t_air(f['t_min'], f['t_max']))
+    f = f.join(calc_precip(f['precip'], f.get('site_isoh', 1), f.get('base_isoh', 1)))
+    f = f.join(calc_snowpack(f['day_of_year'], f['s_precip'], f['s_t_min']))
+    calc_srad_hum_it(f)
+    f = f.join(calc_longwave(f['s_t_day'], f['s_tskc']))
 
 
-def calc_t_air(df):
-    """
-    TODO
-    """
-    delta_z = params['site_elev'] - params['base_elev']
+def calc_t_air(t_min, t_max):
+    df = pd.DataFrame()
+    dZ = params['site_elev'] - params['base_elev']
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
-    df['s_t_min'] = df['t_min'] + delta_z * lapse_rates[0]
-    df['s_t_max'] = df['t_max'] + delta_z * lapse_rates[1]
-    df['s_t_min'].where(df['s_t_min'] > df['s_t_max'], 
-                        other=df['s_t_max'] - 0.5, 
-                        inplace=True)
+    df['s_t_max'] = t_max + dZ * lapse_rates[1]
+    df['s_t_min'] = np.maximum(t_min + dZ * lapse_rates[0], df['s_t_max']-0.5)
     t_mean = np.mean(df['s_t_min'] + df['s_t_max'])
     df['s_t_day'] = ((df['s_t_max'] - t_mean) * params['TDAYCOEF']) + t_mean
+    return df
 
 
-def calc_precip(df):
-    """
-    TODO
-    """
-    try:
-        factor = df['site_isoh'] / df['base_isoh']
-    except:
-        factor = 1
-    df['s_precip'] = df['precip'] * factor
+def calc_precip(precip, site_isoh, base_isoh):
+    df = pd.DataFrame()
+    df['s_precip'] = precip * (site_isoh / base_isoh) 
+    return df
 
 
+def calc_snowpack(yday, s_precip, s_t_min):
 
-def calc_snowpack(df):
-    """
-    TODO
-    """
-    #FIXME: This is definitely not the full algorithm
-    _simple_snowpack(df)
-    n_days = len(df['precip'])
-    swe_sum = 0.0
-    count = 0
-    for i in range(n_days):
-        if False: #FIXME What's going on here?
-            count += 1
-            swe_sum += df['s_swe'][i]
+    def _simple_snowpack(s_precip, s_t_min, snowpack=0.0):
+        s_swe = np.array(np.ones(n_days) * snowpack)
+        accum = s_t_min <= params['SNOW_TCRIT']
+        melt  = s_t_min >  params['SNOW_TCRIT']
+        s_swe[accum] += s_precip.where(accum)
+        s_swe[melt]  -= params['SNOW_TRATE'] * (s_t_min.where(melt) - params['SNOW_TCRIT'])
+        s_swe = np.maximum(np.cumsum(s_swe), 0.0) 
+        return s_swe 
+   
+    df = pd.DataFrame()
+    df['s_swe'] = _simple_snowpack(s_precip, s_t_min)
+    start = (yday == yday[0])
+    end = (yday == (start-2)%365 + 1) 
+    loop_days = np.logical_or(start, end)
+    loop_swe  = sum(df['s_swe'].where(loop_days))/sum(loop_days)
 
-    if count:
-        sp = swe_sum/count
-        _simple_snowpack(df, snowpack=sp)
-     
-
-def _simple_snowpack(df, sp_init=0.0):
-    """
-    TODO
-    """
-    n_days = len(df['precip'])
-    sp = np.full(n_days, sp_init)
-    # FIXME: Make this vectorized
-    for i in range(n_days):
-        if df['s_t_min'][i] <= params['SNOW_TCRIT']:
-            sp[i] += df['s_precip'][i]
-        else:
-            sp[i] -= (params['SNOW_TRATE'] * (df['s_t_min'][i] - params['SNOW_TCRIT']))
-    sp = np.cumsum(sp)
-    sp = np.maximum(sp, 0.0)
-    df['s_swe'] = sp 
+    if np.any(loop_swe):
+        df['s_swe'] = _simple_snowpack(s_precip, s_t_min, snowpack=loop_swe)
+    return df 
 
 
-def calc_solar_geom(df):
-    """
-    TODO
-    """
+def calc_solar_geom():
     tt_max0 = np.zeros(366)
     daylength = np.zeros(366)
     flat_potrad = np.zeros(366) 
@@ -175,7 +155,6 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     """
     TODO
     """
-    n_days = len(df['precip'])
     window = np.zeros(n_days + 90)
     t_fmax = np.zeros(n_days)
     df['s_tfmax'] = 0.0
@@ -184,10 +163,9 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     dtr = df['t_max'] - df['t_min']
     sm_dtr = pd.rolling_window(dtr, window=30, freq='D', 
                                win_type=win_type).fillna(method='bfill')
-    
     if n_days <= 30:
-        warn('Timeseries is shorter than rolling mean window, filling '
-             'missing values with unsmoothed data')
+        print('Timeseries is shorter than rolling mean window, filling ')
+        print('missing values with unsmoothed data')
         sm_dtr.fillna(dtr, inplace=True)
 
     sum_precip = df['s_precip'].values.sum()
@@ -202,8 +180,8 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
         parray = eff_ann_precip
     else:
         parray = np.zeros(n_days)
-        start_yday = df.index.dayofyear[0]
-        end_yday = df.index.dayofyear[n_days - 1]
+        start_yday = df['day_of_year'][0]
+        end_yday = df['day_of_year'][-1]
         if start_yday != 1:
             if end_yday == start_yday-1:
                 isloop = True
@@ -211,10 +189,11 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
             if end_yday == 365 or end_yday == 366:
                 isloop = True
         
-        for i in range(90):
-            if isloop:
+        if isloop:
+            for i in range(90):
                 window[i] = df['s_precip'][n_days - 90 + i]
-            else:
+        else:
+            for i in range(90):
                 window[i] = df['s_precip'][i]
         window[90:] = df['s_precip']
 
@@ -226,7 +205,9 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
             sum_precip = np.maximum(sum_precip, 8.0)
             parray[i] = sum_precip
 
-    tt_max0, flat_potrad, slope_potrad, daylength, tiny_rad_fract = calc_solar_geom(df)
+    # FIXME: This is still bad form
+    tt_max0, flat_potrad, slope_potrad, daylength, tiny_rad_fract = calc_solar_geom()
+    # NOTE: Be careful with this one!
     disaggregate.tiny_rad_fract = tiny_rad_fract
 
     avg_horizon = (params['site_east_horiz'] + params['site_west_horiz']) / 2.0
@@ -250,14 +231,15 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     pva = df['s_hum'] if 's_hum' in df else svp(tdew)
 
     pa = atm_pres(params['site_elev'])
-    yday = df.index.dayofyear - 1
+    yday = df['day_of_year'] - 1 
     df['s_dayl'] = daylength[yday]
     tdew_save = tdew
     pva_save = pva
 
     # FIXME: This function has lots of inputs and outputs 
     tdew, pva, pet = _compute_srad_humidity_onetime(
-        tdew, pva, tt_max0, flat_potrad, slope_potrad, sky_prop, daylength,
+               tdew, pva, tt_max0, flat_potrad, 
+               slope_potrad, sky_prop, daylength,
         parray, pa, dtr, df)
 
     sum_pet = pet.values.sum()
@@ -316,17 +298,14 @@ def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
     """
     TODO
     """
-    yday = df.index.dayofyear - 1
-    t_tmax = tt_max0[yday] + (params['ABASE'] * pva)
-    t_tmax = np.minimum(t_tmax, 0.0001)
+    yday = df['day_of_year'] - 1
+    t_tmax = np.minimum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
     df['s_ttmax'] = t_tmax
     t_final = t_tmax * df['s_tfmax']
+    df['s_fdir'] = 1.0 - np.clip(-1.25 * t_final * 1.25, 0., 1.) 
 
-    pdif = np.clip(-1.25 * t_final + 1.25, 0., 1.)
-    pdir = 1.0 - pdif
-
-    srad1 = slope_potrad[yday] * t_final * pdir
-    srad2 = (flat_potrad[yday] * t_final * pdif) * \
+    srad1 = slope_potrad[yday] * t_final * df['s_fdir']
+    srad2 = (flat_potrad[yday] * t_final * 1 - df['s_fdir']) * \
         (sky_prop + params['DIF_ALB'] * (1.0 - sky_prop))
 
     sc = np.zeros_like(df['s_swe'])
@@ -334,16 +313,16 @@ def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
         inds = np.nonzero(df['s_swe'] > 0. & daylength[yday] > 0.)
         sc[inds] = (1.32 + 0.096 * df['s_swe'][inds]) *\
             1.0e6 / daylength[yday][inds]
-        sc = np.maximum(sc, 100.)  # JJH - this is fishy
+        sc = np.maximum(sc, 100.)  # JJH - this is fishy 
+                                   # ARB - I agree
 
     if 's_swrad' in df:
         potrad = (srad1 + srad2 + sc) * daylength[yday] / t_final / 86400
         df['s_tfmax'] = np.ones(len(sc)) 
-        inds = np.nonzero((potrad > 0.) & (df['s_swrad'] > 0.) &
-                          (daylength[yday] > 0))[0]
-        df['s_tfmax'][inds] = (df['s_swrad'][inds] /
-                                      (potrad[inds] * t_tmax[inds]))
-        df['s_tfmax'] = np.maximum(df['s_tfmax'], 1.)
+        inds = np.nonzero((potrad > 0.) & 
+               (df['s_swrad'] > 0.) & 
+               (daylength[yday] > 0))[0]
+        df['s_tfmax'][inds] = np.maximum((df['s_swrad'][inds] / (potrad[inds] * t_tmax[inds])), 1.)
     else:
         df['s_swrad'] = srad1 + srad2 + sc
 
@@ -351,7 +330,6 @@ def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
         df['s_tskc'] = (1. - df['s_tfmax'])
     else:
         df['s_tskc'] = np.sqrt((1. - df['s_tfmax']) / 0.65)
-    df['s_fdir'] = pdir
 
     # Compute PET using SW radiation estimate, and update Tdew, pva **
     tmink = df['s_t_min'] + consts['KELVIN']
@@ -365,11 +343,11 @@ def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
                      (1.003 - 1.444 * ratio + 12.312 *
                       np.power(ratio, 2) - 32.766 * np.power(ratio, 3)) +
                      0.0006 * dtr)
-    tdew = tdewk - consts['KELVIN']
-    return tdew, pva, pet
+    tdew_tmp = tdewk - consts['KELVIN']
+    return tdew_tmp, pva, pet
 
 
-def calc_longwave(df):
+def calc_longwave(s_t_day, s_tskc):
     emissivity_calc = {
             'DEFAULT'    : lambda x : x,
             'TVA'        : lambda x : 0.74 + 0.0049 * x,
@@ -381,14 +359,14 @@ def calc_longwave(df):
                 np.exp(-1*np.power((1.2 + 3 * (46.5*x/air_temp)), 0.5))),
             }
     cloud_calc = {
-            'DEFAULT' : lambda x : (1.0 + (0.17 * tskc**2)) * x,
-            'CLOUD_DEARDORFF' : lambda x : tskc * 1.0 + (1-tskc) * x
+            'DEFAULT' : lambda x : (1.0 + (0.17 * s_tskc**2)) * x,
+            'CLOUD_DEARDORFF' : lambda x : s_tskc * 1.0 + (1-s_tskc) * x
             }
-    air_temp = df['s_t_day'] + consts['KELVIN'] 
-    tskc = df['s_tskc']
+    df = pd.DataFrame()
+    air_temp = s_t_day + consts['KELVIN'] 
     emissivity_clear = emissivity_calc[options['LW_TYPE'].upper()](air_temp)
     emissivity = cloud_calc[options['LW_CLOUD'].upper()](emissivity_clear) 
     df['s_lwrad'] = emissivity * consts['STEFAN_B'] * np.power(air_temp, 4)
-
+    return df
 
 
