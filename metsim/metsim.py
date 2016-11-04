@@ -47,6 +47,7 @@ class MetSim(object):
             forcing = metsim.io.read(job, len(dates))
             forcing = forcing.set_index(dates)
             forcing['day_of_year'] = dates.dayofyear
+            metsim.n_days = len(forcing['day_of_year'])
             self.method(forcing)
         # Discard the daily data in favor of hourly data, then write
         #data = disaggregate(data)
