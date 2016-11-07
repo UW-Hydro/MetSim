@@ -237,7 +237,7 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     pva_save = pva
 
     # FIXME: This function has lots of inputs and outputs 
-    tdew, pva, pet = _compute_srad_humidity_onetime(
+    tdew, pet = _compute_srad_humidity_onetime(
                tdew, pva, tt_max0, flat_potrad, 
                slope_potrad, sky_prop, daylength,
         parray, pa, dtr, df)
@@ -290,14 +290,28 @@ def calc_srad_hum_it(df, tol=0.01, win_type='boxcar'):
     df['s_vpd'] = np.maximum(vpd, 0.)
 
 
+def calc_s_swrad(tt_max0, pva, day_of_year, s_swe, sky_prop,
+        daylength, slope_potrad, flat_potrad, s_fdir):
+    yday = day_of_year - 1
+    t_tmax = np.minimum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
+    srad1 = slope_potrad[yday] * t_final * s_fdir
+    srad2 = ((flat_potrad[yday] * t_final * (1-s_fdir)) * 
+            (sky_prop + params['DIF_ALB'] * (1.-sky_prop)))
+    sc = np.zeros(n_days)
+    if options['MTCLIM_SWE_CORR']:
+        inds = np.nonzero(s_swe>0. & daylength[yday] > 0.)
+        sc[inds] = (1.32 + 0.096 * s_swe[inds]) * (1.0e6 / daylength[day_of_year][inds])
+        sc = np.maximum(sc, 100.)
+    s_swrad = srad1 + srad2 + sc 
+    return s_swrad
+
+
+
 #FIXME: This function has lots of inputs and outputs (see above for call)
 #FIXME: This needs to not use module level variables inside
 def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
                                    slope_potrad, sky_prop, daylength,
                                    parray, pa, dtr, df):
-    """
-    TODO
-    """
     yday = df['day_of_year'] - 1
     t_tmax = np.minimum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
     df['s_ttmax'] = t_tmax
@@ -344,7 +358,7 @@ def _compute_srad_humidity_onetime(tdew, pva, tt_max0, flat_potrad,
                       np.power(ratio, 2) - 32.766 * np.power(ratio, 3)) +
                      0.0006 * dtr)
     tdew_tmp = tdewk - consts['KELVIN']
-    return tdew_tmp, pva, pet
+    return tdew_tmp, pet
 
 
 def calc_longwave(s_t_day, s_tskc):
