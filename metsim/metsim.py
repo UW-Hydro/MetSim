@@ -48,11 +48,11 @@ class MetSim(object):
             forcing = forcing.set_index(dates)
             forcing['day_of_year'] = dates.dayofyear
             metsim.n_days = len(forcing['day_of_year'])
-            self.method(forcing)
+            forcing = self.method(forcing)
         # Discard the daily data in favor of hourly data, then write
-        #data = disaggregate(data)
-        #metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
-        #            os.path.join(metsim.out_dir, os.path.basename(job))) 
+        forcing = disaggregate(forcing)
+        metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
+                    os.path.join(metsim.out_dir, os.path.basename(job))) 
 
 
     def launch_processes(self):

@@ -19,8 +19,7 @@ physics
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
-from metsim.defaults import CONSTS as constants
-
+from metsim.configuration import CONSTS as constants
 
 def calc_pet(rad, ta, pa, dayl, dt=0.2):
     '''
@@ -160,5 +159,6 @@ def svp_slope(temp, a=0.61078, b=17.269, c=237.3):
     * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc., 1992.
       Equation 4.2.3.
     '''
-
     return (b * c) / ((c + temp) * (c + temp)) * svp(temp, a=a, b=b, c=c)
+
+
