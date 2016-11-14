@@ -74,6 +74,9 @@ def calc_snowpack(yday, s_precip, s_t_min):
 
 
 def calc_solar_geom():
+    """
+    Flat earth assumption
+    """
     tt_max0 = np.zeros(366)
     daylength = np.zeros(366)
     flat_potrad = np.zeros(366) 
