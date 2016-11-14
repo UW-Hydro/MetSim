@@ -20,13 +20,15 @@ def disaggregate(df_daily):
     """
     TODO
     """
-    dates_hourly = pd.date_range(metsim.start, metsim.stop, freq='H') 
+    end = metsim.stop + pd.Timedelta('1 days')
+    dates_hourly = pd.date_range(metsim.start, end, freq='H') 
     df_hourly = pd.DataFrame(index=dates_hourly)
-    print(len(dates_hourly))
-    df_hourly['shortwave'] = shortwave(df_daily['s_swrad'], df_daily['day_of_year'])
+    df_hourly['shortwave'] = shortwave(df_daily['s_swrad'], 
+                                       df_daily['s_dayl'],
+                                       df_daily['day_of_year'])
     df_hourly['temp'] = temp(df_daily, df_hourly)
     df_hourly['precip'] = precip(df_daily['precip'])
-    df_hourly['thermal'] = thermal(df_daily, df_hourly)
+    df_hourly['longwave'] = longwave(df_daily['s_lwrad'])
     df_hourly['wind'] = wind(df_daily['wind'])
     return df_hourly
 
@@ -37,12 +39,19 @@ def temp(df_daily, df_hourly):
     """
     # Calculate times of min/max temps
     hours = set_min_max_hour(df_hourly['shortwave'], 
-                             len(df_hourly['day_of_year']))
+                             len(df_daily['day_of_year']))
+    print(hours)
     df_daily['t_Tmin'] = hours['t_Tmin']
     df_daily['t_Tmax'] = hours['t_Tmax']
 
     # Fit hermite polynomial and sample daily 
-    # TODO 
+    # TODO: Implement this
+    # FIXME: This relies on shortwave being implemented correctly
+    # x = T_i * day_number
+    # y = [Tmin, Tmax, Tmin, Tmax, ... ]
+    # interp = scipy.interpolate.PchipInterpolator(x, y, extrapolate=True)
+    # temps = interp(range(len(df_hourly.index))
+    # return temps
 
 
 def precip(precip):
@@ -52,11 +61,11 @@ def precip(precip):
     return precip.resample('H', how='sum').fillna(method='ffill')/24. 
 
 
-def thermal(df_daily, df_hourly):
+def longwave(longwave):
     """
-    TODO
+    Splits the daily longwave evenly throughout the day
     """
-    pass
+    return longwave.resample('H', how='sum').fillna(method='ffill')/24.
 
 
 def wind(wind):
@@ -66,26 +75,25 @@ def wind(wind):
     return wind.resample('H', how='sum').fillna(method='ffill')
 
 
-def shortwave(sw_rad, day_of_year):
+def shortwave(sw_rad, daylength, day_of_year):
     """
     TODO
     """
     tiny_step_per_hour = int(3600 / consts['SRADDT'])
-    tmp_rad = sw_rad 
+    tmp_rad = sw_rad * daylength / 3600. 
     n_days = len(tmp_rad)
     hourlyrad = np.zeros(n_days*24+1)
+    tiny_offset = 0
     for i in range(n_days):
         for j in range(24):
             for k in range(tiny_step_per_hour):
-                tinystep = j*tiny_step_per_hour + k
+                tinystep = j*tiny_step_per_hour + k - tiny_offset
                 if tinystep < 0:
                     tinystep += 24*tiny_step_per_hour
                 if tinystep > 24*tiny_step_per_hour - 1:
                     tinystep -= 24*tiny_step_per_hour
                 hourlyrad[i*24+j] += tiny_rad_fract[day_of_year[i]][tinystep]
-            #FIXME: This calculation is incorrect
             hourlyrad[i*24+j] *= tmp_rad[i]
-    print(len(hourlyrad))
     return hourlyrad
 
 
@@ -107,7 +115,7 @@ def set_min_max_hour(hourly_rad, n_days):
         if i == n_days -1 and sethour == -999:
             sethour = 23
         if risehour >=0 and sethour>=0:
-            t_Tmax[i] - 0.67 * (sethour - risehour) + risehour
+            t_Tmax[i] = 0.67 * (sethour - risehour) + risehour
             t_Tmin[i] = rishour - 1
     return {'t_Tmin' : t_Tmin, 't_Tmax' : t_Tmax} 
 
