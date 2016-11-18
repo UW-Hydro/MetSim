@@ -71,6 +71,18 @@ OPTIONS = {
            'LW_TYPE': 'PRATA'
           }
 
+
+def update(io_params):
+    """ 
+    Update the configuration based on what was read in
+    from the input file or config file.
+    """
+    # TODO: This should take into account if there are 
+    #       keys named 'options' and 'consts' and put
+    #       them in the right things.
+    PARAMS.update(io_params)
+
+
 from metsim.methods import mtclim
 
 METHODS = {

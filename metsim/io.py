@@ -10,7 +10,7 @@ import pandas as pd
 from configparser import ConfigParser
 import metsim
 from metsim.util import multi, method
-
+from metsim.forcing import Forcing
 
 def read_config(fpath, n_days=-1):
     """
@@ -22,7 +22,7 @@ def read_config(fpath, n_days=-1):
     return cfp 
     
 
-def read_ascii(fpath, n_days=-1):
+def read_ascii(fpath, n_days=-1) -> Forcing:
     """
     TODO
     """
@@ -35,9 +35,11 @@ def read_ascii(fpath, n_days=-1):
         for line in csv.reader(f, delimiter='\t'):
             print(line)
             break
+    # TODO: FIXME: Finish this
+    return Forcing(None, None)
 
 
-def read_binary(fpath, n_days=-1):
+def read_binary(fpath: str, n_days=-1) -> Forcing:
     """
     TODO
     """
@@ -59,30 +61,36 @@ def read_binary(fpath, n_days=-1):
         while points_read != points_needed:
             bytes = f.read(2)
             if bytes:
-                # Get correct variable and data type with i, then unpack
+                # Get correct variable and data type with i, then unpack & scale
                 var_name[i].append(struct.unpack(types[i], bytes)[0]/scale[i])
                 i = (i+1)%4
                 points_read += 1
             else:
                 break
+    # Binary forcing files have naming format $NAME_$LAT_$LON
+    param_list = os.path.basename(fpath).split(".")[-1].split("_")
+    params = {"name" : param_list[0], 
+              "lat" : param_list[1], 
+              "lon" : param_list[2]}
     df = pd.DataFrame(data={"precip" : precip, 
                             "t_min"  : t_min, 
                             "t_max"  : t_max, 
                             "wind"   : wind})
-    return df
+    return Forcing(df, params) 
 
 
 
-def read_netcdf(fpath, n_days=-1):
+def read_netcdf(fpath, n_days=-1) -> Forcing:
     """
     TODO
     """
-    pass
+    # TODO: FIXME: Finish this
+    return Forcing(None, None) 
 
 
-def read(fpath, n_days=-1):
+def read(fpath, n_days=-1) -> Forcing:
     """
-    TODO
+    Dispatch to the right function based on the file extension 
     """
     ext_to_fun = {
             '.txt'   : read_ascii,
@@ -96,12 +104,6 @@ def read(fpath, n_days=-1):
             }
     return ext_to_fun[os.path.splitext(fpath)[-1]](fpath, n_days) 
 
-
-
-
-@method(read, None)
-def read(fpath):
-    raise TypeError("Could not determine file type for " + fpath)
 
 def write(data, fpath):
     return fpath.split('.')[-1]

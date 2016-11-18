@@ -9,7 +9,6 @@ import pandas as pd
 from multiprocessing import Value, Process
 
 import metsim.io
-from metsim.disaggregate import disaggregate
 
 class MetSim(object):
     """
@@ -26,7 +25,7 @@ class MetSim(object):
         self.writable = Value('b', True, lock=False)
         
         # Set up the distribution of jobs and create process handles
-        self.method = analysis_method.run
+        self.method = analysis_method
         n_jobs = len(job_list) 
         job_size = int(n_jobs / min(n_processes, n_jobs))
         self.run(self.method, job_list)
@@ -45,13 +44,10 @@ class MetSim(object):
         for job in job_list:
             dates = pd.date_range(metsim.start, metsim.stop)
             forcing = metsim.io.read(job, len(dates))
-            forcing = forcing.set_index(dates)
-            forcing['day_of_year'] = dates.dayofyear
-            metsim.n_days = len(forcing['day_of_year'])
-            forcing = self.method(forcing)
-        # Discard the daily data in favor of hourly data, then write
-        forcing = disaggregate(forcing)
-        metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
+            forcing.set_dates(dates)
+            forcing.generate_met_forcings(method) 
+            forcing.disaggregate()
+            metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
                     os.path.join(metsim.out_dir, os.path.basename(job))) 
 
 
