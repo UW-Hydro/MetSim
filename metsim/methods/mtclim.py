@@ -4,8 +4,6 @@ MTCLIM
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
-from statsmodels.tools.eval_measures import rmse
 
 from metsim.configuration import PARAMS  as params
 from metsim.configuration import CONSTS  as consts
@@ -13,27 +11,28 @@ from metsim.configuration import OPTIONS as options
 
 from metsim.physics import svp, calc_pet, atm_pres
 
-n_days = 0
-
 output_variables = ["t_min", "t_max", "precip", "shortwave", "longwave"]
 
-def run(f, solar_geom):
+def run(forcing: pd.DataFrame, solar_geom: dict):
+    """ 
+    Run all of the mtclim forcing generation 
+    
+    Args:
+        forcing: The daily forcings given from input
+        solar_geom: Solar geometry of the site
     """
-    TODO
-    """
-    # f is input forcings
-    print("Trying to do mtclim")
-    # FIXME: Put this in params
-    global n_days 
-    n_days = len(f['day_of_year'])
-    calc_t_air(f)
-    calc_precip(f)
-    calc_snowpack(f)
-    calc_srad_hum_it(f, solar_geom)
-    calc_longwave(f)
+    calc_t_air(forcing)
+    calc_precip(forcing)
+    calc_snowpack(forcing)
+    calc_srad_hum(forcing, solar_geom)
+    calc_longwave(forcing)
 
 
-def calc_t_air(df):
+def calc_t_air(df: pd.DataFrame):
+    """ 
+    Adjust temperatures according to lapse rates 
+    and calculate t_day
+    """
     dZ = params['site_elev'] - params['base_elev']
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
     df['t_max'] = df['t_max'] + dZ * lapse_rates[1]
@@ -42,19 +41,20 @@ def calc_t_air(df):
     df['t_day'] = ((df['t_max'] - t_mean) * params['TDAYCOEF']) + t_mean
 
 
-def calc_precip(df):
+def calc_precip(df: pd.DataFrame):
+    """ Adjust precipitation according to isoh """
     df['precip'] = (df['precip'] * 
             (df.get('site_isoh', 1) / df.get('base_isoh', 1)))
 
 
-def calc_snowpack(df):
+def calc_snowpack(df: pd.DataFrame):
 
     def _simple_snowpack(precip, t_min, snowpack=0.0):
-        swe = np.array(np.ones(n_days) * snowpack)
-        accum = t_min <= params['SNOW_TCRIT']
-        melt  = t_min >  params['SNOW_TCRIT']
-        swe[accum] += precip.where(accum)
-        swe[melt]  -= params['SNOW_TRATE'] * (t_min.where(melt) - params['SNOW_TCRIT'])
+        swe = np.array(np.ones(params['n_days']) * snowpack)
+        accum = np.array(t_min <= params['SNOW_TCRIT'])
+        melt  = np.array(t_min >  params['SNOW_TCRIT'])
+        swe[accum] += precip[accum]
+        swe[melt]  -= params['SNOW_TRATE'] * (t_min[melt] - params['SNOW_TCRIT'])
         swe = np.maximum(np.cumsum(swe), 0.0) 
         return swe 
    
@@ -68,13 +68,10 @@ def calc_snowpack(df):
         df['swe'] = _simple_snowpack(df['precip'], df['t_min'], snowpack=loop_swe)
 
 
-
-
-def calc_srad_hum_it(df, sg, tol=0.01, win_type='boxcar'):
+def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     """
-    TODO
+    Calculate shortwave, humidity  
     """
-
     def _calc_tfmax(precip, dtr, sm_dtr):
         b = params['B0'] + params['B1'] * np.exp(-params['B2'] * sm_dtr)
         t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, params['C']))
@@ -82,28 +79,28 @@ def calc_srad_hum_it(df, sg, tol=0.01, win_type='boxcar'):
         t_fmax[inds] *= params['RAIN_SCALAR']
         return t_fmax 
 
-    window = np.zeros(n_days + 90)
+    window = np.zeros(params['n_days'] + 90)
     df['t_max'] = np.maximum(df['t_max'], df['t_min'])
     dtr = df['t_max'] - df['t_min']
     sm_dtr = pd.rolling_window(dtr, window=30, freq='D', 
                                win_type=win_type).fillna(method='bfill')
-    if n_days <= 30:
+    if params['n_days'] <= 30:
         print('Timeseries is shorter than rolling mean window, filling ')
         print('missing values with unsmoothed data')
         sm_dtr.fillna(dtr, inplace=True)
 
     sum_precip = df['precip'].values.sum()
-    ann_precip = (sum_precip / n_days) * consts['DAYS_PER_YEAR']
+    ann_precip = (sum_precip / params['n_days']) * consts['DAYS_PER_YEAR']
     if ann_precip == 0.0:
         ann_precip = 1.0
 
-    if n_days <= 90:
+    if params['n_days'] <= 90:
         sum_precip = df['precip'].values.sum()
-        eff_ann_precip = (sum_precip / n_days) * consts['DAYS_PER_YEAR']
+        eff_ann_precip = (sum_precip / params['n_days']) * consts['DAYS_PER_YEAR']
         eff_ann_precip = np.maximum(eff_ann_precip, 8.0)
         parray = eff_ann_precip
     else:
-        parray = np.zeros(n_days)
+        parray = np.zeros(params['n_days'])
         start_yday = df['day_of_year'][0]
         end_yday = df['day_of_year'][-1]
         if start_yday != 1:
@@ -115,13 +112,13 @@ def calc_srad_hum_it(df, sg, tol=0.01, win_type='boxcar'):
         
         if isloop:
             for i in range(90):
-                window[i] = df['precip'][n_days - 90 + i]
+                window[i] = df['precip'][params['n_days'] - 90 + i]
         else:
             for i in range(90):
                 window[i] = df['precip'][i]
         window[90:] = df['precip']
 
-        for i in range(n_days):
+        for i in range(params['n_days']):
             sum_precip = 0.0
             for j in range(90):
                 sum_precip += window[i+j]
@@ -154,35 +151,8 @@ def calc_srad_hum_it(df, sg, tol=0.01, win_type='boxcar'):
                tdew, pva, sg, sky_prop, parray, pa, dtr, df)
 
     sum_pet = pet.values.sum()
-    ann_pet = (sum_pet / n_days) * consts['DAYS_PER_YEAR'] 
-
-    ## FIXME: Another really long conditional
-    #if (('tdew' in df) or ('hum' in df) or
-    #        (options['VP_ITER'].upper() == 'VP_ITER_ANNUAL' and
-    #         ann_pet / ann_precip >= 2.5)):
-    #    tdew = tdew_save[:]
-    #    pva = pva_save[:]
-    ## FIXME: Another really long conditional
-    ## FIXME Still want to reduce the number of args here
-    ## FIXME This also takes up the majority of the mtclim runtime
-    #if (options['VP_ITER'].upper() == 'VP_ITER_ALWAYS' or
-    #    (options['VP_ITER'].upper() == 'VP_ITER_ANNUAL' and
-    #     ann_pet / ann_precip >= 2.5) or
-    #        options['VP_ITER'].upper() == 'VP_ITER_CONVERGE'):
-    #    if (options['VP_ITER'].upper() == 'VP_ITER_CONVERGE'):
-    #        max_iter = 100
-    #    else:
-    #        max_iter = 2
-    #else:
-    #    max_iter = 1
-    #max_iter = 1 
-    #rmse_tdew = tol + 1
-    #f = lambda x : rmse(_compute_srad_humidity_onetime(x, pva, tt_max0, flat_potrad,
-    #                                     slope_potrad, sky_prop, daylength,
-    #                                     parray, pa, dtr, df)[0], tdew)
-    #res = minimize(f, tdew, tol=rmse_tdew, options={"maxiter":max_iter})
-    #tdew = res.x
-   
+    ann_pet = (sum_pet / params['n_days']) * consts['DAYS_PER_YEAR'] 
+  
     pva = svp(tdew)
     if 'hum' not in df:
         df['hum'] = pva
@@ -191,6 +161,7 @@ def calc_srad_hum_it(df, sg, tol=0.01, win_type='boxcar'):
     df['vpd'] = np.maximum(pvs-pva, 0.)
 
 
+#NOTE: This is unused at the moment
 def _calc_swrad(tt_max0, pva, day_of_year, sky_prop,
         daylength, slope_potrad, flat_potrad, fdir):
     yday = day_of_year - 1
@@ -202,8 +173,6 @@ def _calc_swrad(tt_max0, pva, day_of_year, sky_prop,
     return swrad
 
 
-#FIXME: This function has lots of inputs and outputs (see above for call)
-#FIXME: This needs to not use module level variables inside
 def _compute_srad_humidity_onetime(tdew, pva, solar_geom, 
                                    sky_prop, parray, pa, dtr, df):
     tt_max0 = solar_geom['tt_max0']
@@ -258,7 +227,8 @@ def _compute_srad_humidity_onetime(tdew, pva, solar_geom,
     return tdew_tmp, pet
 
 
-def calc_longwave(df):
+def calc_longwave(df: pd.DataFrame):
+    """ Calculate longwave """
     emissivity_calc = {
             'DEFAULT'    : lambda x : x,
             'TVA'        : lambda x : 0.74 + 0.0049 * x,

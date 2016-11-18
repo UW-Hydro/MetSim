@@ -9,26 +9,21 @@ import metsim
 from metsim.configuration import PARAMS as params
 from metsim.configuration import CONSTS as consts 
 
-#FIXME: These should be initialized before forcings are generated
-tiny_rad_fract = np.zeros(366) #This is updated during the mtclim run
-daylength      = np.zeros(366) #This is updated during the mtclim run
-slope_potrad   = np.zeros(366) #This is updated during the mtclim run
-flat_potrad    = np.zeros(366) #This is updated during the mtclim run
-tt_max0        = np.zeros(366) #This is updated during the mtclim run
 
-def disaggregate(df_daily):
+def disaggregate(df_daily, solar_geom):
     """
     TODO
     """
     end = metsim.stop + pd.Timedelta('1 days')
     dates_hourly = pd.date_range(metsim.start, end, freq='H') 
     df_hourly = pd.DataFrame(index=dates_hourly)
-    df_hourly['shortwave'] = shortwave(df_daily['s_swrad'], 
-                                       df_daily['s_dayl'],
-                                       df_daily['day_of_year'])
+    df_hourly['shortwave'] = shortwave(df_daily['swrad'], 
+                                       df_daily['dayl'],
+                                       df_daily['day_of_year'],
+                                       solar_geom['tiny_rad_fract'])
     df_hourly['temp'] = temp(df_daily, df_hourly)
     df_hourly['precip'] = precip(df_daily['precip'])
-    df_hourly['longwave'] = longwave(df_daily['s_lwrad'])
+    df_hourly['longwave'] = longwave(df_daily['lwrad'])
     df_hourly['wind'] = wind(df_daily['wind'])
     return df_hourly
 
@@ -40,7 +35,6 @@ def temp(df_daily, df_hourly):
     # Calculate times of min/max temps
     hours = set_min_max_hour(df_hourly['shortwave'], 
                              len(df_daily['day_of_year']))
-    print(hours)
     df_daily['t_Tmin'] = hours['t_Tmin']
     df_daily['t_Tmax'] = hours['t_Tmax']
 
@@ -75,7 +69,7 @@ def wind(wind):
     return wind.resample('H', how='sum').fillna(method='ffill')
 
 
-def shortwave(sw_rad, daylength, day_of_year):
+def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
     """
     TODO
     """
@@ -83,7 +77,8 @@ def shortwave(sw_rad, daylength, day_of_year):
     tmp_rad = sw_rad * daylength / 3600. 
     n_days = len(tmp_rad)
     hourlyrad = np.zeros(n_days*24+1)
-    tiny_offset = 0
+    tiny_offset = (params.get("theta_l", 0) - params.get("theta_s", 0) /
+                   (24./360))
     for i in range(n_days):
         for j in range(24):
             for k in range(tiny_step_per_hour):
