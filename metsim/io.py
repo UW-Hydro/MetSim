@@ -8,13 +8,13 @@ import time
 import struct
 import pandas as pd
 from configparser import ConfigParser
-import metsim
-from metsim.util import multi, method
 from metsim.forcing import Forcing
 
-def read_config(fpath, n_days=-1):
+def read_config(fpath: str, n_days=-1) -> ConfigParser:
     """
-    TODO
+    Reads the configuration file given.  If the
+    file does not exist, an empty ConfigParser
+    will be returned.
     """
     cfp = ConfigParser()
     if os.path.isfile(fpath):
@@ -40,9 +40,7 @@ def read_ascii(fpath, n_days=-1) -> Forcing:
 
 
 def read_binary(fpath: str, n_days=-1) -> Forcing:
-    """
-    TODO
-    """
+    """ Reads a binary forcing file (VIC 4 format) """
     precip = [] # Short unsigned int
     t_max  = [] # Short int
     t_min  = [] # Short int
@@ -67,11 +65,13 @@ def read_binary(fpath: str, n_days=-1) -> Forcing:
                 points_read += 1
             else:
                 break
+
     # Binary forcing files have naming format $NAME_$LAT_$LON
     param_list = os.path.basename(fpath).split(".")[-1].split("_")
-    params = {"name" : param_list[0], 
-              "lat" : param_list[1], 
-              "lon" : param_list[2]}
+    params = {"name"   : param_list[0], 
+              "lat"    : param_list[1], 
+              "lon"    : param_list[2],
+              "n_days" : n_days}
     df = pd.DataFrame(data={"precip" : precip, 
                             "t_min"  : t_min, 
                             "t_max"  : t_max, 
@@ -107,6 +107,7 @@ def read(fpath, n_days=-1) -> Forcing:
 
 def write(data, fpath):
     return fpath.split('.')[-1]
+
 
 def write_ascii(data, fpath):
     """

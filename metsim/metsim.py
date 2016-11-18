@@ -47,7 +47,7 @@ class MetSim(object):
             forcing.set_dates(dates)
             forcing.generate_met_forcings(method) 
             forcing.disaggregate()
-            metsim.io.sync_io(metsim.io.write_ascii, forcing, self.writable, 
+            metsim.io.sync_io(metsim.io.write_ascii, forcing.met_data, self.writable, 
                     os.path.join(metsim.out_dir, os.path.basename(job))) 
 
 

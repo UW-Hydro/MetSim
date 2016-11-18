@@ -72,7 +72,7 @@ OPTIONS = {
           }
 
 
-def update(io_params):
+def update(io_params: dict):
     """ 
     Update the configuration based on what was read in
     from the input file or config file.

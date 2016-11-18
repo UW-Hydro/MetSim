@@ -48,10 +48,10 @@ class Forcing(object):
 
     def disaggregate(self):
         """
-        Converts allpython generic inheritance of the daily variables to hourly
+        Converts all of the daily variables to hourly
         """
         import metsim.disaggregate as disagg
-        self.met_data = disagg.disaggregate(self.met_data) 
+        self.met_data = disagg.disaggregate(self.met_data, self.solar_geom) 
 
 
     def set_dates(self, dates: pd.DatetimeIndex):

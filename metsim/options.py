@@ -24,12 +24,10 @@ def parse(args):
 
 
 def init(opts):
-    """
-    TODO
-    """
+    """ Initialize some information based on the options & config """
     if not os.path.isfile(opts.config):
         exit("Invalid configuration given.  Use `ms -h` for more information.")
-    metsim.config = io.read(opts.config)
+    metsim.config = io.read_config(opts.config)
     metsim.input_format = metsim.config['IO']['force_format']
     metsim.out_dir = metsim.config['IO']['out_dir']
     try:
