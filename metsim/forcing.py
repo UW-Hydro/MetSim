@@ -81,8 +81,7 @@ class Forcing(object):
         """
         tt_max0 = np.zeros(366)
         daylength = np.zeros(366)
-        flat_potrad = np.zeros(366) 
-        slope_potrad = np.zeros(366) 
+        potrad = np.zeros(366) 
         trans = np.power(params['TBASE'], np.power((1.0-(consts['LR_STD'] * params['site_elev'])/consts['T_STD']),
                      (consts['G_STD'] / (consts['LR_STD'] * (consts['R'] / consts['MA'])))))
         lat    = np.clip(params['site_lat']*consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
@@ -112,50 +111,48 @@ class Forcing(object):
             hss = np.cos(coshss)  
             daylength[i] = np.maximum(2.0 * hss * consts['SECPERRAD'], 86400)
             dir_beam_topa = 1368.0 + 45.5 * np.sin((2.0 * np.pi * i / 365.25) + 1.7) * dt
-            sum_trans = 0.
-            sum_flat_potrad = 0.
-            sum_slope_potrad = 0.
-            for h in np.arange(-hss, hss, dh):
-                cosh = np.cos(h)
-                sinh = np.sin(h)
-                cza = cosegeom * cosh + sinegeom
-                cbsa = sinh * bsg1 + cosh * bsg2 + bsg3
-                if (cza > 0.):
-                    dir_flat_topa = dir_beam_topa * cza
-                    am = 1.0 / (cza + 0.0000001)
-                    if (am > 2.9):
-                        ami = min(max(int((np.cos(cza) / consts['RADPERDEG'])) - 69,0),20)
-                        am = consts['OPTAM'][ami]
-                    sum_trans += np.power(trans, am) * dir_flat_topa
-                    sum_flat_potrad += dir_flat_topa
-                    # FIXME: This is a long conditional
-                    if ((h < 0. and cza > coszeh and cbsa > 0.) or
-                            (h >= 0. and cza > coszwh and cbsa > 0.)):
-                        sum_slope_potrad += dir_beam_topa * cbsa
-                else:
-                    dir_flat_topa = -1
-                tinystep = np.clip(((12 * 3600 + h * consts['SECPERRAD'])/dt), 0, tiny_step_per_day - 1)
-                tiny_rad_fract[i, tinystep] = max(dir_flat_topa, 0)
+            
+            h = np.arange(-hss, hss, dh)
+            cosh = np.cos(h)
+            sinh = np.sin(h)
+            cza  = cosegeom * cosh + sinegeom
+            cbsa = sinh * bsg1 + cosh * bsg2 + bsg3
+            cza_inds = np.array(cza > 0.)
+            
+            dir_flat_topa = np.zeros(len(h))
+            dir_flat_topa[cza_inds] = dir_beam_topa * cza[cza_inds]
+            
+            am = np.zeros(len(h))
+            am[cza_inds] = 1.0 / (cza[cza_inds] + 0.0000001)
+            am_inds = np.array(am > 2.9)
+
+            ami = np.zeros(len(am_inds))
+            ami = (np.cos(cza[am_inds])/consts['RADPERDEG'] - 69).astype(int)
+            if len(ami) != 0:
+                ami = np.min(np.max(am[am_inds], 0), 20)
+                am[am_inds] = consts['OTPAM'][ami]
+
+            sum_trans = sum(np.power(trans, am) * dir_flat_topa)
+            sum_flat_potrad = sum(dir_flat_topa)
+            tinystep = np.clip((12*3600+h*consts['SECPERRAD'])/dt, 0, 
+                    tiny_step_per_day-1).astype(int)
+            tiny_rad_fract[i, tinystep] = dir_flat_topa
+
             if daylength[i] and sum_flat_potrad > 0:
                 tiny_rad_fract[i] /= sum_flat_potrad
             if daylength[i]:
                 tt_max0[i] = sum_trans / sum_flat_potrad
-                flat_potrad[i] = sum_flat_potrad / daylength[i]
-                slope_potrad[i] = sum_slope_potrad / daylength[i]
+                potrad[i] = sum_flat_potrad / daylength[i]
             else:
                 tt_max0[i] = 0.
-                flat_potrad[i] = 0.
-                slope_potrad[i] = 0.
+                potrad[i] = 0.
         tt_max0[365] = tt_max0[364]
-        flat_potrad[365] = flat_potrad[364]
-        slope_potrad[365] = slope_potrad[364]
+        potrad[365] = potrad[364]
         daylength[365] = daylength[364]
         tiny_rad_fract[365] = tiny_rad_fract[364]
         solar_geom = {"tt_max0" : tt_max0,
-                      "flat_potrad" : flat_potrad,
-                      "slope_potrad" : slope_potrad,
+                      "potrad" : potrad,
                       "daylength" : daylength,
                       "tiny_rad_fract" : tiny_rad_fract}
         return solar_geom 
-    
     

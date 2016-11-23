@@ -163,11 +163,11 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
 
 #NOTE: This is unused at the moment
 def _calc_swrad(tt_max0, pva, day_of_year, sky_prop,
-        daylength, slope_potrad, flat_potrad, fdir):
+        daylength, potrad, fdir):
     yday = day_of_year - 1
     t_tmax = np.minimum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
-    srad1 = slope_potrad[yday] * t_final * fdir
-    srad2 = ((flat_potrad[yday] * t_final * (1-fdir)) * 
+    srad1 = potrad[yday] * t_final * fdir
+    srad2 = ((potrad[yday] * t_final * (1-fdir)) * 
             (sky_prop + params['DIF_ALB'] * (1.-sky_prop)))
     swrad = srad1 + srad2  
     return swrad
@@ -176,8 +176,7 @@ def _calc_swrad(tt_max0, pva, day_of_year, sky_prop,
 def _compute_srad_humidity_onetime(tdew, pva, solar_geom, 
                                    sky_prop, parray, pa, dtr, df):
     tt_max0 = solar_geom['tt_max0']
-    flat_potrad = solar_geom['flat_potrad']
-    slope_potrad = solar_geom['slope_potrad']
+    potrad = solar_geom['potrad']
     daylength = solar_geom['daylength']
     yday = df['day_of_year'] - 1
     t_tmax = np.minimum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
@@ -185,8 +184,8 @@ def _compute_srad_humidity_onetime(tdew, pva, solar_geom,
     t_final = t_tmax * df['tfmax']
     df['fdir'] = 1.0 - np.clip(-1.25 * t_final * 1.25, 0., 1.) 
 
-    srad1 = slope_potrad[yday] * t_final * df['fdir']
-    srad2 = (flat_potrad[yday] * t_final * 1 - df['fdir']) * \
+    srad1 = potrad[yday] * t_final * df['fdir']
+    srad2 = (potrad[yday] * t_final * 1 - df['fdir']) * \
         (sky_prop + params['DIF_ALB'] * (1.0 - sky_prop))
 
     sc = np.zeros_like(df['swe'])
