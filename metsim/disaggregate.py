@@ -78,17 +78,14 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
     tiny_offset = (params.get("theta_l", 0) - params.get("theta_s", 0) / (24./360))
 
     # Tinystep represents a daily set of values - but is constant across days
-    # We reshape it into hourly lists of 30m intervals
     tinystep= np.arange(24 * tiny_step_per_hour) - tiny_offset
     tinystep[np.array(tinystep<0)] += 24*tiny_step_per_hour
     tinystep[np.array(tinystep>(24*tiny_step_per_hour-1))] -= 24*tiny_step_per_hour
-    tinystep = tinystep.reshape(24, 120)
 
+    chunk_sum = lambda x : np.sum(x.reshape((len(x)/120, 120)), axis=1)
     for day in range(n_days):
         rad = tiny_rad_fract[day_of_year[day]]
-        for h in range(24):
-            step = tinystep[h]
-            hourlyrad[day*24 + h] = sum(rad[list(step)]) * tmp_rad[day]
+        hourlyrad[day*24 : (day+1)*24] = chunk_sum(rad[list(tinystep)]) * tmp_rad[day]
 
     # FIXME: Dunno what to do here.
     hourlyrad[-2] = hourlyrad[-1]
