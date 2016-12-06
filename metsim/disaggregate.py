@@ -74,6 +74,7 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
     tiny_step_per_hour = int(3600 / consts['SRADDT'])
     tmp_rad = sw_rad * daylength / 3600.
     n_days = len(tmp_rad)
+    print(sw_rad)
     hourlyrad = np.zeros(n_days*24 + 1)
     tiny_offset = (params.get("theta_l", 0) - params.get("theta_s", 0) / (24./360))
 

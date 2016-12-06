@@ -4,6 +4,7 @@ MTCLIM
 
 import numpy as np
 import pandas as pd
+from warnings import warn
 
 from metsim.configuration import PARAMS  as params
 from metsim.configuration import CONSTS  as consts
@@ -85,8 +86,8 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     sm_dtr = pd.rolling_window(dtr, window=30, freq='D', 
                                win_type=win_type).fillna(method='bfill')
     if params['n_days'] <= 30:
-        print('Timeseries is shorter than rolling mean window, filling ')
-        print('missing values with unsmoothed data')
+        warn('Timeseries is shorter than rolling mean window, filling ')
+        warn('missing values with unsmoothed data')
         sm_dtr.fillna(dtr, inplace=True)
 
     sum_precip = df['precip'].values.sum()
@@ -161,18 +162,6 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     df['vpd'] = np.maximum(pvs-pva, 0.)
 
 
-#NOTE: This is unused at the moment
-def _calc_swrad(tt_max0, pva, day_of_year, sky_prop,
-        daylength, potrad, fdir):
-    yday = day_of_year - 1
-    t_tmax = np.minimum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
-    srad1 = potrad[yday] * t_final * fdir
-    srad2 = ((potrad[yday] * t_final * (1-fdir)) * 
-            (sky_prop + params['DIF_ALB'] * (1.-sky_prop)))
-    swrad = srad1 + srad2  
-    return swrad
-
-
 def _compute_srad_humidity_onetime(tdew, pva, solar_geom, 
                                    sky_prop, parray, pa, dtr, df):
     tt_max0 = solar_geom['tt_max0']
@@ -183,7 +172,6 @@ def _compute_srad_humidity_onetime(tdew, pva, solar_geom,
     df['ttmax'] = t_tmax
     t_final = t_tmax * df['tfmax']
     df['fdir'] = 1.0 - np.clip(-1.25 * t_final * 1.25, 0., 1.) 
-
     srad1 = potrad[yday] * t_final * df['fdir']
     srad2 = (potrad[yday] * t_final * 1 - df['fdir']) * \
         (sky_prop + params['DIF_ALB'] * (1.0 - sky_prop))
@@ -195,15 +183,14 @@ def _compute_srad_humidity_onetime(tdew, pva, solar_geom,
             1.0e6 / daylength[yday][inds]
         sc = np.maximum(sc, 100.)  # JJH - this is fishy 
 
-    if 'swrad' in df:
-        potrad = (srad1 + srad2 + sc) * daylength[yday] / t_final / 86400
-        df['tfmax'] = np.ones(len(sc)) 
-        inds = np.nonzero((potrad > 0.) & 
-               (df['swrad'] > 0.) & 
-               (daylength[yday] > 0))[0]
-        df['tfmax'][inds] = np.maximum((df['swrad'][inds] / (potrad[inds] * t_tmax[inds])), 1.)
-    else:
-        df['swrad'] = srad1 + srad2 + sc
+    df['swrad'] = srad1 + srad2 + sc
+    potrad = (srad1 + srad2 + sc) * daylength[yday] / t_final / 86400
+    df['tfmax'] = np.ones(len(sc)) 
+    inds = np.nonzero((potrad > 0.) & 
+           (df['swrad'] > 0.) & 
+           (daylength[yday] > 0))[0]
+    print(daylength)
+    df['tfmax'][inds] = np.maximum((df['swrad'][inds] / (potrad[inds] * t_tmax[inds])), 1.)
 
     if (options['LW_CLOUD'].upper() == 'CLOUD_DEARDORFF'):
         df['tskc'] = (1. - df['tfmax'])
@@ -212,8 +199,7 @@ def _compute_srad_humidity_onetime(tdew, pva, solar_geom,
 
     # Compute PET using SW radiation estimate, and update Tdew, pva **
     tmink = df['t_min'] + consts['KELVIN']
-    pet = calc_pet(df['swrad'], df['t_day'], pa,
-                   df['dayl'])
+    pet = calc_pet(df['swrad'], df['t_day'], pa, df['dayl'])
 
     # calculate ratio (PET/effann_prcp) and correct the dewpoint
     ratio = pet / parray
