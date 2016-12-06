@@ -108,9 +108,10 @@ class Forcing(object):
             cosegeom = coslat * cosdecl
             sinegeom = sinlat * sindecl
             coshss = np.clip(-sinegeom / cosegeom, -1, 1)
-            hss = np.cos(coshss)  
+            hss = np.arccos(coshss)  
             daylength[i] = np.maximum(2.0 * hss * consts['SECPERRAD'], 86400)
             dir_beam_topa = 1368.0 + 45.5 * np.sin((2.0 * np.pi * i / 365.25) + 1.7) * dt
+            print(daylength)
             
             h = np.arange(-hss, hss, dh)
             cosh = np.cos(h)
