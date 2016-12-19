@@ -79,48 +79,41 @@ class Forcing(object):
         """
         Flat earth assumption
         """
-        tt_max0 = np.zeros(366)
-        daylength = np.zeros(366)
-        potrad = np.zeros(366) 
-        trans = np.power(params['TBASE'], np.power((1.0-(consts['LR_STD'] * params['site_elev'])/consts['T_STD']),
-                     (consts['G_STD'] / (consts['LR_STD'] * (consts['R'] / consts['MA'])))))
-        lat    = np.clip(params['site_lat']*consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
+        dayperyear = np.ceil(consts['DAYS_PER_YEAR'])
+        tt_max0   = np.zeros(dayperyear)
+        daylength = np.zeros(dayperyear)
+        potrad    = np.zeros(dayperyear) 
+        t1 = 1.0 - (consts['LR_STD'] * params['site_elev'])/consts['T_STD']
+        t1 = 1.0 - (consts['LR_STD'] * 1668.15)/consts['T_STD']
+        t2 = consts['G_STD'] / (consts['LR_STD'] * (consts['R'] / consts['MA']))
+        trans = np.power(params['TBASE'], np.power(t1, t2))
+        print(params['site_elev'])
+        
+        lat    = np.clip(params['lat']*consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
         coslat = np.cos(lat)
         sinlat = np.sin(lat)
-        cosslp = np.cos(params['site_slope']  * consts['RADPERDEG'])
-        sinslp = np.sin(params['site_slope']  * consts['RADPERDEG'])
-        cosasp = np.cos(params['site_aspect'] * consts['RADPERDEG'])
-        sinasp = np.sin(params['site_aspect'] * consts['RADPERDEG'])
-        coszeh = np.cos(np.pi / 2.-(params['site_east_horiz'] * consts['RADPERDEG']))
-        coszwh = np.cos(np.pi / 2.-(params['site_west_horiz'] * consts['RADPERDEG']))
         dt     = consts['SRADDT']  
         dh     = dt / consts['SECPERRAD'] 
     
-        tiny_step_per_day = 86400 / consts['SRADDT']
-        tiny_rad_fract    = np.zeros(shape=(366, tiny_step_per_day), dtype=np.float64)
-        for i in range(365):
+        tiny_step_per_day = consts['SEC_PER_DAY'] / consts['SRADDT']
+        tiny_rad_fract    = np.zeros(shape=(dayperyear, tiny_step_per_day), dtype=np.float64)
+        for i in range(int(dayperyear-1)):
             decl = consts['MINDECL'] * np.cos((i + consts['DAYSOFF']) * consts['RADPERDAY'])
             cosdecl = np.cos(decl)
             sindecl = np.sin(decl)
-            bsg1 = -sinslp * sinasp * cosdecl
-            bsg2 = (-cosasp * sinslp * sinlat + cosslp * coslat) * cosdecl
-            bsg3 = (cosasp * sinslp * coslat + cosslp * sinlat) * sindecl
             cosegeom = coslat * cosdecl
+
             sinegeom = sinlat * sindecl
             coshss = np.clip(-sinegeom / cosegeom, -1, 1)
             hss = np.arccos(coshss)  
-            daylength[i] = np.maximum(2.0 * hss * consts['SECPERRAD'], 86400)
-            dir_beam_topa = 1368.0 + 45.5 * np.sin((2.0 * np.pi * i / 365.25) + 1.7) * dt
-            print(daylength)
-            
+            daylength[i] = np.minimum(2.0 * hss * consts['SECPERRAD'], consts['SEC_PER_DAY'])
+            dir_beam_topa = (1368.0 + 45.5 * np.sin((2.0 * np.pi * i / 365.25) + 1.7)) * dt
             h = np.arange(-hss, hss, dh)
             cosh = np.cos(h)
-            sinh = np.sin(h)
             cza  = cosegeom * cosh + sinegeom
-            cbsa = sinh * bsg1 + cosh * bsg2 + bsg3
             cza_inds = np.array(cza > 0.)
-            
-            dir_flat_topa = np.zeros(len(h))
+           
+            dir_flat_topa = -1 * np.ones(len(h))
             dir_flat_topa[cza_inds] = dir_beam_topa * cza[cza_inds]
             
             am = np.zeros(len(h))
@@ -128,29 +121,32 @@ class Forcing(object):
             am_inds = np.array(am > 2.9)
 
             ami = np.zeros(len(am_inds))
-            ami = (np.cos(cza[am_inds])/consts['RADPERDEG'] - 69).astype(int)
+            ami = (np.arccos(cza[am_inds])/consts['RADPERDEG'] - 69).astype(int)
             if len(ami) != 0:
-                ami = np.min(np.max(am[am_inds], 0), 20)
-                am[am_inds] = consts['OTPAM'][ami]
-
-            sum_trans = sum(np.power(trans, am) * dir_flat_topa)
+                ami = np.clip(ami, 0, 20)
+                am[am_inds] = consts['OPTAM'][ami]
+    
+            trans2 = np.power(trans, am)
+            
+            sum_trans = sum(trans2 * dir_flat_topa)
             sum_flat_potrad = sum(dir_flat_topa)
-            tinystep = np.clip((12*3600+h*consts['SECPERRAD'])/dt, 0, 
-                    tiny_step_per_day-1).astype(int)
-            tiny_rad_fract[i, tinystep] = dir_flat_topa
-
+            tinystep = np.clip((12*consts['SEC_PER_HOUR']+h*consts['SECPERRAD'])/dt,
+                            0, tiny_step_per_day-1).astype(int)
+            tiny_rad_fract[i][tinystep] = dir_flat_topa
+            
             if daylength[i] and sum_flat_potrad > 0:
                 tiny_rad_fract[i] /= sum_flat_potrad
-            if daylength[i]:
+
+            if daylength[i] > 0:
                 tt_max0[i] = sum_trans / sum_flat_potrad
                 potrad[i] = sum_flat_potrad / daylength[i]
             else:
                 tt_max0[i] = 0.
                 potrad[i] = 0.
-        tt_max0[365] = tt_max0[364]
-        potrad[365] = potrad[364]
-        daylength[365] = daylength[364]
-        tiny_rad_fract[365] = tiny_rad_fract[364]
+        tt_max0[-1] = tt_max0[-2]
+        potrad[-1] = potrad[-2]
+        daylength[-1] = daylength[-2]
+        tiny_rad_fract[-1] = tiny_rad_fract[-2]
         solar_geom = {"tt_max0" : tt_max0,
                       "potrad" : potrad,
                       "daylength" : daylength,

@@ -67,11 +67,11 @@ def read_binary(fpath: str, n_days=-1) -> Forcing:
                 break
 
     # Binary forcing files have naming format $NAME_$LAT_$LON
-    param_list = os.path.basename(fpath).split(".")[-1].split("_")
+    param_list = os.path.basename(fpath).split("_")
     params = {"name"   : param_list[0], 
-              "lat"    : param_list[1], 
-              "lon"    : param_list[2],
-              "n_days" : n_days}
+              "lat"    : float(param_list[1]), 
+              "lon"    : float(param_list[2]),
+              "n_days" : int(n_days)}
     df = pd.DataFrame(data={"precip" : precip, 
                             "t_min"  : t_min, 
                             "t_max"  : t_max, 
@@ -96,13 +96,12 @@ def read(fpath, n_days=-1) -> Forcing:
             '.txt'   : read_ascii,
             '.ascii' : read_ascii,
             '.bin'   : read_binary,
-            ''       : read_binary,
             '.nc'    : read_netcdf,
             '.nc4'   : read_netcdf,
             '.conf'  : read_config,
             '.ini'   : read_config
             }
-    return ext_to_fun[os.path.splitext(fpath)[-1]](fpath, n_days) 
+    return ext_to_fun.get(os.path.splitext(fpath)[-1], read_binary)(fpath, n_days) 
 
 
 def write(data, fpath):
