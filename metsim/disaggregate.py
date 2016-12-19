@@ -14,24 +14,24 @@ def disaggregate(df_daily, solar_geom):
     TODO
     """
     end = metsim.stop + pd.Timedelta('1 days')
-    dates_hourly = pd.date_range(metsim.start, end, freq='H')
-    df_hourly = pd.DataFrame(index=dates_hourly)
-    df_hourly['shortwave'] = shortwave(df_daily['swrad'],
+    dates_hourly = pd.date_range(metsim.start, end, freq=params['time_step']+'T')
+    df_disagg = pd.DataFrame(index=dates_hourly)
+    df_disagg['shortwave'] = (shortwave(df_daily['swrad'],
                                        df_daily['dayl'],
                                        df_daily['day_of_year'],
-                                       solar_geom['tiny_rad_fract'])
-    df_hourly['temp'] = temp(df_daily, df_hourly)
-    df_hourly['precip'] = precip(df_daily['precip'])
-    df_hourly['longwave'] = longwave(df_daily['lwrad'])
-    df_hourly['wind'] = wind(df_daily['wind'])
-    return df_hourly
+                                       solar_geom['tiny_rad_fract']))
+    df_disagg['temp'] = temp(df_daily, df_disagg)
+    df_disagg['precip'] = precip(df_daily['precip'])
+    df_disagg['longwave'] = longwave(df_daily['lwrad'])
+    df_disagg['wind'] = wind(df_daily['wind'])
+    return df_disagg
 
-def temp(df_daily, df_hourly):
+def temp(df_daily, df_disagg):
     """
     TODO
     """
     # Calculate times of min/max temps
-    hours = set_min_max_hour(df_hourly['shortwave'],
+    hours = set_min_max_hour(df_disagg['shortwave'],
                              len(df_daily['day_of_year']))
     df_daily['t_Tmin'] = hours['t_Tmin']
     df_daily['t_Tmax'] = hours['t_Tmax']
@@ -42,28 +42,28 @@ def temp(df_daily, df_hourly):
     # x = T_i * day_number
     # y = [Tmin, Tmax, Tmin, Tmax, ... ]
     # interp = scipy.interpolate.PchipInterpolator(x, y, extrapolate=True)
-    # temps = interp(range(len(df_hourly.index))
+    # temps = interp(range(len(df_disagg.index))
     # return temps
 
 def precip(precip):
     """
     Splits the daily precipitation evenly throughout the day
     """
-    return precip.resample('H', how='sum').fillna(method='ffill')/24.
+    return precip.resample(params['time_step']+'T').sum().fillna(method='ffill')
 
 
 def longwave(longwave):
     """
     Splits the daily longwave evenly throughout the day
     """
-    return longwave.resample('H', how='sum').fillna(method='ffill')
+    return longwave.resample(params['time_step']+'T').sum().fillna(method='ffill')
 
 
 def wind(wind):
     """
     Wind is assumed constant throughout the day
     """
-    return wind.resample('H', how='sum').fillna(method='ffill')
+    return wind.resample(params['time_step']+'T').sum().fillna(method='ffill')
 
 
 def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
