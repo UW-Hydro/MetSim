@@ -3,7 +3,6 @@ Handles IO for MetSim
 """
 
 import os
-import csv
 import time
 import struct
 import pandas as pd
@@ -21,23 +20,6 @@ def read_config(fpath: str, n_days=-1) -> ConfigParser:
         cfp.read(fpath)
     return cfp 
     
-
-def read_ascii(fpath, n_days=-1) -> Forcing:
-    """
-    TODO
-    """
-    precip = []
-    t_min = []
-    t_max = []
-    wind = []
-
-    with open(fpath, 'r') as f:
-        for line in csv.reader(f, delimiter='\t'):
-            print(line)
-            break
-    # TODO: FIXME: Finish this
-    return Forcing(None, None)
-
 
 def read_binary(fpath: str, n_days=-1) -> Forcing:
     """ Reads a binary forcing file (VIC 4 format) """
@@ -93,8 +75,6 @@ def read(fpath, n_days=-1) -> Forcing:
     Dispatch to the right function based on the file extension 
     """
     ext_to_fun = {
-            '.txt'   : read_ascii,
-            '.ascii' : read_ascii,
             '.bin'   : read_binary,
             '.nc'    : read_netcdf,
             '.nc4'   : read_netcdf,

@@ -3,23 +3,22 @@ Options for MetSim
 """
 
 import os
-import sys
-import glob
 import argparse
 import pandas as pd
 import metsim
 from metsim import io
 from metsim import configuration
 
+from metsim.configuration import PARAMS  as params
+from metsim.configuration import CONSTS  as consts
+from metsim.configuration import OPTIONS as options
+
 def parse(args):
     parser = argparse.ArgumentParser()
-
     parser.add_argument('-c', '--config', 
             default=None)
-
     parser.add_argument('-n', '--n-processes',
             default=1, type=int)
-
     return parser.parse_args()
 
 
@@ -28,13 +27,14 @@ def init(opts):
     if not os.path.isfile(opts.config):
         exit("Invalid configuration given.  Use `ms -h` for more information.")
     metsim.config = io.read_config(opts.config)
+    configuration.update(metsim.config['IO'])
     metsim.input_format = metsim.config['IO']['force_format']
     metsim.out_dir = metsim.config['IO']['out_dir']
     try:
         os.mkdir(metsim.out_dir)
     except:
         print("ERROR: Could not create directory: " + metsim.out_dir)
-        exit()
+        exit(1)
 
     #NOTE: This will silently override invalid methods in the configuration file
     metsim.method = configuration.METHODS.get(metsim.config['Output']['disagg_method'], 
