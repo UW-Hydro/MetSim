@@ -9,7 +9,6 @@ import metsim
 from metsim.configuration import PARAMS as params
 from metsim.configuration import CONSTS as consts
 
-
 def disaggregate(df_daily, solar_geom):
     """
     TODO
@@ -57,7 +56,7 @@ def longwave(longwave):
     """
     Splits the daily longwave evenly throughout the day
     """
-    return longwave.resample('H', how='sum').fillna(method='ffill')/24.
+    return longwave.resample('H', how='sum').fillna(method='ffill')
 
 
 def wind(wind):
@@ -71,26 +70,24 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
     """
     TODO
     """
-    tiny_step_per_hour = int(3600 / consts['SRADDT'])
-    tmp_rad = sw_rad * daylength / 3600.
+    tiny_step_per_hour = int(consts['SEC_PER_HOUR'] / consts['SRADDT'])
+    tmp_rad = sw_rad * daylength / consts['SEC_PER_DAY'] 
     n_days = len(tmp_rad)
-    print(sw_rad)
-    hourlyrad = np.zeros(n_days*24 + 1)
-    tiny_offset = (params.get("theta_l", 0) - params.get("theta_s", 0) / (24./360))
-
+    hourlyrad = np.zeros(n_days*consts['HOURS_PER_DAY'] + 1)
+    tiny_offset = (params.get("theta_l", 0) - params.get("theta_s", 0) / (consts['HOURS_PER_DAY']/360))
+    
     # Tinystep represents a daily set of values - but is constant across days
-    tinystep= np.arange(24 * tiny_step_per_hour) - tiny_offset
-    tinystep[np.array(tinystep<0)] += 24*tiny_step_per_hour
-    tinystep[np.array(tinystep>(24*tiny_step_per_hour-1))] -= 24*tiny_step_per_hour
-
+    tinystep= np.arange(consts['HOURS_PER_DAY'] * tiny_step_per_hour) - tiny_offset
+    tinystep[np.array(tinystep<0)] += consts['HOURS_PER_DAY'] * tiny_step_per_hour
+    tinystep[np.array(tinystep>(24*tiny_step_per_hour-1))] -= consts['HOURS_PER_DAY'] * tiny_step_per_hour
     chunk_sum = lambda x : np.sum(x.reshape((len(x)/120, 120)), axis=1)
     for day in range(n_days):
         rad = tiny_rad_fract[day_of_year[day]]
-        hourlyrad[day*24 : (day+1)*24] = chunk_sum(rad[list(tinystep)]) * tmp_rad[day]
-
+        hourlyrad[day*consts['HOURS_PER_DAY']: (day+1)*consts['HOURS_PER_DAY']] = (
+                chunk_sum(rad[list(tinystep)]) * tmp_rad[day])
+    
     # FIXME: Dunno what to do here.
     hourlyrad[-2] = hourlyrad[-1]
-    
     return hourlyrad
 
 
@@ -102,16 +99,20 @@ def set_min_max_hour(hourly_rad, n_days):
     t_Tmin = np.zeros(n_days)
     for i in range(n_days):
         risehour = sethour = -999
-        for hour in range(12):
-            if (hourly_rad[i*24+hour] > 0 and
-                    (i*24+hour==0 or hourly_rad[i*24 + hour-1]<= 0)):
+        for hour in range(int(consts['HOURS_PER_DAY']/2)):
+            if (hourly_rad[i*consts['HOURS_PER_DAY']+hour] > 0 and
+                    (i*consts['HOURS_PER_DAY']+hour==0 or 
+                        hourly_rad[int(i*consts['HOURS_PER_DAY'] + hour-1)]<= 0)):
                 risehour = hour
-        for hour in range(12,24):
-            if (hourly_rad[i*24+hour] <= 0 and hourly_rad[i*24+hour-1]>0):
+        for hour in range(int(consts['HOURS_PER_DAY']/2), int(consts['HOURS_PER_DAY'])):
+            if (hourly_rad[i*consts['HOURS_PER_DAY']+hour] <= 0 and 
+                    hourly_rad[i*consts['HOURS_PER_DAY']+hour-1]>0):
                 sethour = hour
         if i == n_days -1 and sethour == -999:
-            sethour = 23
+            sethour = consts['HOURS_PER_DAY'] - 1 
         if risehour >=0 and sethour>=0:
             t_Tmax[i] = 0.67 * (sethour - risehour) + risehour
             t_Tmin[i] = risehour - 1
     return {'t_Tmin' : t_Tmin, 't_Tmax' : t_Tmax}
+
+

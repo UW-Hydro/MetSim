@@ -34,10 +34,10 @@ def calc_t_air(df: pd.DataFrame):
     Adjust temperatures according to lapse rates 
     and calculate t_day
     """
-    dZ = params['site_elev'] - params['base_elev']
+    dZ = (params['site_elev'] - params['base_elev'])/1000.
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
     df['t_max'] = df['t_max'] + dZ * lapse_rates[1]
-    df['t_min'] = np.maximum(df['t_min'] + dZ * lapse_rates[0], df['t_max']-0.5)
+    df['t_min'] = np.minimum(df['t_min'] + dZ * lapse_rates[0], df['t_max']-0.5)
     t_mean = np.mean(df['t_min'] + df['t_max'])
     df['t_day'] = ((df['t_max'] - t_mean) * params['TDAYCOEF']) + t_mean
 
@@ -142,7 +142,6 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
 
     tdew = df.get('tdew', df['t_min'])
     pva = df.get('hum', svp(tdew))
-
     pa = atm_pres(params['site_elev'])
     yday = df['day_of_year'] - 1 
     df['dayl'] = sg['daylength'][yday]
@@ -151,9 +150,6 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     tdew, pet = _compute_srad_humidity_onetime(
                tdew, pva, sg, sky_prop, parray, pa, dtr, df)
 
-    sum_pet = pet.values.sum()
-    ann_pet = (sum_pet / params['n_days']) * consts['DAYS_PER_YEAR'] 
-  
     pva = svp(tdew)
     if 'hum' not in df:
         df['hum'] = pva
@@ -168,29 +164,28 @@ def _compute_srad_humidity_onetime(tdew, pva, solar_geom,
     potrad = solar_geom['potrad']
     daylength = solar_geom['daylength']
     yday = df['day_of_year'] - 1
-    t_tmax = np.minimum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
-    df['ttmax'] = t_tmax
+    t_tmax = np.maximum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
     t_final = t_tmax * df['tfmax']
     df['fdir'] = 1.0 - np.clip(-1.25 * t_final * 1.25, 0., 1.) 
     srad1 = potrad[yday] * t_final * df['fdir']
     srad2 = (potrad[yday] * t_final * 1 - df['fdir']) * \
         (sky_prop + params['DIF_ALB'] * (1.0 - sky_prop))
-
     sc = np.zeros_like(df['swe'])
+    
     if (options['MTCLIM_SWE_CORR']):
         inds = np.nonzero(df['swe'] > 0. & daylength[yday] > 0.)
         sc[inds] = (1.32 + 0.096 * df['swe'][inds]) *\
             1.0e6 / daylength[yday][inds]
         sc = np.maximum(sc, 100.)  # JJH - this is fishy 
-
+    
     df['swrad'] = srad1 + srad2 + sc
-    potrad = (srad1 + srad2 + sc) * daylength[yday] / t_final / 86400
-    df['tfmax'] = np.ones(len(sc)) 
+    potrad = (srad1 + srad2 + sc) * daylength[yday] / t_final / consts['SEC_PER_DAY'] 
+    tfmax = np.ones(len(sc)) 
     inds = np.nonzero((potrad > 0.) & 
            (df['swrad'] > 0.) & 
            (daylength[yday] > 0))[0]
-    print(daylength)
-    df['tfmax'][inds] = np.maximum((df['swrad'][inds] / (potrad[inds] * t_tmax[inds])), 1.)
+    tfmax[inds] = np.maximum((df['swrad'][inds] / (potrad[inds] * t_tmax[inds])), 1.)
+    df['tfmax'] = tfmax 
 
     if (options['LW_CLOUD'].upper() == 'CLOUD_DEARDORFF'):
         df['tskc'] = (1. - df['tfmax'])
