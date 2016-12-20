@@ -7,7 +7,6 @@ import pandas as pd
 
 from metsim.configuration import PARAMS as params
 from metsim.configuration import CONSTS as consts
-from metsim.configuration import OPTIONS as options
 
 class Forcing(object):
     """
@@ -84,6 +83,7 @@ class Forcing(object):
         daylength = np.zeros(dayperyear)
         potrad    = np.zeros(dayperyear) 
         t1 = 1.0 - (consts['LR_STD'] * params['site_elev'])/consts['T_STD']
+        # FIXME: This should be removed.
         t1 = 1.0 - (consts['LR_STD'] * 1668.15)/consts['T_STD']
         t2 = consts['G_STD'] / (consts['LR_STD'] * (consts['R'] / consts['MA']))
         trans = np.power(params['TBASE'], np.power(t1, t2))
