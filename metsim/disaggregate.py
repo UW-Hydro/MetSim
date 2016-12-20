@@ -71,11 +71,11 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
     TODO
     """
     tiny_step_per_hour = int(consts['SEC_PER_HOUR'] / consts['SRADDT'])
-    tmp_rad = sw_rad * daylength / consts['SEC_PER_DAY'] 
+    tmp_rad = sw_rad * daylength / consts['SEC_PER_HOUR'] 
     n_days = len(tmp_rad)
     hourlyrad = np.zeros(n_days*consts['HOURS_PER_DAY'] + 1)
     tiny_offset = (params.get("theta_l", 0) - params.get("theta_s", 0) / (consts['HOURS_PER_DAY']/360))
-    
+   
     # Tinystep represents a daily set of values - but is constant across days
     tinystep= np.arange(consts['HOURS_PER_DAY'] * tiny_step_per_hour) - tiny_offset
     tinystep[np.array(tinystep<0)] += consts['HOURS_PER_DAY'] * tiny_step_per_hour
