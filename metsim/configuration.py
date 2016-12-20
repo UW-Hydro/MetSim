@@ -28,6 +28,7 @@ CONSTS = {
           'EPS': 0.62196351,
           'DAYS_PER_YEAR' : 365.25,
           'SEC_PER_DAY'   : 86400,
+          'MIN_PER_HOUR'  : 60,
           'HOURS_PER_DAY'  : 24,
           'SEC_PER_HOUR'  : 3600,
           'STEFAN_B' : 5.669e-8  # (W m^-22 K^-4) Stefan Boltzmann constant 
