@@ -87,7 +87,6 @@ class Forcing(object):
         t1 = 1.0 - (consts['LR_STD'] * 1668.15)/consts['T_STD']
         t2 = consts['G_STD'] / (consts['LR_STD'] * (consts['R'] / consts['MA']))
         trans = np.power(params['TBASE'], np.power(t1, t2))
-        print(params['site_elev'])
         
         lat    = np.clip(params['lat']*consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
         coslat = np.cos(lat)

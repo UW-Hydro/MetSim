@@ -146,30 +146,16 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     yday = df['day_of_year'] - 1 
     df['dayl'] = sg['daylength'][yday]
 
-    # FIXME: This function has lots of inputs and outputs 
-    tdew, pet = _compute_srad_humidity_onetime(
-               tdew, pva, sg, sky_prop, parray, pa, dtr, df)
-
-    pva = svp(tdew)
-    if 'hum' not in df:
-        df['hum'] = pva
-    
-    pvs = svp(df['t_day'])
-    df['vpd'] = np.maximum(pvs-pva, 0.)
-
-
-def _compute_srad_humidity_onetime(tdew, pva, solar_geom, 
-                                   sky_prop, parray, pa, dtr, df):
-    tt_max0 = solar_geom['tt_max0']
-    potrad = solar_geom['potrad']
-    daylength = solar_geom['daylength']
+    tt_max0 = sg['tt_max0']
+    potrad = sg['potrad']
+    daylength = sg['daylength']
     yday = df['day_of_year'] - 1
     t_tmax = np.maximum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
     t_final = t_tmax * df['tfmax']
-    df['fdir'] = 1.0 - np.clip(-1.25 * t_final * 1.25, 0., 1.) 
-    srad1 = potrad[yday] * t_final * df['fdir']
-    srad2 = (potrad[yday] * t_final * 1 - df['fdir']) * \
-        (sky_prop + params['DIF_ALB'] * (1.0 - sky_prop))
+    fdir = 1.0 - np.clip(-1.25 * t_final * 1.25, 0., 1.) 
+    srad1 = potrad[yday] * t_final * fdir
+    srad2 = (potrad[yday] * t_final * (1 - fdir) * \
+        (sky_prop + params['DIF_ALB'] * (1.0 - sky_prop)))
     sc = np.zeros_like(df['swe'])
     
     if (options['MTCLIM_SWE_CORR']):
@@ -199,12 +185,16 @@ def _compute_srad_humidity_onetime(tdew, pva, solar_geom,
     # calculate ratio (PET/effann_prcp) and correct the dewpoint
     ratio = pet / parray
     df['ppratio'] = ratio * 365.25
-    tdewk = tmink * (-0.127 + 1.121 *
-                     (1.003 - 1.444 * ratio + 12.312 *
-                      np.power(ratio, 2) - 32.766 * np.power(ratio, 3)) +
-                     0.0006 * dtr)
-    tdew_tmp = tdewk - consts['KELVIN']
-    return tdew_tmp, pet
+    tdewk = tmink * (-0.127+1.121 * (1.003-1.444 * ratio+12.312 *
+                np.power(ratio, 2)-32.766 * np.power(ratio, 3))+0.0006 * dtr)
+    tdew = tdewk - consts['KELVIN']
+
+    pva = svp(tdew)
+    if 'hum' not in df:
+        df['hum'] = pva
+    
+    pvs = svp(df['t_day'])
+    df['vpd'] = np.maximum(pvs-pva, 0.)
 
 
 def calc_longwave(df: pd.DataFrame):
