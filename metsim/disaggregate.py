@@ -7,7 +7,6 @@ import pandas as pd
 import itertools
 import scipy
 
-import metsim
 from metsim.configuration import PARAMS as params
 from metsim.configuration import CONSTS as consts
 
@@ -15,8 +14,8 @@ def disaggregate(df_daily, solar_geom):
     """
     TODO
     """
-    end = metsim.stop + pd.Timedelta('1 days')
-    dates_disagg = pd.date_range(metsim.start, end, freq=params['time_step']+'T')
+    stop = params['stop'] + pd.Timedelta('1 days')
+    dates_disagg = pd.date_range(params['start'], stop, freq=params['time_step']+'T')
     df_disagg = pd.DataFrame(index=dates_disagg)
     df_disagg['shortwave'] = (shortwave(df_daily['swrad'],
                                        df_daily['dayl'],

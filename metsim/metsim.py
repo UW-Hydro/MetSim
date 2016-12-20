@@ -3,12 +3,11 @@ Handles the synchronization of multiple processes for MetSim
 """
 
 import os
-import time
-import numpy as np
 import pandas as pd
 from multiprocessing import Value, Process
 
-import metsim.io
+from metsim import io
+from metsim import configuration
 
 class MetSim(object):
     """
@@ -17,18 +16,18 @@ class MetSim(object):
     work can be done while IO is happening.
     """
 
-    def __init__(self, analysis_method, job_list, n_processes):
+    def __init__(self, forcings, domain, method, params):
         """
         Constructor
         """
         # Builds the infrastructure to keep track of jobs
         self.writable = Value('b', True, lock=False)
-        
+
+        self.params = params
+        configuration.update(params) 
+
         # Set up the distribution of jobs and create process handles
-        self.method = analysis_method
-        n_jobs = len(job_list) 
-        job_size = int(n_jobs / min(n_processes, n_jobs))
-        self.run(self.method, job_list)
+        self.run(method, forcings)
         #self.jobs = [job_list[i:i+job_size] for i in range(0, n_jobs, job_size)]
         #self.process_handles = [
         #         Process(target=self.run, args=(self.method, job_list))
@@ -42,13 +41,13 @@ class MetSim(object):
         Kicks off the disaggregation and queues up data for IO
         """
         for job in job_list:
-            dates = pd.date_range(metsim.start, metsim.stop)
-            forcing = metsim.io.read(job, len(dates))
+            dates = pd.date_range(self.params['start'], self.params['stop'])
+            forcing = io.read(job, len(dates))
             forcing.set_dates(dates)
             forcing.generate_met_forcings(method) 
             forcing.disaggregate()
-            metsim.io.sync_io(metsim.io.write_ascii, forcing.met_data, self.writable, 
-                    os.path.join(metsim.out_dir, os.path.basename(job))) 
+            io.sync_io(io.write_ascii, forcing.met_data, self.writable, 
+                       os.path.join(os.path.basename(job))) 
 
 
     def launch_processes(self):

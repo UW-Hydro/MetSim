@@ -15,10 +15,8 @@ from metsim.configuration import OPTIONS as options
 
 def parse(args):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', 
-            default=None)
-    parser.add_argument('-n', '--n-processes',
-            default=1, type=int)
+    parser.add_argument('-c', '--config', default=None)
+    parser.add_argument('-n', '--n-processes', default=1, type=int)
     return parser.parse_args()
 
 

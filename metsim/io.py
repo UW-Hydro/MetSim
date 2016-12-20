@@ -6,20 +6,7 @@ import os
 import time
 import struct
 import pandas as pd
-from configparser import ConfigParser
 from metsim.forcing import Forcing
-
-def read_config(fpath: str, n_days=-1) -> ConfigParser:
-    """
-    Reads the configuration file given.  If the
-    file does not exist, an empty ConfigParser
-    will be returned.
-    """
-    cfp = ConfigParser()
-    if os.path.isfile(fpath):
-        cfp.read(fpath)
-    return cfp 
-    
 
 def read_binary(fpath: str, n_days=-1) -> Forcing:
     """ Reads a binary forcing file (VIC 4 format) """
@@ -77,9 +64,7 @@ def read(fpath, n_days=-1) -> Forcing:
     ext_to_fun = {
             '.bin'   : read_binary,
             '.nc'    : read_netcdf,
-            '.nc4'   : read_netcdf,
-            '.conf'  : read_config,
-            '.ini'   : read_config
+            '.nc4'   : read_netcdf
             }
     return ext_to_fun.get(os.path.splitext(fpath)[-1], read_binary)(fpath, n_days) 
 
