@@ -53,21 +53,22 @@ def precip(precip):
     """
     Splits the daily precipitation evenly throughout the day
     """
-    return precip.resample(params['time_step']+'T').fillna(method='ffill').sum()
+    scale = int(params['time_step']) / (consts['MIN_PER_HOUR'] * consts['HOURS_PER_DAY'])
+    return (precip*scale).resample(params['time_step']+'T').fillna(method='ffill')
 
 
 def longwave(longwave):
     """
     Splits the daily longwave evenly throughout the day
     """
-    return longwave.resample(params['time_step']+'T').fillna(method='ffill').sum()
+    return longwave.resample(params['time_step']+'T').fillna(method='ffill')
 
 
 def wind(wind):
     """
     Wind is assumed constant throughout the day
     """
-    return wind.resample(params['time_step']+'T').fillna(method='ffill').sum()
+    return wind.resample(params['time_step']+'T').fillna(method='ffill')
 
 
 def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
