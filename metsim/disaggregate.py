@@ -4,6 +4,7 @@ Disaggregates daily data down to finer grained data using some heuristics
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 import itertools
 import scipy
 
@@ -16,7 +17,7 @@ def disaggregate(df_daily, solar_geom):
     """
     stop = params['stop'] + pd.Timedelta('1 days')
     dates_disagg = pd.date_range(params['start'], stop, freq=params['time_step']+'T')
-    df_disagg = pd.DataFrame(index=dates_disagg)
+    df_disagg = xr.Dataset(coords={'time':dates_disagg})
     df_disagg['shortwave'] = (shortwave(df_daily['swrad'],
                                        df_daily['dayl'],
                                        df_daily['day_of_year'],
@@ -44,7 +45,7 @@ def temp(df_daily, df_disagg):
     time = time + cumhours
     
     interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
-    temps = interp(range(len(df_disagg.index)))
+    temps = interp(range(len(df_disagg['time'])))
     return temps
 
 
