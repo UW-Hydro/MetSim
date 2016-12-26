@@ -4,6 +4,7 @@ MTCLIM
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 from warnings import warn
 
 from metsim.configuration import PARAMS  as params
@@ -14,7 +15,7 @@ from metsim.physics import svp, calc_pet, atm_pres
 
 output_variables = ["t_min", "t_max", "precip", "shortwave", "longwave"]
 
-def run(forcing: pd.DataFrame, solar_geom: dict):
+def run(forcing: xr.Dataset, solar_geom: dict):
     """ 
     Run all of the mtclim forcing generation 
     
@@ -29,7 +30,7 @@ def run(forcing: pd.DataFrame, solar_geom: dict):
     calc_longwave(forcing)
 
 
-def calc_t_air(df: pd.DataFrame):
+def calc_t_air(df: xr.Dataset):
     """ 
     Adjust temperatures according to lapse rates 
     and calculate t_day
@@ -42,13 +43,13 @@ def calc_t_air(df: pd.DataFrame):
     df['t_day'] = ((df['t_max'] - t_mean) * params['TDAYCOEF']) + t_mean
 
 
-def calc_precip(df: pd.DataFrame):
+def calc_precip(df: xr.Dataset):
     """ Adjust precipitation according to isoh """
     df['precip'] = (df['precip'] * 
             (df.get('site_isoh', 1) / df.get('base_isoh', 1)))
 
 
-def calc_snowpack(df: pd.DataFrame):
+def calc_snowpack(df: xr.Dataset):
 
     def _simple_snowpack(precip, t_min, snowpack=0.0):
         swe = np.array(np.ones(params['n_days']) * snowpack)
@@ -69,7 +70,7 @@ def calc_snowpack(df: pd.DataFrame):
         df['swe'] = _simple_snowpack(df['precip'], df['t_min'], snowpack=loop_swe)
 
 
-def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
+def calc_srad_hum(df: xr.Dataset, sg: dict, tol=0.01, win_type='boxcar'):
     """
     Calculate shortwave, humidity  
     """
@@ -197,7 +198,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     df['vpd'] = np.maximum(pvs-pva, 0.)
 
 
-def calc_longwave(df: pd.DataFrame):
+def calc_longwave(df: xr.Dataset):
     """ Calculate longwave """
     emissivity_calc = {
             'DEFAULT'    : lambda x : x,
