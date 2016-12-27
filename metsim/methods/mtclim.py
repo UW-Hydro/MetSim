@@ -91,7 +91,8 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     window = np.zeros(params['n_days'] + 90)
     df['t_max'] = np.maximum(df['t_max'], df['t_min'])
     dtr = df['t_max'] - df['t_min']
-    sm_dtr = pd.Series(dtr).rolling(axis=0, center=False, window=30, win_type=win_type).mean()
+    sm_dtr = pd.Series(dtr).rolling(window=30, win_type=win_type,
+                axis=0).mean().fillna(method='bfill')
     if params['n_days'] <= 30:
         warn('Timeseries is shorter than rolling mean window, filling ')
         warn('missing values with unsmoothed data')
