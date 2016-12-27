@@ -43,6 +43,7 @@ def temp(df_daily, df_disagg):
     cumhours = np.array(list(next(it) for it in itertools.cycle(
                     [iter(cumhours), iter(cumhours)])))
     time = time + cumhours
+    print(t_Tmin)
     
     interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
     temps = interp(range(len(df_disagg['time'])))

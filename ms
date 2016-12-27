@@ -74,7 +74,8 @@ def main():
     """Runs MetSim"""
     from metsim.metsim import MetSim 
     setup = init(parse(sys.argv[1:])) 
-    ms = MetSim(setup['forcings'], setup['domain'], setup['method'], setup)
+    ms = MetSim(setup['domain'], setup)
+    ms.run(setup['method'], setup['forcings'])
     ms.launch_processes()
 
 
