@@ -6,12 +6,12 @@ import os
 import struct
 import numpy as np
 import pandas as pd
+import xarray as xr
 from netCDF4 import Dataset
-from mpl_toolkits.basemap import Basemap
+from mpl_toolkits import basemap 
 from multiprocessing import Value, Process
 
 from metsim import configuration
-from metsim.forcing import Forcing
 
 class MetSim(object):
     """
@@ -20,7 +20,7 @@ class MetSim(object):
     work can be done while IO is happening.
     """
 
-    def __init__(self, forcings, domain, method, params):
+    def __init__(self, domain, params):
         """
         Constructor
         """
@@ -38,7 +38,6 @@ class MetSim(object):
         domain.close()
 
         # Set up the distribution of jobs and create process handles
-        self.run(method, forcings)
         #self.jobs = [job_list[i:i+job_size] for i in range(0, n_jobs, job_size)]
         #self.process_handles = [
         #         Process(target=self.run, args=(self.method, job_list))
@@ -47,16 +46,24 @@ class MetSim(object):
         self.process_handles = []
 
 
-    def run(self, method, job_list):
+    def run(self, method, forcings):
         """
         Kicks off the disaggregation and queues up data for IO
         """
-        for job in job_list:
-            dates = pd.date_range(self.params['start'], self.params['stop'])
-            forcing = self.read(job, len(dates))
-            forcing.set_dates(dates)
-            forcing.generate_met_forcings(method) 
-            forcing.disaggregate()
+        if type(forcings) is not list:
+            forcings = [forcings]
+        for forcing in forcings:
+            met_data = self.read(forcing)
+            for i in range(len(met_data.lat)):
+                for j in range(len(met_data.lon)):
+                    # FIXME: This needs to be fixed.
+                    #        See little notebook for details
+                    temp = method.run(
+                                met_data.isel(lat=[i], lon=[j])
+                                .to_dataframe(), disagg=True)
+                    
+                    if j == 100: exit()
+                    print(i, j)
 
             
     def launch_processes(self):
@@ -74,8 +81,10 @@ class MetSim(object):
         return self.elev[lat_idx, lon_idx]
 
    
-    def read_binary(self, fpath: str, n_days=-1) -> Forcing:
+    def read_binary(self, fpath: str) -> xr.Dataset:
         """ Reads a binary forcing file (VIC 4 format) """
+        dates = pd.date_range(self.params['start'], self.params['stop'])
+        n_days = len(dates)
         precip = [] # Short unsigned int
         t_max  = [] # Short int
         t_min  = [] # Short int
@@ -84,7 +93,7 @@ class MetSim(object):
         # Pack these for nicer syntax in the loop
         var_name = [precip, t_max, t_min, wind]
         scale = [40.0, 100.0, 100.0, 100.0]
-    
+ 
         # Data types referred to: 'H' - unsigned short ; 'h' - short
         types = ['H', 'h', 'h', 'h']
         with open(fpath, 'rb') as f:
@@ -100,31 +109,50 @@ class MetSim(object):
                     points_read += 1
                 else:
                     break
-    
+        
         # Binary forcing files have naming format $NAME_$LAT_$LON
         param_list = os.path.basename(fpath).split("_")
         params = {"name"   : param_list[0], 
                   "lat"    : float(param_list[1]), 
                   "lon"    : float(param_list[2]),
                   "n_days" : int(n_days)}
-        params['elev'] = self.find_elevation(params['lat'], params['lon'])
-        df = pd.DataFrame(data={"precip" : precip, 
-                                "t_min"  : t_min, 
-                                "t_max"  : t_max, 
-                                "wind"   : wind})
-        return Forcing(df, params) 
+        configuration.update(params)
+        params['elev'] = [[self.find_elevation(params['lat'], params['lon'])]]
+        df = xr.Dataset({"precip"      : (['time'], precip), 
+                         "t_min"       : (['time'], t_min), 
+                         "t_max"       : (['time'], t_max), 
+                         "wind"        : (['time'], wind),
+                         "elev"        : (['lon', 'lat'], params['elev']),
+                         "day_of_year" : (['time'], dates.dayofyear)},
+                        coords={'lon'  : [params['lon']],
+                                'lat'  : [params['lat']],
+                                'time' : dates},
+                        attrs={'n_days' : params['n_days']})
+        return df
 
 
-    def read_netcdf(self, fpath, n_days=-1) -> Forcing:
+    def read_netcdf(self, fpath, n_days=-1) -> xr.Dataset:
         """
         TODO
         """
         # TODO: FIXME: Finish this
+        dates = pd.date_range(self.params['start'], self.params['stop'])
+        n_days = len(dates)
+        ds = xr.open_dataset(fpath)
+        ds = ds.sel(time=slice(self.params['start'], self.params['stop']))
+        ds.rename({"Prec" : "precip",
+                   "Tmax" : "t_max",
+                   "Tmin" : "t_min"}, inplace=True)
+        ds['elev'] = (['lat','lon'], self.elev)
+        ds['day_of_year'] = (['time'], dates.dayofyear)
+        configuration.update({"n_days" : n_days})
+        #in_lats, in_lons = np.meshgrid(self.lats, self.lons)
+        #out_lats, out_lons = np.meshgrid(ds.lat, ds.lon)
+        #self.elev = basemap.interp(self.elev, self.lats, self.lons, out_lats, out_lons, order=1)
+        return ds 
     
-        return Forcing(None, None) 
     
-    
-    def read(self, fpath, n_days=-1) -> Forcing:
+    def read(self, fpath) -> xr.Dataset:
         """
         Dispatch to the right function based on the file extension 
         """
@@ -133,6 +161,6 @@ class MetSim(object):
                 '.nc'    : self.read_netcdf,
                 '.nc4'   : self.read_netcdf
                 }
-        return ext_to_fun.get(os.path.splitext(fpath)[-1], self.read_binary)(fpath, n_days) 
+        return ext_to_fun.get(os.path.splitext(fpath)[-1], self.read_binary)(fpath) 
     
 

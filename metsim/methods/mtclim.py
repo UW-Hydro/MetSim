@@ -4,33 +4,40 @@ MTCLIM
 
 import numpy as np
 import pandas as pd
-import xarray as xr
 from warnings import warn
 
 from metsim.configuration import PARAMS  as params
 from metsim.configuration import CONSTS  as consts
 from metsim.configuration import OPTIONS as options
 
-from metsim.physics import svp, calc_pet, atm_pres
+from metsim.disaggregate import disaggregate
+from metsim.physics import svp, calc_pet, atm_pres, solar_geom
 
 output_variables = ["t_min", "t_max", "precip", "shortwave", "longwave"]
 
-def run(forcing: xr.Dataset, solar_geom: dict):
+def run(forcing: pd.DataFrame, disagg=True):
     """ 
     Run all of the mtclim forcing generation 
     
     Args:
         forcing: The daily forcings given from input
         solar_geom: Solar geometry of the site
-    """
+    """   
+    lat_idx = forcing.index.names.index('lat')
+    time_idx = forcing.index.names.index('time')
+    sg = solar_geom(forcing['elev'][0], forcing.index.levels[lat_idx][0])
+    forcing.index = forcing.index.levels[time_idx]
     calc_t_air(forcing)
     calc_precip(forcing)
     calc_snowpack(forcing)
-    calc_srad_hum(forcing, solar_geom)
+    calc_srad_hum(forcing, sg)
     calc_longwave(forcing)
+    
+    if disagg:
+        disaggregate(forcing, sg)
 
 
-def calc_t_air(df: xr.Dataset):
+def calc_t_air(df: pd.DataFrame):
     """ 
     Adjust temperatures according to lapse rates 
     and calculate t_day
@@ -43,13 +50,13 @@ def calc_t_air(df: xr.Dataset):
     df['t_day'] = ((df['t_max'] - t_mean) * params['TDAYCOEF']) + t_mean
 
 
-def calc_precip(df: xr.Dataset):
+def calc_precip(df: pd.DataFrame):
     """ Adjust precipitation according to isoh """
     df['precip'] = (df['precip'] * 
             (df.get('site_isoh', 1) / df.get('base_isoh', 1)))
 
 
-def calc_snowpack(df: xr.Dataset):
+def calc_snowpack(df: pd.DataFrame):
 
     def _simple_snowpack(precip, t_min, snowpack=0.0):
         swe = np.array(np.ones(params['n_days']) * snowpack)
@@ -70,7 +77,7 @@ def calc_snowpack(df: xr.Dataset):
         df['swe'] = _simple_snowpack(df['precip'], df['t_min'], snowpack=loop_swe)
 
 
-def calc_srad_hum(df: xr.Dataset, sg: dict, tol=0.01, win_type='boxcar'):
+def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     """
     Calculate shortwave, humidity  
     """
@@ -84,8 +91,7 @@ def calc_srad_hum(df: xr.Dataset, sg: dict, tol=0.01, win_type='boxcar'):
     window = np.zeros(params['n_days'] + 90)
     df['t_max'] = np.maximum(df['t_max'], df['t_min'])
     dtr = df['t_max'] - df['t_min']
-    sm_dtr = pd.rolling_window(dtr, window=30, freq='D', 
-                               win_type=win_type).fillna(method='bfill')
+    sm_dtr = pd.Series(dtr).rolling(axis=0, center=False, window=30, win_type=win_type).mean()
     if params['n_days'] <= 30:
         warn('Timeseries is shorter than rolling mean window, filling ')
         warn('missing values with unsmoothed data')
@@ -198,7 +204,7 @@ def calc_srad_hum(df: xr.Dataset, sg: dict, tol=0.01, win_type='boxcar'):
     df['vpd'] = np.maximum(pvs-pva, 0.)
 
 
-def calc_longwave(df: xr.Dataset):
+def calc_longwave(df: pd.DataFrame):
     """ Calculate longwave """
     emissivity_calc = {
             'DEFAULT'    : lambda x : x,
