@@ -28,25 +28,38 @@ def disaggregate(df_daily, solar_geom):
     df_disagg['wind'] = wind(df_daily['wind'])
     return df_disagg
 
+
+def set_min_max_hour(disagg_rad, n_days):
+    """
+    TODO
+    """
+    ts = float(params['time_step'])
+    rad_mask = 1*(disagg_rad > 0)
+    diff_mask = np.diff(rad_mask)
+    rise_times = np.where(diff_mask>0)[0] * ts 
+    set_times = np.where(diff_mask<0)[0] * ts
+    t_Tmax = 0.67 * (set_times - rise_times) + rise_times
+    t_Tmin = rise_times - float(params['time_step'])
+    return t_Tmin, t_Tmax
+
+
 def temp(df_daily, df_disagg):
     """
     TODO
     """
     # Calculate times of min/max temps
-    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'],
-                             len(df_daily['day_of_year']))
+    n_days = len(df_daily['day_of_year']) + 1
+    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'], n_days)
     time = np.array(list(next(it) for it in itertools.cycle(
                 [iter(t_Tmin), iter(t_Tmax)])))
     temp = np.array(list(next(it) for it in itertools.cycle(
                 [iter(df_daily['t_min']), iter(df_daily['t_max'])])))
-    cumhours = range(0, 24*len(df_daily['day_of_year']), 24)
-    cumhours = np.array(list(next(it) for it in itertools.cycle(
-                    [iter(cumhours), iter(cumhours)])))
-    time = time + cumhours
-    print(t_Tmin)
     
-    interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
-    temps = interp(range(len(df_disagg['time'])))
+    try:
+        interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
+        temps = interp(range(len(df_disagg['time'])))
+    except ValueError:
+        temps = np.full(len(time), np.nan)
     return temps
 
 
@@ -95,30 +108,5 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
     # FIXME: Dunno what to do here.
     disaggrad[-2] = disaggrad[-1]
     return disaggrad
-
-
-def set_min_max_hour(disagg_rad, n_days):
-    """
-    TODO
-    """
-    t_Tmax = np.zeros(n_days)
-    t_Tmin = np.zeros(n_days)
-    for i in range(n_days):
-        risehour = sethour = -999
-        for hour in range(int(consts['HOURS_PER_DAY']/2)):
-            if (disagg_rad[i*consts['HOURS_PER_DAY']+hour] > 0 and
-                    (i*consts['HOURS_PER_DAY']+hour==0 or 
-                        disagg_rad[int(i*consts['HOURS_PER_DAY'] + hour-1)]<= 0)):
-                risehour = hour
-        for hour in range(int(consts['HOURS_PER_DAY']/2), int(consts['HOURS_PER_DAY'])):
-            if (disagg_rad[i*consts['HOURS_PER_DAY']+hour] <= 0 and 
-                    disagg_rad[i*consts['HOURS_PER_DAY']+hour-1]>0):
-                sethour = hour
-        if i == n_days-1 and sethour == -999:
-            sethour = consts['HOURS_PER_DAY'] - 1 
-        if risehour >=0 and sethour>=0:
-            t_Tmax[i] = 0.67 * (sethour - risehour) + risehour
-            t_Tmin[i] = risehour - 1
-    return t_Tmin, t_Tmax
 
 
