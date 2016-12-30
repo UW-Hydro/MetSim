@@ -6,6 +6,7 @@ Command line tool for MetSim
 
 import os
 import sys
+import json
 import argparse
 import pandas as pd
 from configparser import ConfigParser
@@ -59,13 +60,15 @@ def init(opts):
     stop  = pd.datetime(int(end_year),
                         int(end_month),
                         int(end_day))
+    to_list = lambda s : json.loads(s.replace("'", '"') )
     setup = {"stop"      : stop,
              "start"     : start, 
              "method"    : method, 
+             "out_dir"   : out_dir,
              "domain"    : domain_file,
              "forcings"  : forcing_files,
-             "in_vars"   : config['in_vars'],
-             "out_vars"  : config['out_vars'],
+             "in_vars"   : to_list(config['in_vars']),
+             "out_vars"  : to_list(config['out_vars']),
              "time_step" : config['time_step']}
     return setup 
 
@@ -76,7 +79,6 @@ def main():
     setup = init(parse(sys.argv[1:])) 
     ms = MetSim(setup['domain'], setup)
     ms.run(setup['method'], setup['forcings'])
-    ms.launch_processes()
 
 
 if __name__ == '__main__':

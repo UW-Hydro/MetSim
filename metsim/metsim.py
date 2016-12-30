@@ -8,8 +8,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from netCDF4 import Dataset
-from mpl_toolkits import basemap 
-from multiprocessing import Value, Process
 
 from metsim import configuration
 
@@ -20,59 +18,51 @@ class MetSim(object):
     work can be done while IO is happening.
     """
 
-    def __init__(self, domain, params):
+    def __init__(self, domain:str, params:dict):
         """
         Constructor
         """
-        # Builds the infrastructure to keep track of jobs
-        self.writable = Value('b', True, lock=False)
-
+        # Record parameters and broadcast to the config module
         self.params = params
         configuration.update(params) 
 
-        # Keep a handle to the domain file
+        # Get the necessary information from the domain 
         domain = Dataset(configuration.PARAMS['domain'], 'r')
         self.elev = np.array(domain['elev'])
         self.lats = np.array(domain['lat'])
         self.lons = np.array(domain['lon'])
         domain.close()
 
-        # Set up the distribution of jobs and create process handles
-        #self.jobs = [job_list[i:i+job_size] for i in range(0, n_jobs, job_size)]
-        #self.process_handles = [
-        #         Process(target=self.run, args=(self.method, job_list))
-        #         for job_list in self.jobs
-        #        ]
-        self.process_handles = []
+        # If we are outputting netcdf, intiialize the file
+        if params.get('out_format', 'netcdf') == 'netcdf':
+            self.init_netcdf()
 
 
     def run(self, method, forcings):
         """
         Kicks off the disaggregation and queues up data for IO
         """
+        # Where we will store the results for writing out
+        out_dict = {}
+
+        # Coerce the forcings into a list if it's not one
         if type(forcings) is not list:
             forcings = [forcings]
+
+        # Do the forcing generation/maybe dissaggregation if required
         for forcing in forcings:
             met_data = self.read(forcing)
             for i in range(len(met_data.lat)):
+                out_dict[i] = {}
                 for j in range(len(met_data.lon)):
-                    # FIXME: This needs to be fixed.
-                    #        See little notebook for details
-                    temp = method.run(
+                    out_dict[i][j] = method.run(
                                 met_data.isel(lat=[i], lon=[j])
                                 .to_dataframe(), disagg=True)
-                    
-                    if j == 100: exit()
-                    print(i, j)
-
-            
-    def launch_processes(self):
-        """ Launches all processes built in the constructor """
-        for p in self.process_handles:
-            p.start()
-        for p in self.process_handles:
-            p.join()
-
+                    # TODO: Remove this
+                    print(i,j) 
+            # Write out
+            self.write(out_dict)
+           
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
@@ -81,6 +71,55 @@ class MetSim(object):
         return self.elev[lat_idx, lon_idx]
 
    
+    def write(self, data: dict):
+        """
+        Dispatch to the right function based on the configuration given 
+        """
+        dispatch = {
+                'netcdf' : self.write_netcdf,
+                'ascii'  : self.write_ascii
+                }
+        dispatch[self.params.get('out_format', 'netcdf')](data)
+         
+
+    def init_netcdf(self):
+        """ Initialize the output file """
+        print("Initializing netcdf...")
+        out_file = os.path.join(self.params['out_dir'], "forcing.nc")
+        self.output = Dataset(out_file, 'w')
+
+        # Number of timesteps 
+        n_ts = len(pd.date_range(self.params['start'], 
+                self.params['stop'] + pd.Timedelta('1 days'), 
+                freq=self.params['time_step']+'T'))
+        
+        # Create dimensions
+        self.output.createDimension('lat', len(self.lats))
+        self.output.createDimension('lon', len(self.lons))
+        self.output.createDimension('time', n_ts) 
+
+        # Create output variables
+        for varname in self.params['out_vars']:
+            self.output.createVariable(varname, 'd', ('time', 'lat','lon'))
+
+
+    def write_netcdf(self, data:dict):
+        """ TODO """
+        print("Writing netcdf...")
+        lats = data.keys()
+        for lat in lats:
+            lons = data[lat].keys()
+            for lon in lons:
+                for varname in self.params['out_vars']:
+                    self.output.variables[varname][:, lat, lon] = data[lat][lon][varname].values
+
+
+    def write_ascii(self, data: dict):
+        """ TODO """
+        print("Writing ascii...")
+        pass
+   
+
     def read_binary(self, fpath: str) -> xr.Dataset:
         """ Reads a binary forcing file (VIC 4 format) """
         dates = pd.date_range(self.params['start'], self.params['stop'])
@@ -131,7 +170,7 @@ class MetSim(object):
         return df
 
 
-    def read_netcdf(self, fpath, n_days=-1) -> xr.Dataset:
+    def read_netcdf(self, fpath:str) -> xr.Dataset:
         """
         TODO
         """
@@ -152,7 +191,7 @@ class MetSim(object):
         return ds 
     
     
-    def read(self, fpath) -> xr.Dataset:
+    def read(self, fpath:str) -> xr.Dataset:
         """
         Dispatch to the right function based on the file extension 
         """

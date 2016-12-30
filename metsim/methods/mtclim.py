@@ -34,8 +34,9 @@ def run(forcing: pd.DataFrame, disagg=True):
     calc_longwave(forcing)
     
     if disagg:
-        disaggregate(forcing, sg)
+        forcing = disaggregate(forcing, sg)
 
+    return forcing
 
 def calc_t_air(df: pd.DataFrame):
     """ 
