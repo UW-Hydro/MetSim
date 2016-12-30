@@ -4,7 +4,6 @@ Disaggregates daily data down to finer grained data using some heuristics
 
 import numpy as np
 import pandas as pd
-import xarray as xr
 import itertools
 import scipy
 
@@ -15,9 +14,9 @@ def disaggregate(df_daily, solar_geom):
     """
     TODO
     """
-    stop = params['stop'] + pd.Timedelta('1 days')
+    stop = params['stop'] + pd.Timedelta('1 days')     
     dates_disagg = pd.date_range(params['start'], stop, freq=params['time_step']+'T')
-    df_disagg = xr.Dataset(coords={'time':dates_disagg})
+    df_disagg = pd.DataFrame(index=dates_disagg)
     df_disagg['shortwave'] = (shortwave(df_daily['swrad'],
                                        df_daily['dayl'],
                                        df_daily['day_of_year'],
@@ -26,7 +25,7 @@ def disaggregate(df_daily, solar_geom):
     df_disagg['precip'] = precip(df_daily['precip'])
     df_disagg['longwave'] = longwave(df_daily['lwrad'])
     df_disagg['wind'] = wind(df_daily['wind'])
-    return df_disagg
+    return df_disagg.fillna(method='ffill')
 
 
 def set_min_max_hour(disagg_rad, n_days):
@@ -48,7 +47,7 @@ def temp(df_daily, df_disagg):
     TODO
     """
     # Calculate times of min/max temps
-    n_days = len(df_daily['day_of_year']) + 1
+    n_days = len(df_daily['day_of_year'])
     t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'], n_days)
     time = np.array(list(next(it) for it in itertools.cycle(
                 [iter(t_Tmin), iter(t_Tmax)])))
@@ -57,9 +56,9 @@ def temp(df_daily, df_disagg):
     
     try:
         interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
-        temps = interp(range(len(df_disagg['time'])))
+        temps = interp(range(len(df_disagg.index)))
     except ValueError:
-        temps = np.full(len(time), np.nan)
+        temps = np.full(len(df_disagg.index), np.nan)
     return temps
 
 
@@ -92,7 +91,8 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
     tiny_step_per_hour = int(consts['SEC_PER_HOUR'] / consts['SRADDT'])
     tmp_rad = sw_rad * daylength / consts['SEC_PER_HOUR'] 
     n_days = len(tmp_rad)
-    disaggrad = np.zeros(n_days*consts['HOURS_PER_DAY'] + 1)
+    ts_per_day = consts['HOURS_PER_DAY'] * (consts['MIN_PER_HOUR']/int(params['time_step']))
+    disaggrad = np.zeros(n_days*ts_per_day + 1)
     tiny_offset = (params.get("theta_l", 0) - params.get("theta_s", 0) / (consts['HOURS_PER_DAY']/360))
    
     # Tinystep represents a daily set of values - but is constant across days
@@ -102,7 +102,7 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract):
     chunk_sum = lambda x : np.sum(x.reshape((len(x)/120, 120)), axis=1)
     for day in range(n_days):
         rad = tiny_rad_fract[day_of_year[day]]
-        disaggrad[day*consts['HOURS_PER_DAY']: (day+1)*consts['HOURS_PER_DAY']] = (
+        disaggrad[day*ts_per_day: (day+1)*ts_per_day] = (
                 chunk_sum(rad[list(tinystep)]) * tmp_rad[day])
     
     # FIXME: Dunno what to do here.
