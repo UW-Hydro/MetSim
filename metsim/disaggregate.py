@@ -56,9 +56,10 @@ def temp(df_daily, df_disagg):
     
     try:
         interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
-        temps = interp(range(len(df_disagg.index)))
+        temps = interp(float(params['time_step']) * np.arange(0, len(df_disagg.index)))
     except ValueError:
         temps = np.full(len(df_disagg.index), np.nan)
+
     return temps
 
 
