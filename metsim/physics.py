@@ -172,26 +172,32 @@ def solar_geom(elev: float, lat: float) -> dict:
     t1 = 1.0 - (consts['LR_STD'] * elev)/consts['T_STD']
     t2 = consts['G_STD'] / (consts['LR_STD'] * (consts['R'] / consts['MA']))
     trans = np.power(params['TBASE'], np.power(t1, t2))
-    
+   
+    # Translate lat to rad
     lat    = np.clip(lat * consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
     coslat = np.cos(lat)
     sinlat = np.sin(lat)
+
+    # Sub-daily time step and angular step
     dt     = consts['SRADDT']  
     dh     = dt / consts['SECPERRAD'] 
 
     tiny_step_per_day = int(consts['SEC_PER_DAY'] / consts['SRADDT'])
     tiny_rad_fract    = np.zeros(shape=(dayperyear, tiny_step_per_day), dtype=np.float64)
     for i in range(int(dayperyear-1)):
+        # Declination and quantities of interest
         decl = consts['MINDECL'] * np.cos((i + consts['DAYSOFF']) * consts['RADPERDAY'])
         cosdecl = np.cos(decl)
         sindecl = np.sin(decl)
         cosegeom = coslat * cosdecl
-
+    
         sinegeom = sinlat * sindecl
         coshss = np.clip(-sinegeom / cosegeom, -1, 1)
         hss = np.arccos(coshss)  
         daylength[i] = np.minimum(2.0 * hss * consts['SECPERRAD'], consts['SEC_PER_DAY'])
         dir_beam_topa = (1368.0 + 45.5 * np.sin((2.0 * np.pi * i / 365.25) + 1.7)) * dt
+
+        # Set up angular calculations in vectorized array
         h = np.arange(-hss, hss, dh)
         cosh = np.cos(h)
         cza  = cosegeom * cosh + sinegeom
@@ -211,7 +217,6 @@ def solar_geom(elev: float, lat: float) -> dict:
             am[am_inds] = consts['OPTAM'][ami]
 
         trans2 = np.power(trans, am)
-        
         sum_trans = sum(trans2 * dir_flat_topa)
         sum_flat_potrad = sum(dir_flat_topa)
         tinystep = np.clip((12*consts['SEC_PER_HOUR']+h*consts['SECPERRAD'])/dt,
