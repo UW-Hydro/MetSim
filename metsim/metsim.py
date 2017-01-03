@@ -49,7 +49,7 @@ class MetSim(object):
         if type(forcings) is not list:
             forcings = [forcings]
 
-        # Do the forcing generation/maybe dissaggregation if required
+        # Do the forcing generation and dissaggregation if required
         for forcing in forcings:
             met_data = self.read(forcing)
             for i in range(len(met_data.lat)):
@@ -62,6 +62,9 @@ class MetSim(object):
                     print(i,j) 
             # Write out
             self.write(out_dict)
+
+        # Finally, close the output
+        self.output.close()
            
 
     def find_elevation(self, lat: float, lon: float) -> float:
@@ -83,7 +86,7 @@ class MetSim(object):
          
 
     def init_netcdf(self):
-        """ Initialize the output file """
+        """Initialize the output file"""
         print("Initializing netcdf...")
         out_file = os.path.join(self.params['out_dir'], "forcing.nc")
         self.output = Dataset(out_file, 'w')
@@ -104,7 +107,7 @@ class MetSim(object):
 
 
     def write_netcdf(self, data:dict):
-        """ TODO """
+        """Write out to the output file"""
         print("Writing netcdf...")
         lats = data.keys()
         for lat in lats:
@@ -117,7 +120,7 @@ class MetSim(object):
     def write_ascii(self, data: dict):
         """ TODO """
         print("Writing ascii...")
-        pass
+        raise NotImplementedError 
    
 
     def read_binary(self, fpath: str) -> xr.Dataset:
@@ -172,7 +175,7 @@ class MetSim(object):
 
     def read_netcdf(self, fpath:str) -> xr.Dataset:
         """
-        TODO
+        Read in a NetCDF file and add elevation information 
         """
         # TODO: FIXME: Finish this
         dates = pd.date_range(self.params['start'], self.params['stop'])
@@ -182,9 +185,16 @@ class MetSim(object):
         ds.rename({"Prec" : "precip",
                    "Tmax" : "t_max",
                    "Tmin" : "t_min"}, inplace=True)
+
+        # Add elevation and day of year data
         ds['elev'] = (['lat','lon'], self.elev)
         ds['day_of_year'] = (['time'], dates.dayofyear)
+
+        # Update the configuration
         configuration.update({"n_days" : n_days})
+
+        #TODO: If the domain file and input file don't have the same grid
+        #      structure this will have to be implemented
         #in_lats, in_lons = np.meshgrid(self.lats, self.lons)
         #out_lats, out_lons = np.meshgrid(ds.lat, ds.lon)
         #self.elev = basemap.interp(self.elev, self.lats, self.lons, out_lats, out_lons, order=1)
