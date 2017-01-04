@@ -27,6 +27,10 @@ CONSTS = {
           'KELVIN': 273.15,
           'EPS': 0.62196351,
           'DAYS_PER_YEAR' : 365.25,
+          'SEC_PER_DAY'   : 86400,
+          'MIN_PER_HOUR'  : 60,
+          'HOURS_PER_DAY'  : 24,
+          'SEC_PER_HOUR'  : 3600,
           'STEFAN_B' : 5.669e-8  # (W m^-22 K^-4) Stefan Boltzmann constant 
         }
 
@@ -70,6 +74,18 @@ OPTIONS = {
            'LW_CLOUD': 'CLOUD_DEARDORFF',
            'LW_TYPE': 'PRATA'
           }
+
+
+def update(io_params: dict):
+    """ 
+    Update the configuration based on what was read in
+    from the input file or config file.
+    """
+    # TODO: This should take into account if there are 
+    #       keys named 'options' and 'consts' and put
+    #       them in the right things.
+    PARAMS.update(io_params)
+
 
 from metsim.methods import mtclim
 
