@@ -44,11 +44,11 @@ class MetSim(object):
         """
         # Where we will store the results for writing out
         out_dict = {}
-
+           
         # Coerce the forcings into a list if it's not one
         if type(forcings) is not list:
             forcings = [forcings]
-
+           
         # Do the forcing generation and dissaggregation if required
         for forcing in forcings:
             met_data = self.read(forcing)
@@ -63,8 +63,8 @@ class MetSim(object):
             # Write out
             self.write(out_dict)
 
-        # Finally, close the output
-        self.output.close()
+        if self.params.get('out_format', 'netcdf') == 'netcdf':
+            self.output.close()
            
 
     def find_elevation(self, lat: float, lon: float) -> float:
@@ -82,7 +82,7 @@ class MetSim(object):
                 'netcdf' : self.write_netcdf,
                 'ascii'  : self.write_ascii
                 }
-        dispatch[self.params.get('out_format', 'netcdf')](data)
+        dispatch[self.params.get('out_format', 'netcdf').lower()](data)
          
 
     def init_netcdf(self):
@@ -107,21 +107,28 @@ class MetSim(object):
 
 
     def write_netcdf(self, data:dict):
-        """Write out to the output file"""
+        """Write out as NetCDF to the output file"""
         print("Writing netcdf...")
         lats = data.keys()
         for lat in lats:
             lons = data[lat].keys()
             for lon in lons:
+                print(lat, lon)
                 for varname in self.params['out_vars']:
                     self.output.variables[varname][:, lat, lon] = data[lat][lon][varname].values
 
 
     def write_ascii(self, data: dict):
-        """ TODO """
+        """Write out as ASCII to the output file"""
         print("Writing ascii...")
-        raise NotImplementedError 
-   
+        out_base = os.path.join(self.params['out_dir'], "forcing")
+        lats = data.keys()
+        for lat in lats:
+            lons = data[lat].keys()
+            for lon in lons:
+                print(lat, lon)
+                data[lat][lon].to_csv('_'.join([out_base, str(lat), str(lon)]), sep='\t')
+        
 
     def read_binary(self, fpath: str) -> xr.Dataset:
         """ Reads a binary forcing file (VIC 4 format) """
