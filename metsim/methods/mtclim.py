@@ -31,7 +31,6 @@ def run(forcing: pd.DataFrame, disagg=True):
     calc_precip(forcing)
     calc_snowpack(forcing)
     calc_srad_hum(forcing, sg)
-    calc_longwave(forcing)
     
     if disagg:
         forcing = disaggregate(forcing, sg)
@@ -44,12 +43,12 @@ def calc_t_air(df: pd.DataFrame):
     Adjust temperatures according to lapse rates 
     and calculate t_day
     """
-    dZ = (params['site_elev'] - params['base_elev'])/1000.
+    dZ = (df['elev'][0] - params['base_elev'])/1000.
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
-    df['t_max'] = df['t_max'] + dZ * lapse_rates[1]
-    df['t_min'] = np.minimum(df['t_min'] + dZ * lapse_rates[0], df['t_max']-0.5)
-    t_mean = np.mean(df['t_min'] + df['t_max'])
-    df['t_day'] = ((df['t_max'] - t_mean) * params['TDAYCOEF']) + t_mean
+    t_max = df['t_max'] + dZ * lapse_rates[1]
+    t_min = np.minimum(df['t_min'] + dZ * lapse_rates[0], t_max-0.5)
+    t_mean = np.mean(t_min + t_max)
+    df['t_day'] = ((t_max - t_mean) * params['TDAYCOEF']) + t_mean
 
 
 def calc_precip(df: pd.DataFrame):
@@ -178,12 +177,6 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
         sc = np.maximum(sc, 100.)  # JJH - this is fishy 
     df['swrad'] = srad1 + srad2 + sc
 
-    potrad = (srad1+srad2+sc) * daylength[yday] / t_final / consts['SEC_PER_DAY'] 
-    tfmax = np.ones(len(sc)) 
-    inds = np.nonzero((potrad > 0.) & (df['swrad'] > 0.) & (daylength[yday] > 0))[0]
-    tfmax[inds] = np.maximum((df['swrad'][inds] / (potrad[inds] * t_tmax[inds])), 1.)
-    df['tfmax'] = tfmax 
-
     if (options['LW_CLOUD'].upper() == 'CLOUD_DEARDORFF'):
         df['tskc'] = (1. - df['tfmax'])
     else:
@@ -196,37 +189,10 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     # calculate ratio (PET/effann_prcp) and correct the dewpoint
     ratio = pet / parray
     df['ppratio'] = ratio * 365.25
-    tdewk = tmink * (-0.127+1.121 * (1.003-1.444 * ratio+12.312 *
+    tdewk = tmink*(-0.127+1.121 * (1.003-1.444 * ratio+12.312 *
                 np.power(ratio, 2)-32.766 * np.power(ratio, 3))+0.0006 * dtr)
     tdew = tdewk - consts['KELVIN']
-
     pva = svp(tdew)
-    if 'hum' not in df:
-        df['hum'] = pva
-    
-    pvs = svp(df['t_day'])
-    df['vpd'] = np.maximum(pvs-pva, 0.)
+    df['hum'] = pva 
 
-
-def calc_longwave(df: pd.DataFrame):
-    """ Calculate longwave """
-    emissivity_calc = {
-            'DEFAULT'    : lambda x : x,
-            'TVA'        : lambda x : 0.74 + 0.0049 * x,
-            'ANDERSON'   : lambda x : 0.68 + 0.036 * np.power(x, 0.5),
-            'BRUTSAERT'  : lambda x : 1.24 * np.power(x/air_temp, 0.14285714),
-            'SATTERLUND' : lambda x : 1.08 * (1 - np.exp(-1 * np.power(x, (air_temp/2016)))),
-            'IDSO'       : lambda x : 0.7 + 5.95e-5 * x * np.exp(1500/air_temp),
-            'PRATA'      : lambda x : (1 - (1 + (46.5 * x/air_temp)) *
-                np.exp(-1*np.power((1.2 + 3 * (46.5*x/air_temp)), 0.5))),
-            }
-    cloud_calc = {
-            'DEFAULT' : lambda x : (1.0 + (0.17 * tskc**2)) * x,
-            'CLOUD_DEARDORFF' : lambda x : tskc * 1.0 + (1-tskc) * x
-            }
-    tskc = df['tskc']
-    air_temp = df['t_day'] + consts['KELVIN'] 
-    emissivity_clear = emissivity_calc[options['LW_TYPE'].upper()](air_temp)
-    emissivity = cloud_calc[options['LW_CLOUD'].upper()](emissivity_clear) 
-    df['lwrad'] = emissivity * consts['STEFAN_B'] * np.power(air_temp, 4)
 

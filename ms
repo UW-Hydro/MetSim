@@ -61,15 +61,16 @@ def init(opts):
                         int(end_month),
                         int(end_day))
     to_list = lambda s : json.loads(s.replace("'", '"') )
-    setup = {"stop"      : stop,
-             "start"     : start, 
-             "method"    : method, 
-             "out_dir"   : out_dir,
-             "domain"    : domain_file,
-             "forcings"  : forcing_files,
-             "in_vars"   : to_list(config['in_vars']),
-             "out_vars"  : to_list(config['out_vars']),
-             "time_step" : config['time_step']}
+    setup = {"stop"       : stop,
+             "start"      : start, 
+             "method"     : method, 
+             "out_dir"    : out_dir,
+             "domain"     : domain_file,
+             "forcings"   : forcing_files,
+             "in_vars"    : to_list(config['in_vars']),
+             "out_vars"   : to_list(config['out_vars']),
+             "time_step"  : config['time_step'],
+             "out_format" : config['out_format']}
     return setup 
 
 
