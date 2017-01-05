@@ -69,11 +69,10 @@ def temp(df_daily, df_disagg, t_Tmin, t_Tmax):
     
     # Account for end points
     # TODO: Discuss what to do here.
-    time = np.append(np.insert(time, 0, 0), 
+    time = np.append(np.insert(time, 0, -1*time[0]), 
             len(df_disagg.index)*int(params['time_step']))
-    temp = np.append(np.insert(temp, 0, np.mean(temp[0:2])), 
-            np.mean(temp[-2:]))
-
+    temp = np.append(np.insert(temp, 0, temp[1]), temp[-2])
+    
     # Interpolate the values
     try:
         interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
