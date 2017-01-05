@@ -7,7 +7,6 @@ import pandas as pd
 import itertools
 import scipy
 
-from metsim.physics import svp
 from metsim.configuration import PARAMS as params
 from metsim.configuration import CONSTS as consts
 from metsim.configuration import OPTIONS as options
@@ -64,10 +63,18 @@ def temp(df_daily, df_disagg, t_Tmin, t_Tmax):
     """
     # Calculate times of min/max temps
     time = np.array(list(next(it) for it in itertools.cycle(
-                [iter(t_Tmin), iter(t_Tmax)])))
+                [iter(t_Tmin), iter(t_Tmax)])))  
     temp = np.array(list(next(it) for it in itertools.cycle(
                 [iter(df_daily['t_min']), iter(df_daily['t_max'])])))
+    
+    # Account for end points
+    # TODO: Discuss what to do here.
+    time = np.append(np.insert(time, 0, 0), 
+            len(df_disagg.index)*int(params['time_step']))
+    temp = np.append(np.insert(temp, 0, np.mean(temp[0:2])), 
+            np.mean(temp[-2:]))
 
+    # Interpolate the values
     try:
         interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
         temps = interp(float(params['time_step']) * np.arange(0, len(df_disagg.index)))
@@ -94,7 +101,9 @@ def wind(wind):
 
 def vapor_pressure(hum_daily, t_Tmin, n_out):
     """Calculate vapor pressure"""
+    # Scale down to milibar
     vp_daily = hum_daily / 1000
+    # Linearly interpoolate the values
     try:
         interp = scipy.interpolate.interp1d(t_Tmin, vp_daily, fill_value='extrapolate')
         vp_disagg = interp(float(params['time_step']) * np.arange(0, n_out))
@@ -120,8 +129,12 @@ def longwave(air_temp, vapor_pressure, tskc):
             'DEFAULT' : lambda x : (1.0 + (0.17 * tskc**2)) * x,
             'CLOUD_DEARDORFF' : lambda x : tskc * 1.0 + (1-tskc) * x
             }
+    # Reindex and fill cloud cover, then convert temps to K
+    tskc = tskc.reindex(air_temp.index)
+    tskc = tskc.fillna(method='ffill')
     air_temp = air_temp + consts['KELVIN'] 
-    tskc = tskc.resample(params['time_step']+'T').fillna(method='ffill')
+
+    # Calculate longwave radiation based on the options 
     emissivity_clear = emissivity_calc[options['LW_TYPE'].upper()](vapor_pressure)
     emissivity = cloud_calc[options['LW_CLOUD'].upper()](emissivity_clear) 
     lwrad = emissivity * consts['STEFAN_B'] * np.power(air_temp, 4)
