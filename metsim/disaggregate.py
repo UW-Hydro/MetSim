@@ -7,6 +7,7 @@ import pandas as pd
 import itertools
 import scipy
 
+from metsim.physics import svp
 from metsim.configuration import PARAMS as params
 from metsim.configuration import CONSTS as consts
 from metsim.configuration import OPTIONS as options
@@ -22,16 +23,16 @@ def disaggregate(df_daily, solar_geom):
     n_disagg = len(df_disagg.index)
     
     df_disagg['shortwave'] = (shortwave(df_daily['swrad'],
-                                       df_daily['dayl'],
-                                       df_daily['day_of_year'],
-                                       solar_geom['tiny_rad_fract']))
+                                        df_daily['dayl'],
+                                        df_daily['day_of_year'],
+                                        solar_geom['tiny_rad_fract']))
     
     t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'], n_days)
     df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax)
     df_disagg['hum'] = df_daily['hum'].resample(params['time_step']+'T').interpolate()
     df_disagg['vapor_pressure'] = vapor_pressure(df_daily['hum'],
                                                  t_Tmin, n_disagg)
-
+    df_disagg['test'] = svp(df_disagg['temp'])
     
     df_disagg['longwave'] = longwave(df_disagg['temp'],
                                      df_disagg['vapor_pressure'],
@@ -68,7 +69,6 @@ def temp(df_daily, df_disagg, t_Tmin, t_Tmax):
                 [iter(df_daily['t_min']), iter(df_daily['t_max'])])))
     
     # Account for end points
-    # TODO: Discuss what to do here.
     time = np.append(np.insert(time, 0, -1*time[0]), 
             len(df_disagg.index)*int(params['time_step']))
     temp = np.append(np.insert(temp, 0, temp[1]), temp[-2])
