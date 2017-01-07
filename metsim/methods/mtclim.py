@@ -87,7 +87,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     def _calc_tfmax(precip, dtr, sm_dtr):
         b = params['B0'] + params['B1'] * np.exp(-params['B2'] * sm_dtr)
         t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, params['C']))
-        inds = np.nonzero(precip > options['SW_PREC_THRESH'])[0]
+        inds = np.array(precip > options['SW_PREC_THRESH'])
         t_fmax[inds] *= params['RAIN_SCALAR']
         return t_fmax 
 
@@ -118,35 +118,25 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
         parray = eff_ann_precip
     else:
         # Calculate effective annual precip using 3 month moving window
-        parray = np.zeros(params['n_days'])
-        start_yday = df['day_of_year'][0]
-        end_yday = df['day_of_year'][-1]
 
         # If yeardays at end match with those at beginning we can use
         # the end of the input to generate the beginning by looping around
         # If not, just duplicate the first 90 days
-        if start_yday != 1:
-            if end_yday == start_yday-1:
-                isloop = True
-        else:
-            if end_yday == 365 or end_yday == 366:
-                isloop = True
+        start_day, end_day = df['day_of_year'][0], df['day_of_year'][-1]
+        isloop = False
+        if (start_day%365 == (end_day%365)+1) or (start_day%366 == (end_day%366)+1):
+            isloop = True
+
         if isloop:
-            for i in range(90):
-                window[i] = df['precip'][params['n_days'] - 90 + i]
+            window[:90] = df['precip'][-90:]
         else:
-            for i in range(90):
-                window[i] = df['precip'][i]
+            window[:90] = df['precip'][:90]
         window[90:] = df['precip']
 
-        # FIXME: This can probably be vectorized
-        for i in range(params['n_days']):
-            sum_precip = 0.0
-            for j in range(90):
-                sum_precip += window[i+j]
-                sum_precip = (sum_precip / 90.) * consts['DAYS_PER_YEAR']
-            sum_precip = np.maximum(sum_precip, 8.0)
-            parray[i] = sum_precip
+        parray = np.array(pd.Series(window)
+                            .rolling(window=90, win_type=win_type,axis=0)
+                            .mean().fillna(method='bfill')
+                            * consts['DAYS_PER_YEAR'])[90:]
 
     df['tfmax'] = _calc_tfmax(df['precip'], dtr, sm_dtr) 
 
@@ -155,6 +145,20 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     pa = atm_pres(params['site_elev'])
     yday = df['day_of_year'] - 1 
     df['dayl'] = sg['daylength'][yday]
+    
+    tdew_old = np.copy(tdew)
+    tdew = sw_hum_iter(df, sg, pa, pva, parray, dtr)
+    
+    while(np.sqrt(np.mean((tdew-tdew_old)**2)) > 0.00000001):
+        print(np.sqrt(np.mean((tdew-tdew_old)**2)))
+        tdew_old = np.copy(tdew)
+        tdew = sw_hum_iter(df, sg, pa, svp(tdew_old), parray, dtr)
+    print(np.sqrt(np.mean((tdew-tdew_old)**2)))
+    
+    df['hum'] = svp(tdew)
+
+
+def sw_hum_iter(df, sg, pa, pva, parray, dtr):
 
     tt_max0 = sg['tt_max0']
     potrad = sg['potrad']
@@ -168,15 +172,17 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     t_tmax = np.maximum(tt_max0[yday] + (params['ABASE'] * pva), 0.0001)
     t_final = t_tmax * df['tfmax']
     fdir = 1.0 - np.clip(-1.25 * t_final * 1.25, 0., 1.) 
+    
     srad1 = potrad[yday] * t_final * fdir
     srad2 = (potrad[yday] * t_final * (1 - fdir) * (1. + params['DIF_ALB']))
+
     sc = np.zeros_like(df['swe'])
     if (options['MTCLIM_SWE_CORR']):
         inds = np.nonzero(df['swe'] > 0. & daylength[yday] > 0.)
         sc[inds] = (1.32 + 0.096 * df['swe'][inds]) * 1.0e6 / daylength[yday][inds]
         sc = np.maximum(sc, 100.)  # JJH - this is fishy 
-    df['swrad'] = srad1 + srad2 + sc
 
+    df['swrad'] = srad1 + srad2 + sc
     if (options['LW_CLOUD'].upper() == 'CLOUD_DEARDORFF'):
         df['tskc'] = (1. - df['tfmax'])
     else:
@@ -189,10 +195,8 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, tol=0.01, win_type='boxcar'):
     # calculate ratio (PET/effann_prcp) and correct the dewpoint
     ratio = pet / parray
     df['ppratio'] = ratio * 365.25
-    tdewk = tmink*(-0.127+1.121 * (1.003-1.444 * ratio+12.312 *
-                np.power(ratio, 2)-32.766 * np.power(ratio, 3))+0.0006 * dtr)
-    tdew = tdewk - consts['KELVIN']
-    pva = svp(tdew)
-    df['hum'] = pva 
+    tdewk = tmink*(-0.127 + 1.121*(1.003 - 1.444*ratio + 12.312*np.power(ratio, 2)  
+            - 32.766*np.power(ratio, 3)) + 0.0006*dtr)
+    return tdewk - consts["KELVIN"]
 
 
