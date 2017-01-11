@@ -7,7 +7,6 @@ import pandas as pd
 import itertools
 import scipy
 
-from metsim.physics import svp
 from metsim.configuration import PARAMS as params
 from metsim.configuration import CONSTS as consts
 from metsim.configuration import OPTIONS as options
@@ -32,7 +31,6 @@ def disaggregate(df_daily, solar_geom):
     df_disagg['hum'] = df_daily['hum'].resample(params['time_step']+'T').interpolate()
     df_disagg['vapor_pressure'] = vapor_pressure(df_daily['hum'],
                                                  t_Tmin, n_disagg)
-    df_disagg['test'] = svp(df_disagg['temp'])
     
     df_disagg['longwave'] = longwave(df_disagg['temp'],
                                      df_disagg['vapor_pressure'],
@@ -54,7 +52,7 @@ def set_min_max_hour(disagg_rad, n_days):
     rise_times = np.where(diff_mask>0)[0] * ts 
     set_times = np.where(diff_mask<0)[0] * ts
     t_Tmax = 0.67 * (set_times - rise_times) + rise_times
-    t_Tmin = rise_times - float(params['time_step'])
+    t_Tmin = rise_times 
     return t_Tmin, t_Tmax
 
 
@@ -69,9 +67,9 @@ def temp(df_daily, df_disagg, t_Tmin, t_Tmax):
                 [iter(df_daily['t_min']), iter(df_daily['t_max'])])))
     
     # Account for end points
-    time = np.append(np.insert(time, 0, -1*time[0]), 
-            len(df_disagg.index)*int(params['time_step']))
-    temp = np.append(np.insert(temp, 0, temp[1]), temp[-2])
+    ts = consts['MIN_PER_HOUR'] * consts['HOURS_PER_DAY']
+    time = np.append(np.insert(time, 0, time[0:2]-ts), time[-2:]+ts)
+    temp = np.append(np.insert(temp, 0, temp[0:2]), temp[-2:])
     
     # Interpolate the values
     try:
