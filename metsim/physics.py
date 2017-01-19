@@ -175,7 +175,6 @@ def solar_geom(elev, lat):
     tt_max0   = np.zeros(dayperyear)
     daylength = np.zeros(dayperyear)
     flat_potrad    = np.zeros(dayperyear) 
-    slope_potrad    = np.zeros(dayperyear) 
     t1 = 1.0 - (conf.LR_STD * elev)/conf.T_STD
     t2 = conf.G_STD / (conf.LR_STD * (conf.R /conf.MA))
     trans = np.power(conf.TBASE, np.power(t1, t2))
@@ -203,7 +202,7 @@ def solar_geom(elev, lat):
         coshss = min(max(-sinegeom / cosegeom, -1), 1)
         hss = np.arccos(coshss)  
         daylength[i] = min(2.0 * hss * conf.SECPERRAD, conf.SEC_PER_DAY)
-        dir_beam_topa = (1368.0 + 45.5 * np.sin((2.0 * np.pi * i / 365.25) + 1.7)) * dt
+        dir_beam_topa = (1368.0+45.5*np.sin((2.0*np.pi*i/conf.DAYS_PER_YEAR)+1.7))*dt
         sum_trans = 0
         sum_flat_potrad= 0
         # Set up angular calculations 
@@ -235,7 +234,6 @@ def solar_geom(elev, lat):
         else:
             tt_max0[i] = 0.
             flat_potrad[i] = 0.
-            slope_potrad[i] = 0.
     tt_max0[dayperyear-1] = tt_max0[dayperyear-2]
     flat_potrad[dayperyear-1] = flat_potrad[dayperyear-2]
     daylength[dayperyear-1] = daylength[dayperyear-2]

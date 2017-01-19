@@ -47,7 +47,7 @@ def calc_t_air(df: pd.DataFrame, params: dict):
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
     t_max = df['t_max'] + dZ * lapse_rates[1]
     t_min = np.minimum(df['t_min'] + dZ * lapse_rates[0], t_max-0.5)
-    t_mean = np.mean(t_min + t_max)
+    t_mean = (t_min + t_max)/2
     df['t_day'] = ((t_max - t_mean) * conf.TDAYCOEF) + t_mean
 
 
@@ -138,6 +138,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     tdew = df.get('tdew', df['t_min'])
     pva = df.get('hum', svp(tdew))
     pa = atm_pres(df['elev'][0])
+    #pa = atm_pres(5688)
     yday = df['day_of_year'] - 1 
     df['dayl'] = sg['daylength'][yday]
  
@@ -149,6 +150,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
         tdew_old = np.copy(tdew)
         tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr)
     df['vapor_pressure'] = pva 
+
 
 def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     tt_max0 = sg['tt_max0']
