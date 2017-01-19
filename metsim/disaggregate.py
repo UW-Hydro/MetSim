@@ -36,7 +36,7 @@ def disaggregate(df_daily, params, solar_geom):
     
     df_disagg['rel_humid'] = relative_humidity(df_disagg['vapor_pressure'],
                                                df_disagg['temp'])
-    
+   
     df_disagg['longwave'], df_disagg['tskc'] = longwave(df_disagg['temp'],
                                                         df_disagg['vapor_pressure'],
                                                         df_daily['tskc'])
@@ -58,7 +58,6 @@ def set_min_max_hour(disagg_rad, n_days, ts):
     set_times = np.where(diff_mask<0)[0] * ts
     t_Tmax = 0.67 * (set_times - rise_times) + rise_times
     t_Tmin = rise_times 
-    
     return t_Tmin, t_Tmax
 
 
