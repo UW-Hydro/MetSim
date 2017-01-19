@@ -9,7 +9,7 @@ import pandas as pd
 import xarray as xr
 from netCDF4 import Dataset
 
-from metsim import configuration
+from metsim.methods import mtclim
 
 class MetSim(object):
     """
@@ -18,32 +18,56 @@ class MetSim(object):
     work can be done while IO is happening.
     """
 
-    def __init__(self, domain:str, params:dict):
+    # Class variables
+    methods = {'mtclim': mtclim}
+    params = {
+        "method":'mtclim',
+        "domain":'',
+        "out_dir":'./results/',
+        "start":'',
+        "stop":'',
+        "time_step":'',
+        "out_format":'netcdf',
+        "site_elev": 0.,
+        "base_elev": 0.,
+        "t_max_lr": 0.0065,
+        "t_min_lr": 0.0065,
+        "site_isoh": None,
+        "base_isoh": None,
+        "site_lat": 0.,
+        "site_slope": 0.,
+        "site_aspect": 0.,
+        "site_east_horiz": 0.,
+        "site_west_horiz": 0.
+    }   
+
+
+    def __init__(self, params:dict):
         """
         Constructor
         """
-        # Record parameters and broadcast to the config module
-        self.params = params
-        configuration.update(params) 
+        # Record parameters 
+        self.update(params)
 
         # Get the necessary information from the domain 
-        domain = Dataset(configuration.PARAMS['domain'], 'r')
+        domain = Dataset(MetSim.params.get('domain', None), 'r')
         self.elev = np.array(domain['elev'])
         self.lats = np.array(domain['lat'])
         self.lons = np.array(domain['lon'])
         domain.close()
 
         # If we are outputting netcdf, intiialize the file
-        if params.get('out_format', 'netcdf') == 'netcdf':
+        if MetSim.params.get('out_format', 'netcdf') == 'netcdf':
             self.init_netcdf()
 
 
-    def run(self, method, forcings):
+    def run(self, forcings):
         """
         Kicks off the disaggregation and queues up data for IO
         """
         # Where we will store the results for writing out
         out_dict = {}
+        method = MetSim.methods[MetSim.params.get('method', 'mtclim')]
            
         # Coerce the forcings into a list if it's not one
         if type(forcings) is not list:
@@ -57,13 +81,13 @@ class MetSim(object):
                 for j in range(len(met_data.lon)):
                     out_dict[i][j] = method.run(
                                 met_data.isel(lat=[i], lon=[j])
-                                .to_dataframe(), disagg=True)
+                                .to_dataframe(), MetSim.params, disagg=True)
                     # TODO: Remove this
                     print(i,j) 
             # Write out
             self.write(out_dict)
 
-        if self.params.get('out_format', 'netcdf') == 'netcdf':
+        if MetSim.params.get('out_format', 'netcdf') == 'netcdf':
             self.output.close()
            
 
@@ -73,7 +97,12 @@ class MetSim(object):
         lon_idx = np.abs(self.lons - lon).argmin()            
         return self.elev[lat_idx, lon_idx]
 
-   
+    
+    def update(self, new_params):
+        """Updates the global parameters dictionary"""
+        MetSim.params.update(new_params)
+  
+
     def write(self, data: dict):
         """
         Dispatch to the right function based on the configuration given 
@@ -82,19 +111,19 @@ class MetSim(object):
                 'netcdf' : self.write_netcdf,
                 'ascii'  : self.write_ascii
                 }
-        dispatch[self.params.get('out_format', 'netcdf').lower()](data)
+        dispatch[MetSim.params.get('out_format', 'netcdf').lower()](data)
          
 
     def init_netcdf(self):
         """Initialize the output file"""
         print("Initializing netcdf...")
-        out_file = os.path.join(self.params['out_dir'], "forcing.nc")
+        out_file = os.path.join(MetSim.params.get('out_dir', './results/'), "forcing.nc")
         self.output = Dataset(out_file, 'w')
 
         # Number of timesteps 
-        n_ts = len(pd.date_range(self.params['start'], 
-                self.params['stop'] + pd.Timedelta('1 days'), 
-                freq=self.params['time_step']+'T'))
+        n_ts = len(pd.date_range(MetSim.params['start'], 
+                MetSim.params['stop'] + pd.Timedelta('1 days'), 
+                freq=MetSim.params['time_step']+'T'))
         
         # Create dimensions
         self.output.createDimension('lat', len(self.lats))
@@ -102,7 +131,7 @@ class MetSim(object):
         self.output.createDimension('time', n_ts) 
 
         # Create output variables
-        for varname in self.params['out_vars']:
+        for varname in MetSim.params.get('out_vars', []):
             self.output.createVariable(varname, 'd', ('time', 'lat','lon'))
 
 
@@ -114,14 +143,14 @@ class MetSim(object):
             lons = data[lat].keys()
             for lon in lons:
                 print(lat, lon)
-                for varname in self.params['out_vars']:
+                for varname in MetSim.params.get('out_vars', []):
                     self.output.variables[varname][:, lat, lon] = data[lat][lon][varname].values
 
 
     def write_ascii(self, data: dict):
         """Write out as ASCII to the output file"""
         print("Writing ascii...")
-        out_base = os.path.join(self.params['out_dir'], "forcing")
+        out_base = os.path.join(MetSim.params['out_dir'], "forcing")
         lats = data.keys()
         for lat in lats:
             lons = data[lat].keys()
@@ -132,7 +161,7 @@ class MetSim(object):
 
     def read_binary(self, fpath: str) -> xr.Dataset:
         """ Reads a binary forcing file (VIC 4 format) """
-        dates = pd.date_range(self.params['start'], self.params['stop'])
+        dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
         n_days = len(dates)
         precip = [] # Short unsigned int
         t_max  = [] # Short int
@@ -165,7 +194,7 @@ class MetSim(object):
                   "lat"    : float(param_list[1]), 
                   "lon"    : float(param_list[2]),
                   "n_days" : int(n_days)}
-        configuration.update(params)
+        MetSim.params.update(params)
         params['elev'] = [[self.find_elevation(params['lat'], params['lon'])]]
         df = xr.Dataset({"precip"      : (['time'], precip), 
                          "t_min"       : (['time'], t_min), 
@@ -185,10 +214,10 @@ class MetSim(object):
         Read in a NetCDF file and add elevation information 
         """
         # TODO: FIXME: Finish this
-        dates = pd.date_range(self.params['start'], self.params['stop'])
+        dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
         n_days = len(dates)
         ds = xr.open_dataset(fpath)
-        ds = ds.sel(time=slice(self.params['start'], self.params['stop']))
+        ds = ds.sel(time=slice(MetSim.params['start'], MetSim.params['stop']))
         ds.rename({"Prec" : "precip",
                    "Tmax" : "t_max",
                    "Tmin" : "t_min"}, inplace=True)
@@ -198,7 +227,7 @@ class MetSim(object):
         ds['day_of_year'] = (['time'], dates.dayofyear)
 
         # Update the configuration
-        configuration.update({"n_days" : n_days})
+        MetSim.params.update({"n_days" : n_days})
 
         #TODO: If the domain file and input file don't have the same grid
         #      structure this will have to be implemented
