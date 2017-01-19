@@ -144,6 +144,7 @@ def longwave(air_temp, vapor_pressure, tskc):
     tskc = tskc.reindex(air_temp.index)
     tskc = tskc.fillna(method='ffill')
     air_temp = air_temp + conf.KELVIN 
+    vapor_pressure = vapor_pressure * 10
 
     # Calculate longwave radiation based on the options 
     emissivity_clear = emissivity_calc[conf.LW_TYPE.upper()](vapor_pressure)
