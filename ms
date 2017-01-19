@@ -11,7 +11,6 @@ import argparse
 import pandas as pd
 from configparser import ConfigParser
 
-from metsim.configuration import METHODS as methods
 
 def parse(args):
     """Parse the command line arguments"""
@@ -36,8 +35,7 @@ def init(opts):
         print("ERROR: Could not create directory: " + out_dir)
         exit(1)
 
-    #NOTE: This will silently override invalid methods in the configuration file
-    method = methods.get(config['method'], 'mtclim')
+    method = config['method'] 
    
     # If the forcing variable is a directory, scan it for files
     if os.path.isdir(config['forcing']):
@@ -78,8 +76,8 @@ def main():
     """Runs MetSim"""
     from metsim.metsim import MetSim 
     setup = init(parse(sys.argv[1:])) 
-    ms = MetSim(setup['domain'], setup)
-    ms.run(setup['method'], setup['forcings'])
+    ms = MetSim(setup)
+    ms.run(setup['forcings'])
 
 
 if __name__ == '__main__':
