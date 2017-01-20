@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from warnings import warn
 
-import metsim.configuration as conf
+import metsim.constants as cnst
 from metsim.disaggregate import disaggregate
 from metsim.physics import svp, calc_pet, atm_pres, solar_geom
 
@@ -21,10 +21,10 @@ def run(forcing: pd.DataFrame, params: dict, disagg=True):
     lat_idx = forcing.index.names.index('lat')
     time_idx = forcing.index.names.index('time')
     sg = solar_geom(forcing['elev'][0], forcing.index.levels[lat_idx][0])
-    sg = {'tiny_rad_fract':sg[0],
-            'daylength':sg[1],
-            'potrad':sg[2],
-            'tt_max0':sg[3]}
+    sg = {'tiny_rad_fract' : sg[0],
+          'daylength' : sg[1],
+          'potrad' : sg[2],
+          'tt_max0' : sg[3]}
     forcing.index = forcing.index.levels[time_idx]
     params['n_days'] = len(forcing.index)
     calc_t_air(forcing, params)
@@ -32,8 +32,6 @@ def run(forcing: pd.DataFrame, params: dict, disagg=True):
     calc_snowpack(forcing, params)
     calc_srad_hum(forcing, sg, params)
     
-    forcing.to_csv("./results/metsim_daily.csv")
-
     if disagg:
         forcing = disaggregate(forcing, params, sg)
 
@@ -50,7 +48,7 @@ def calc_t_air(df: pd.DataFrame, params: dict):
     t_max = df['t_max'] + dZ * lapse_rates[1]
     t_min = np.minimum(df['t_min'] + dZ * lapse_rates[0], t_max-0.5)
     t_mean = (t_min + t_max)/2
-    df['t_day'] = ((t_max - t_mean) * conf.TDAYCOEF) + t_mean
+    df['t_day'] = ((t_max - t_mean) * cnst.TDAYCOEF) + t_mean
 
 
 def calc_precip(df: pd.DataFrame, params: dict):
@@ -61,10 +59,10 @@ def calc_precip(df: pd.DataFrame, params: dict):
 def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
     """Calculate snowpack as swe."""
     swe = np.ones(params['n_days']) * snowpack
-    accum = np.array(df['t_min'] <= conf.SNOW_TCRIT)
-    melt = np.array(df['t_min'] >  conf.SNOW_TCRIT)
+    accum = np.array(df['t_min'] <= cnst.SNOW_TCRIT)
+    melt = np.array(df['t_min'] >  cnst.SNOW_TCRIT)
     swe[accum] += df['precip'][accum]
-    swe[melt] -= conf.SNOW_TRATE * (df['t_min'][melt] - conf.SNOW_TCRIT)
+    swe[melt] -= cnst.SNOW_TRATE * (df['t_min'][melt] - cnst.SNOW_TCRIT)
     df['swe'] = np.maximum(np.cumsum(swe), 0.0) 
 
 
@@ -72,10 +70,10 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     """Calculate shortwave, humidity"""
 
     def _calc_tfmax(precip, dtr, sm_dtr):
-        b = conf.B0 + conf.B1 * np.exp(-conf.B2 * sm_dtr)
-        t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, conf.C))
-        inds = np.array(precip > conf.SW_PREC_THRESH)
-        t_fmax[inds] *= conf.RAIN_SCALAR
+        b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
+        t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
+        inds = np.array(precip > cnst.SW_PREC_THRESH)
+        t_fmax[inds] *= cnst.RAIN_SCALAR
         return t_fmax 
 
     # Calculate the diurnal temperature range
@@ -90,7 +88,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
 
     # Calculate annual total precip
     sum_precip = df['precip'].values.sum()
-    ann_precip = (sum_precip / params['n_days']) * conf.DAYS_PER_YEAR
+    ann_precip = (sum_precip / params['n_days']) * cnst.DAYS_PER_YEAR
     if ann_precip == 0.0:
         ann_precip = 1.0
 
@@ -98,7 +96,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     if params['n_days'] <= 90:
         # Simple scaled method, minimum of 8 cm 
         sum_precip = df['precip'].values.sum()
-        eff_ann_precip = (sum_precip / params['n_days']) * conf.DAYS_PER_YEAR
+        eff_ann_precip = (sum_precip / params['n_days']) * cnst.DAYS_PER_YEAR
         eff_ann_precip = np.maximum(eff_ann_precip, 8.0)
         parray = eff_ann_precip
     else:
@@ -117,7 +115,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
 
         parray = np.array(pd.Series(window)
                             .rolling(window=90, win_type=win_type,axis=0)
-                            .mean())[90:] * conf.DAYS_PER_YEAR 
+                            .mean())[90:] * cnst.DAYS_PER_YEAR 
     # Convert to mm 
     parray = np.maximum(parray, 80.0) / 10
 
@@ -145,12 +143,12 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     daylength = sg['daylength']
     yday = df['day_of_year'] - 1
 
-    t_tmax = np.maximum(tt_max0[yday] + (conf.ABASE * pva), 0.0001)
+    t_tmax = np.maximum(tt_max0[yday] + (cnst.ABASE * pva), 0.0001)
     t_final = t_tmax * df['tfmax']
 
     # Snowpack contribution 
     sc = np.zeros_like(df['swe'])
-    if (conf.MTCLIM_SWE_CORR):
+    if (cnst.MTCLIM_SWE_CORR):
         inds = np.logical_and(df['swe'] > 0.,  daylength[yday] > 0.)
         sc[inds] = (1.32 + 0.096 * df['swe'][inds]) * 1.0e6 / daylength[yday][inds]
         sc = np.maximum(sc, 100.)  # JJH - this is fishy 
@@ -161,7 +159,7 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     df['swrad'] = potrad[yday] * t_final + sc
 
     # Calculate cloud effect
-    if (conf.LW_CLOUD.upper() == 'CLOUD_DEARDORFF'):
+    if (cnst.LW_CLOUD.upper() == 'CLOUD_DEARDORFF'):
         df['tskc'] = (1. - df['tfmax'])
     else:
         df['tskc'] = np.sqrt((1. - df['tfmax']) / 0.65)
@@ -171,9 +169,9 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     # Calculate ratio (PET/effann_prcp) and correct the dewpoint
     ratio = pet / parray
     df['pet'] = parray 
-    tmink = df['t_min'] + conf.KELVIN
+    tmink = df['t_min'] + cnst.KELVIN
     tdew = tmink*(-0.127 + 1.121*(1.003 - 1.444*ratio + 12.312*np.power(ratio, 2)  
-            - 32.766*np.power(ratio, 3)) + 0.0006*dtr) - conf.KELVIN
+            - 32.766*np.power(ratio, 3)) + 0.0006*dtr) - cnst.KELVIN
     return tdew, svp(tdew)
 
 
