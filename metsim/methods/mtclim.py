@@ -32,6 +32,8 @@ def run(forcing: pd.DataFrame, params: dict, disagg=True):
     calc_snowpack(forcing, params)
     calc_srad_hum(forcing, sg, params)
     
+    forcing.to_csv("./results/metsim_daily.csv")
+
     if disagg:
         forcing = disaggregate(forcing, params, sg)
 
@@ -56,29 +58,14 @@ def calc_precip(df: pd.DataFrame, params: dict):
     df['precip'] = (df['precip'] * (df.get('site_isoh', 1) / df.get('base_isoh', 1)))
 
 
-def calc_snowpack(df: pd.DataFrame, params: dict):
+def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
     """Calculate snowpack as swe."""
-
-    def _simple_snowpack(precip, t_min, snowpack=0.0):
-        """ Calculate new snowpack from precipitation and temp """
-        swe = np.array(np.ones(params['n_days']) * snowpack)
-        accum = np.array(t_min <= conf.SNOW_TCRIT)
-        melt  = np.array(t_min >  conf.SNOW_TCRIT)
-        swe[accum] += precip[accum]
-        swe[melt]  -= conf.SNOW_TRATE * (t_min[melt] - conf.SNOW_TCRIT)
-        swe = np.maximum(np.cumsum(swe), 0.0) 
-        return swe 
-  
-    # Figure out if we are going over Dec 31 to Jan 1 in the run
-    df['swe'] = _simple_snowpack(df['precip'], df['t_min'])
-    start = (df['day_of_year'] == df['day_of_year'][0])
-    end = (df['day_of_year'] == (start-2)%365 + 1) 
-    loop_days = np.logical_or(start, end)
-    loop_swe  = sum(df['swe'].where(loop_days))/sum(loop_days)
-
-    # Crossing a new year need to take account for previous snowpack
-    if np.any(loop_swe):
-        df['swe'] = _simple_snowpack(df['precip'], df['t_min'], snowpack=loop_swe)
+    swe = np.ones(params['n_days']) * snowpack
+    accum = np.array(df['t_min'] <= conf.SNOW_TCRIT)
+    melt = np.array(df['t_min'] >  conf.SNOW_TCRIT)
+    swe[accum] += df['precip'][accum]
+    swe[melt] -= conf.SNOW_TRATE * (df['t_min'][melt] - conf.SNOW_TCRIT)
+    df['swe'] = np.maximum(np.cumsum(swe), 0.0) 
 
 
 def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):

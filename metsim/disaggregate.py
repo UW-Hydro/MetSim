@@ -157,25 +157,26 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
     """
     TODO
     """
-    tiny_step_per_hour = int(conf.SEC_PER_HOUR / conf.SRADDT)
+    tiny_step_per_hour = conf.SEC_PER_HOUR / conf.SRADDT
     tmp_rad = sw_rad * daylength / conf.SEC_PER_HOUR 
     n_days = len(tmp_rad)
     ts_per_day = conf.HOURS_PER_DAY * (conf.MIN_PER_HOUR/int(params['time_step']))
-    disaggrad = np.zeros(n_days*ts_per_day + 1)
+    disaggrad = np.zeros(int(n_days*ts_per_day) + 1)
     tiny_offset = (params.get("theta_l", 0) - params.get("theta_s", 0) / (conf.HOURS_PER_DAY/360))
-   
+    
     # Tinystep represents a daily set of values - but is constant across days
     tinystep= np.arange(conf.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
     tinystep[np.array(tinystep<0)] += conf.HOURS_PER_DAY * tiny_step_per_hour
     tinystep[np.array(tinystep>(24*tiny_step_per_hour-1))] -= conf.HOURS_PER_DAY * tiny_step_per_hour
-    chunk_sum = lambda x : np.sum(x.reshape((len(x)/120, 120)), axis=1)
+
+    # Chunk sum takes in the distribution of radiation throughout the day
+    # and collapses it into chunks that correspond to the desired timestep
+    chunk_sum = lambda x : np.sum(x.reshape((int(len(x)/120), 120)), axis=1)
     for day in range(n_days):
         rad = tiny_rad_fract[day_of_year[day]]
-        disaggrad[day*ts_per_day: (day+1)*ts_per_day] = (
-                chunk_sum(rad[list(tinystep)]) * tmp_rad[day])
+        disaggrad[int(day*ts_per_day): int((day+1)*ts_per_day)] = (
+                chunk_sum(rad[np.array(tinystep).astype(np.int32)]) * tmp_rad[day])
     
-    # FIXME: Dunno what to do here.
-    disaggrad[-2] = disaggrad[-1]
     return disaggrad
 
 

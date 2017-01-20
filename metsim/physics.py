@@ -162,6 +162,8 @@ def svp_slope(temp, a=0.61078, b=17.269, c=237.3):
     return (b * c) / ((c + temp) * (c + temp)) * svp(temp, a=a, b=b, c=c)
 
 
+
+
 @jit(nopython=True, cache=True)
 def solar_geom(elev, lat):
     """
