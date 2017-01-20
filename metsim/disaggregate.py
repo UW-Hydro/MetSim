@@ -7,7 +7,7 @@ import pandas as pd
 import itertools
 import scipy
 
-import metsim.configuration as conf
+import metsim.constants as cnst
 from metsim.physics import svp
 
 def disaggregate(df_daily, params, solar_geom):
@@ -71,7 +71,7 @@ def temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts):
     temp = np.array(list(next(it) for it in itertools.cycle(
                 [iter(df_daily['t_min']), iter(df_daily['t_max'])])))
     # Account for end points
-    ts_ends = conf.MIN_PER_HOUR * conf.HOURS_PER_DAY
+    ts_ends = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
     time = np.append(np.insert(time, 0, time[0:2]-ts_ends), time[-2:]+ts_ends)
     temp = np.append(np.insert(temp, 0, temp[0:2]), temp[-2:])
     
@@ -89,7 +89,7 @@ def precip(precip, ts):
     """
     Splits the daily precipitation evenly throughout the day
     """
-    scale = int(ts) / (conf.MIN_PER_HOUR * conf.HOURS_PER_DAY)
+    scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
     return (precip*scale).resample(str(int(ts))+'T').fillna(method='ffill')
 
 
@@ -127,29 +127,30 @@ def vapor_pressure(hum_daily, temp, t_Tmin, n_out, ts):
 def longwave(air_temp, vapor_pressure, tskc):
     """ Calculate longwave """
     emissivity_calc = {
-            'DEFAULT'    : lambda x : x,
-            'TVA'        : lambda x : 0.74 + 0.0049 * x,
-            'ANDERSON'   : lambda x : 0.68 + 0.036 * np.power(x, 0.5),
-            'BRUTSAERT'  : lambda x : 1.24 * np.power(x/air_temp, 0.14285714),
-            'SATTERLUND' : lambda x : 1.08 * (1 - np.exp(-1 * np.power(x, (air_temp/2016)))),
-            'IDSO'       : lambda x : 0.7 + 5.95e-5 * x * np.exp(1500/air_temp),
-            'PRATA'      : lambda x : (1 - (1 + (46.5*x/air_temp)) *
-                np.exp(-np.sqrt((1.2 + 3. * (46.5*x/air_temp)))))
-            }
+        'DEFAULT'    : lambda x : x,
+        'TVA'        : lambda x : 0.74 + 0.0049 * x,
+        'ANDERSON'   : lambda x : 0.68 + 0.036 * np.power(x, 0.5),
+        'BRUTSAERT'  : lambda x : 1.24 * np.power(x/air_temp, 0.14285714),
+        'SATTERLUND' : lambda x : 1.08 * (
+            1 - np.exp(-1 * np.power(x, (air_temp/2016)))),
+        'IDSO'       : lambda x : 0.7 + 5.95e-5 * x * np.exp(1500/air_temp),
+        'PRATA'      : lambda x : (1 - (1 + (46.5*x/air_temp)) *
+            np.exp(-np.sqrt((1.2 + 3. * (46.5*x/air_temp)))))
+        }
     cloud_calc = {
-            'DEFAULT' : lambda x : (1.0 + (0.17 * tskc**2)) * x,
-            'CLOUD_DEARDORFF' : lambda x : tskc + (1-tskc)*x
-            }
+        'DEFAULT' : lambda x : (1.0 + (0.17 * tskc**2)) * x,
+        'CLOUD_DEARDORFF' : lambda x : tskc + (1-tskc)*x
+        }
     # Reindex and fill cloud cover, then convert temps to K
     tskc = tskc.reindex(air_temp.index)
     tskc = tskc.fillna(method='ffill')
-    air_temp = air_temp + conf.KELVIN 
+    air_temp = air_temp + cnst.KELVIN 
     vapor_pressure = vapor_pressure * 10
 
     # Calculate longwave radiation based on the options 
-    emissivity_clear = emissivity_calc[conf.LW_TYPE.upper()](vapor_pressure)
-    emissivity = cloud_calc[conf.LW_CLOUD.upper()](emissivity_clear) 
-    lwrad = emissivity * conf.STEFAN_B * np.power(air_temp, 4)
+    emissivity_clear = emissivity_calc[cnst.LW_TYPE.upper()](vapor_pressure)
+    emissivity = cloud_calc[cnst.LW_CLOUD.upper()](emissivity_clear) 
+    lwrad = emissivity * cnst.STEFAN_B * np.power(air_temp, 4)
     return lwrad, tskc
 
 
@@ -157,17 +158,19 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
     """
     TODO
     """
-    tiny_step_per_hour = conf.SEC_PER_HOUR / conf.SRADDT
-    tmp_rad = sw_rad * daylength / conf.SEC_PER_HOUR 
+    tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SRADDT
+    tmp_rad = sw_rad * daylength / cnst.SEC_PER_HOUR 
     n_days = len(tmp_rad)
-    ts_per_day = conf.HOURS_PER_DAY * (conf.MIN_PER_HOUR/int(params['time_step']))
+    ts_per_day = cnst.HOURS_PER_DAY * (cnst.MIN_PER_HOUR/int(params['time_step']))
     disaggrad = np.zeros(int(n_days*ts_per_day) + 1)
-    tiny_offset = (params.get("theta_l", 0) - params.get("theta_s", 0) / (conf.HOURS_PER_DAY/360))
+    tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0) 
+                   / (cnst.HOURS_PER_DAY/360)))
     
     # Tinystep represents a daily set of values - but is constant across days
-    tinystep= np.arange(conf.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
-    tinystep[np.array(tinystep<0)] += conf.HOURS_PER_DAY * tiny_step_per_hour
-    tinystep[np.array(tinystep>(24*tiny_step_per_hour-1))] -= conf.HOURS_PER_DAY * tiny_step_per_hour
+    tinystep= np.arange(cnst.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
+    tinystep[np.array(tinystep<0)] += cnst.HOURS_PER_DAY * tiny_step_per_hour
+    tinystep[np.array(tinystep>(24*tiny_step_per_hour-1))] -= (
+            cnst.HOURS_PER_DAY * tiny_step_per_hour)
 
     # Chunk sum takes in the distribution of radiation throughout the day
     # and collapses it into chunks that correspond to the desired timestep

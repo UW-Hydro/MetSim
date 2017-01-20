@@ -82,8 +82,6 @@ class MetSim(object):
                     out_dict[i][j] = method.run(
                                 met_data.isel(lat=[i], lon=[j])
                                 .to_dataframe(), MetSim.params, disagg=True)
-                    # TODO: Remove this
-                    print(i,j) 
             # Write out
             self.write(out_dict)
 
@@ -142,9 +140,9 @@ class MetSim(object):
         for lat in lats:
             lons = data[lat].keys()
             for lon in lons:
-                print(lat, lon)
                 for varname in MetSim.params.get('out_vars', []):
-                    self.output.variables[varname][:, lat, lon] = data[lat][lon][varname].values
+                    self.output.variables[varname][:, lat, lon] = (
+                            data[lat][lon][varname].values)
 
 
     def write_ascii(self, data: dict):

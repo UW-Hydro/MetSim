@@ -20,7 +20,7 @@ physics
 
 import numpy as np
 from numba import jit
-import metsim.configuration as conf
+import metsim.constants as cnst
 
 def calc_pet(rad, ta, pa, dayl, dt=0.2):
     '''
@@ -65,7 +65,7 @@ def calc_pet(rad, ta, pa, dayl, dt=0.2):
     # where:
     # cp       (J/kg K)   specific heat of air
     # epsilon  (unitless) ratio of molecular weights of water and air
-    gamma = conf.CP * pa / (lhvap * conf.EPS)
+    gamma = cnst.CP * pa / (lhvap * cnst.EPS)
 
     # estimate the slope of the saturation vapor pressure curve at ta
     # temperature offsets for slope estimate
@@ -110,9 +110,9 @@ def atm_pres(elev):
       Edition. D. Reidel Publishing Company, Dordrecht, The Netherlands.
       (p. 168)
     '''
-    t1 = 1.0 - (conf.LR_STD * elev) / conf.T_STD
-    t2 = conf.G_STD / (conf.LR_STD * (conf.R/conf.MA))
-    return conf.P_STD * np.power(t1, t2)
+    t1 = 1.0 - (cnst.LR_STD * elev) / cnst.T_STD
+    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R/cnst.MA))
+    return cnst.P_STD * np.power(t1, t2)
 
 
 @jit
@@ -173,28 +173,28 @@ def solar_geom(elev, lat):
     OPTAM = [2.90,  3.05,  3.21,  3.39,  3.69,  3.82,  4.07, 
              4.37,  4.72,  5.12,  5.60,  6.18,  6.88,  7.77, 
              8.90, 10.39, 12.44, 15.36, 19.79, 26.96, 30.00]
-    dayperyear = int(np.ceil(conf.DAYS_PER_YEAR))
+    dayperyear = int(np.ceil(cnst.DAYS_PER_YEAR))
     tt_max0   = np.zeros(dayperyear)
     daylength = np.zeros(dayperyear)
     flat_potrad    = np.zeros(dayperyear) 
-    t1 = 1.0 - (conf.LR_STD * elev)/conf.T_STD
-    t2 = conf.G_STD / (conf.LR_STD * (conf.R /conf.MA))
-    trans = np.power(conf.TBASE, np.power(t1, t2))
+    t1 = 1.0 - (cnst.LR_STD * elev)/cnst.T_STD
+    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R /cnst.MA))
+    trans = np.power(cnst.TBASE, np.power(t1, t2))
    
     # Translate lat to rad
-    lat    = np.minimum(np.maximum(lat * conf.RADPERDEG, -np.pi/2.), np.pi/2.0)
+    lat    = np.minimum(np.maximum(lat * cnst.RADPERDEG, -np.pi/2.), np.pi/2.0)
     coslat = np.cos(lat)
     sinlat = np.sin(lat)
 
     # Sub-daily time step and angular step
-    dt = conf.SRADDT  
-    dh = dt / conf.SECPERRAD 
+    dt = cnst.SRADDT  
+    dh = dt / cnst.SECPERRAD 
 
-    tiny_step_per_day = int(conf.SEC_PER_DAY / conf.SRADDT)
+    tiny_step_per_day = int(cnst.SEC_PER_DAY / cnst.SRADDT)
     tiny_rad_fract = np.zeros((dayperyear, tiny_step_per_day))
     for i in range(dayperyear-1):
         # Declination and quantities of interest
-        decl = conf.MINDECL * np.cos((i + conf.DAYSOFF) * conf.RADPERDAY)
+        decl = cnst.MINDECL * np.cos((i + cnst.DAYSOFF) * cnst.RADPERDAY)
         cosdecl = np.cos(decl)
         sindecl = np.sin(decl)
        
@@ -203,8 +203,8 @@ def solar_geom(elev, lat):
         sinegeom = sinlat * sindecl
         coshss = min(max(-sinegeom / cosegeom, -1), 1)
         hss = np.arccos(coshss)  
-        daylength[i] = min(2.0 * hss * conf.SECPERRAD, conf.SEC_PER_DAY)
-        dir_beam_topa = (1368.0+45.5*np.sin((2.0*np.pi*i/conf.DAYS_PER_YEAR)+1.7))*dt
+        daylength[i] = min(2.0 * hss * cnst.SECPERRAD, cnst.SEC_PER_DAY)
+        dir_beam_topa = (1368.0+45.5*np.sin((2.0*np.pi*i/cnst.DAYS_PER_YEAR)+1.7))*dt
         sum_trans = 0
         sum_flat_potrad= 0
         # Set up angular calculations 
@@ -215,7 +215,7 @@ def solar_geom(elev, lat):
                 dir_flat_topa = dir_beam_topa * cza
                 am = 1.0 / (cza + 0.0000001)
                 if (am > 2.9):
-                    ami = min(max(int(np.arccos(cza)/conf.RADPERDEG) - 69, 0), 20)
+                    ami = min(max(int(np.arccos(cza)/cnst.RADPERDEG) - 69, 0), 20)
                     am = OPTAM[ami]
                 sum_trans += (np.power(trans, am) * dir_flat_topa)
                 sum_flat_potrad += dir_flat_topa
@@ -223,7 +223,7 @@ def solar_geom(elev, lat):
                 dir_flat_topa = 0 
             
             tinystep = int(min(
-                               max((12*conf.SEC_PER_HOUR+h*conf.SECPERRAD)/dt,0), 
+                               max((12*cnst.SEC_PER_HOUR+h*cnst.SECPERRAD)/dt,0), 
                                tiny_step_per_day-1))
             tiny_rad_fract[i][tinystep] = dir_flat_topa
             
