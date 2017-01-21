@@ -167,7 +167,7 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
                    / (cnst.HOURS_PER_DAY/360)))
     
     # Tinystep represents a daily set of values - but is constant across days
-    tinystep= np.arange(cnst.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
+    tinystep = np.arange(cnst.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
     tinystep[np.array(tinystep<0)] += cnst.HOURS_PER_DAY * tiny_step_per_hour
     tinystep[np.array(tinystep>(24*tiny_step_per_hour-1))] -= (
             cnst.HOURS_PER_DAY * tiny_step_per_hour)
