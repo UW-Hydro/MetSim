@@ -111,7 +111,7 @@ def vapor_pressure(hum_daily, temp, t_Tmin, n_out, ts):
     """Calculate vapor pressure"""
     # Scale down to milibar
     vp_daily = hum_daily / 1000
-    # Linearly interpoolate the values
+    # Linearly interpolate the values
     try:
         interp = scipy.interpolate.interp1d(t_Tmin, vp_daily, fill_value='extrapolate')
         vp_disagg = interp(ts * np.arange(0, n_out))
