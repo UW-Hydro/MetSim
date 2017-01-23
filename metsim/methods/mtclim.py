@@ -101,7 +101,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
         parray = eff_ann_precip
     else:
         # Calculate effective annual precip using 3 month moving window
-        window = np.zeros(params['n_days'] + 90)
+        window = pd.Series(np.zeros(params['n_days'] + 90))
         window[90:] = df['precip']
         
         # If yeardays at end match with those at beginning we can use
@@ -113,9 +113,9 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
         else:
             window[:90] = df['precip'][:90]
 
-        parray = np.array(pd.Series(window)
-                            .rolling(window=90, win_type=win_type,axis=0)
-                            .mean())[90:] * cnst.DAYS_PER_YEAR 
+        parray = (window.rolling(window=90, win_type=win_type, axis=0) 
+                    .mean()[90:] * cnst.DAYS_PER_YEAR)
+
     # Convert to mm 
     parray = np.maximum(parray, 80.0) / 10
 
@@ -123,7 +123,6 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     tdew = df.get('tdew', df['t_min'])
     pva = df.get('hum', svp(tdew))
     pa = atm_pres(df['elev'][0])
-    #pa = atm_pres(5688)
     yday = df['day_of_year'] - 1 
     df['dayl'] = sg['daylength'][yday]
  

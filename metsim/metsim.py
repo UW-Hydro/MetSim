@@ -14,20 +14,20 @@ from metsim.methods import mtclim
 class MetSim(object):
     """
     MetSim handles the distribution of jobs that write to a common file
-    by launching muliple processes and queueing up their writeback so that 
+    by launching muliple processes and queueing up their writeback so that
     work can be done while IO is happening.
     """
 
     # Class variables
     methods = {'mtclim': mtclim}
     params = {
-        "method":'mtclim',
+        "method":'',
         "domain":'',
-        "out_dir":'./results/',
+        "out_dir":'',
         "start":'',
         "stop":'',
         "time_step":'',
-        "out_format":'netcdf',
+        "out_format":'',
         "site_elev": 0.,
         "base_elev": 0.,
         "t_max_lr": 0.0065,
@@ -38,19 +38,21 @@ class MetSim(object):
         "site_slope": 0.,
         "site_aspect": 0.,
         "site_east_horiz": 0.,
-        "site_west_horiz": 0.
-    }   
+        "site_west_horiz": 0.,
+        "out_vars" : ['temp', 'precip', 'shortwave', 'longwave',
+                      'wind', 'vapor_pressure', 'rel_humid']
+    }
 
 
     def __init__(self, params:dict):
         """
         Constructor
         """
-        # Record parameters 
+        # Record parameters
         self.update(params)
 
-        # Get the necessary information from the domain 
-        domain = Dataset(MetSim.params.get('domain', None), 'r')
+        # Get the necessary information from the domain
+        domain = Dataset(MetSim.params['domain'], 'r')
         self.elev = np.array(domain['elev'])
         self.lats = np.array(domain['lat'])
         self.lons = np.array(domain['lon'])
@@ -68,68 +70,72 @@ class MetSim(object):
         # Where we will store the results for writing out
         out_dict = {}
         method = MetSim.methods[MetSim.params.get('method', 'mtclim')]
-           
+
         # Coerce the forcings into a list if it's not one
         if type(forcings) is not list:
             forcings = [forcings]
-           
+
         # Do the forcing generation and dissaggregation if required
         for forcing in forcings:
             met_data = self.read(forcing)
             for i in range(len(met_data.lat)):
                 out_dict[i] = {}
                 for j in range(len(met_data.lon)):
-                    out_dict[i][j] = method.run(
-                                met_data.isel(lat=[i], lon=[j])
-                                .to_dataframe(), MetSim.params, disagg=True)
+                    out_dict[i][j] = method.run(met_data.isel(lat=[i], lon=[j])
+                                                .to_dataframe(), MetSim.params,
+                                                disagg=True)
             # Write out
             self.write(out_dict)
 
         if MetSim.params.get('out_format', 'netcdf') == 'netcdf':
             self.output.close()
-           
+
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
         lat_idx = np.abs(self.lats - lat).argmin()
-        lon_idx = np.abs(self.lons - lon).argmin()            
+        lon_idx = np.abs(self.lons - lon).argmin()
         return self.elev[lat_idx, lon_idx]
 
-    
+
     def update(self, new_params):
         """Updates the global parameters dictionary"""
         MetSim.params.update(new_params)
-  
+
 
     def write(self, data: dict):
         """
-        Dispatch to the right function based on the configuration given 
+        Dispatch to the right function based on the configuration given
         """
         dispatch = {
                 'netcdf' : self.write_netcdf,
                 'ascii'  : self.write_ascii
                 }
         dispatch[MetSim.params.get('out_format', 'netcdf').lower()](data)
-         
+
 
     def init_netcdf(self):
         """Initialize the output file"""
         print("Initializing netcdf...")
-        out_file = os.path.join(MetSim.params.get('out_dir', './results/'), "forcing.nc")
+        out_dir = MetSim.params.get('out_dir', './results/')
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+
+        out_file = os.path.join(out_dir, "forcing.nc")
         self.output = Dataset(out_file, 'w')
 
-        # Number of timesteps 
-        n_ts = len(pd.date_range(MetSim.params['start'], 
-                MetSim.params['stop'] + pd.Timedelta('1 days'), 
-                freq=MetSim.params['time_step']+'T'))
-        
+        # Number of timesteps
+        n_ts = len(pd.date_range(MetSim.params['start'],
+                   MetSim.params['stop'] + pd.Timedelta('1 days'),
+                   freq="{}T".format(MetSim.params['time_step'])))
+
         # Create dimensions
         self.output.createDimension('lat', len(self.lats))
         self.output.createDimension('lon', len(self.lons))
-        self.output.createDimension('time', n_ts) 
+        self.output.createDimension('time', n_ts)
 
         # Create output variables
-        for varname in MetSim.params.get('out_vars', []):
+        for varname in MetSim.params['out_vars']:
             self.output.createVariable(varname, 'd', ('time', 'lat','lon'))
 
 
@@ -140,7 +146,7 @@ class MetSim(object):
         for lat in lats:
             lons = data[lat].keys()
             for lon in lons:
-                for varname in MetSim.params.get('out_vars', []):
+                for varname in MetSim.params['out_vars']:
                     self.output.variables[varname][:, lat, lon] = (
                             data[lat][lon][varname].values)
 
@@ -153,9 +159,8 @@ class MetSim(object):
         for lat in lats:
             lons = data[lat].keys()
             for lon in lons:
-                print(lat, lon)
                 data[lat][lon].to_csv('_'.join([out_base, str(lat), str(lon)]), sep='\t')
-        
+
 
     def read_binary(self, fpath: str) -> xr.Dataset:
         """ Reads a binary forcing file (VIC 4 format) """
@@ -165,11 +170,11 @@ class MetSim(object):
         t_max  = [] # Short int
         t_min  = [] # Short int
         wind   = [] # Short int
-        
+
         # Pack these for nicer syntax in the loop
         var_name = [precip, t_max, t_min, wind]
         scale = [40.0, 100.0, 100.0, 100.0]
- 
+
         # Data types referred to: 'H' - unsigned short ; 'h' - short
         types = ['H', 'h', 'h', 'h']
         with open(fpath, 'rb') as f:
@@ -185,18 +190,18 @@ class MetSim(object):
                     points_read += 1
                 else:
                     break
-        
+
         # Binary forcing files have naming format $NAME_$LAT_$LON
         param_list = os.path.basename(fpath).split("_")
-        params = {"name"   : param_list[0], 
-                  "lat"    : float(param_list[1]), 
+        params = {"name"   : param_list[0],
+                  "lat"    : float(param_list[1]),
                   "lon"    : float(param_list[2]),
                   "n_days" : int(n_days)}
         MetSim.params.update(params)
         params['elev'] = [[self.find_elevation(params['lat'], params['lon'])]]
-        df = xr.Dataset({"precip"      : (['time'], precip), 
-                         "t_min"       : (['time'], t_min), 
-                         "t_max"       : (['time'], t_max), 
+        df = xr.Dataset({"precip"      : (['time'], precip),
+                         "t_min"       : (['time'], t_min),
+                         "t_max"       : (['time'], t_max),
                          "wind"        : (['time'], wind),
                          "elev"        : (['lon', 'lat'], params['elev']),
                          "day_of_year" : (['time'], dates.dayofyear)},
@@ -209,7 +214,7 @@ class MetSim(object):
 
     def read_netcdf(self, fpath:str) -> xr.Dataset:
         """
-        Read in a NetCDF file and add elevation information 
+        Read in a NetCDF file and add elevation information
         """
         # TODO: FIXME: Finish this
         dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
@@ -232,18 +237,18 @@ class MetSim(object):
         #in_lats, in_lons = np.meshgrid(self.lats, self.lons)
         #out_lats, out_lons = np.meshgrid(ds.lat, ds.lon)
         #self.elev = basemap.interp(self.elev, self.lats, self.lons, out_lats, out_lons, order=1)
-        return ds 
-    
-    
+        return ds
+
+
     def read(self, fpath:str) -> xr.Dataset:
         """
-        Dispatch to the right function based on the file extension 
+        Dispatch to the right function based on the file extension
         """
         ext_to_fun = {
                 '.bin'   : self.read_binary,
                 '.nc'    : self.read_netcdf,
                 '.nc4'   : self.read_netcdf
                 }
-        return ext_to_fun.get(os.path.splitext(fpath)[-1], self.read_binary)(fpath) 
-    
+        return ext_to_fun.get(os.path.splitext(fpath)[-1], self.read_binary)(fpath)
+
 
