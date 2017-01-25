@@ -144,8 +144,7 @@ class MetSim(object):
         print("Writing netcdf...")
         lats = data.keys()
         for lat in lats:
-            lons = data[lat].keys()
-            for lon in lons:
+            for lon in data[lat].keys():
                 for varname in MetSim.params['out_vars']:
                     self.output.variables[varname][:, lat, lon] = (
                             data[lat][lon][varname].values)
@@ -154,12 +153,14 @@ class MetSim(object):
     def write_ascii(self, data: dict):
         """Write out as ASCII to the output file"""
         print("Writing ascii...")
-        out_base = os.path.join(MetSim.params['out_dir'], "forcing")
+        out_dir = MetSim.params.get('out_dir', './results/')
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
         lats = data.keys()
         for lat in lats:
-            lons = data[lat].keys()
-            for lon in lons:
-                data[lat][lon].to_csv('_'.join([out_base, str(lat), str(lon)]), sep='\t')
+            for lon in data[lat].keys():
+                out_file = '_'.join(["forcing", str(lat), str(lon)])
+                data[lat][lon].to_csv(os.path.join(out_dir, out_file), sep='\t')
 
 
     def read_binary(self, fpath: str) -> xr.Dataset:
