@@ -27,6 +27,10 @@ SEC_PER_HOUR  = 3600
 STEFAN_B = 5.669e-8     # (W m^-22 K^-4) Stefan Boltzmann constant 
 TDAYCOEF= 0.45          # (dim) daylight air temperature coefficient
 
+BAR_TO_MBAR = 1./1000
+CM_TO_MM = 1./10
+
+
 # parameters for the snowpack algorithm
 SNOW_TCRIT= -6.0   # (deg C) critical temperature for snowmelt
 SNOW_TRATE= 0.042  # (cm/degC/day) snowmelt rate

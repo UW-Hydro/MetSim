@@ -20,6 +20,9 @@ def run(forcing: pd.DataFrame, params: dict, disagg=True):
     """   
     lat_idx = forcing.index.names.index('lat')
     time_idx = forcing.index.names.index('time')
+
+    # solar_geom returns a tuple due to restrictions of numba
+    # for clarity we convert it to a dataframe here
     sg = solar_geom(forcing['elev'][0], forcing.index.levels[lat_idx][0])
     sg = {'tiny_rad_fract' : sg[0],
           'daylength' : sg[1],
@@ -46,7 +49,7 @@ def calc_t_air(df: pd.DataFrame, params: dict):
     dZ = (df['elev'][0] - params['base_elev'])/1000.
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
     t_max = df['t_max'] + dZ * lapse_rates[1]
-    t_min = np.minimum(df['t_min'] + dZ * lapse_rates[0], t_max-0.5)
+    t_min = df['t_min'].where(df['t_min'] + dZ * lapse_rates[0] < t_max-0.5, t_max-0.5)
     t_mean = (t_min + t_max)/2
     df['t_day'] = ((t_max - t_mean) * cnst.TDAYCOEF) + t_mean
 
@@ -58,9 +61,9 @@ def calc_precip(df: pd.DataFrame, params: dict):
 
 def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
     """Calculate snowpack as swe."""
-    swe = np.ones(params['n_days']) * snowpack
-    accum = np.array(df['t_min'] <= cnst.SNOW_TCRIT)
-    melt = np.array(df['t_min'] >  cnst.SNOW_TCRIT)
+    swe = pd.Series(snowpack, index=df.index)
+    accum = (df['t_min'] <= cnst.SNOW_TCRIT)
+    melt = (df['t_min'] >  cnst.SNOW_TCRIT)
     swe[accum] += df['precip'][accum]
     swe[melt] -= cnst.SNOW_TRATE * (df['t_min'][melt] - cnst.SNOW_TCRIT)
     df['swe'] = np.maximum(np.cumsum(swe), 0.0) 
@@ -117,8 +120,9 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
                     .mean()[90:] * cnst.DAYS_PER_YEAR)
 
     # Convert to mm 
-    parray = np.maximum(parray, 80.0) / 10
-
+    parray = parray.where(parray>80.0, 80.0) * cnst.CM_TO_MM
+    # Doing this way because parray.reindex_like(df) returns all nan
+    parray.index = df.index 
     df['tfmax'] = _calc_tfmax(df['precip'], dtr, sm_dtr) 
     tdew = df.get('tdew', df['t_min'])
     pva = df.get('hum', svp(tdew))

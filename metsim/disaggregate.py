@@ -29,7 +29,7 @@ def disaggregate(df_daily, params, solar_geom):
 
     t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'], n_days, ts)
     df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts)
-
+    
     df_disagg['vapor_pressure'] = vapor_pressure(df_daily['vapor_pressure'],
                                                  df_disagg['temp'],
                                                  t_Tmin, n_disagg, ts)
@@ -99,19 +99,20 @@ def relative_humidity(vapor_pressure, temp):
     """
     TODO
     """
-    return 100. * np.minimum(vapor_pressure*1000/svp(temp), 1.0)
+    rh = 100 * (vapor_pressure / cnst.BAR_TO_MBAR) / svp(temp)
+    return rh.where(rh < 100, 100.0) 
 
 
 def vapor_pressure(hum_daily, temp, t_Tmin, n_out, ts):
     """Calculate vapor pressure"""
     # Scale down to milibar
-    vp_daily = hum_daily / 1000
+    vp_daily = hum_daily * cnst.BAR_TO_MBAR 
     # Linearly interpolate the values
     interp = scipy.interpolate.interp1d(t_Tmin, vp_daily, fill_value='extrapolate')
     vp_disagg = interp(ts * np.arange(0, n_out))
 
      # Account for situations where vapor pressure is higher than saturation point
-    vp_sat = np.array(svp(temp) / 1000)
+    vp_sat = svp(temp) * cnst.BAR_TO_MBAR
     vp_disagg = np.where(vp_sat < vp_disagg, vp_sat, vp_disagg)
     return vp_disagg
 
