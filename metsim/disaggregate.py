@@ -99,20 +99,20 @@ def relative_humidity(vapor_pressure, temp):
     """
     TODO
     """
-    rh = 100 * (vapor_pressure / cnst.BAR_TO_MBAR) / svp(temp)
-    return rh.where(rh < 100, 100.0) 
+    rh = 100 * (vapor_pressure / cnst.MBAR_PER_BAR) / svp(temp)
+    return rh.where(rh < cnst.MAX_PERCENT, cnst.MAX_PERCENT) 
 
 
 def vapor_pressure(hum_daily, temp, t_Tmin, n_out, ts):
     """Calculate vapor pressure"""
     # Scale down to milibar
-    vp_daily = hum_daily * cnst.BAR_TO_MBAR 
+    vp_daily = hum_daily * cnst.MBAR_PER_BAR 
     # Linearly interpolate the values
     interp = scipy.interpolate.interp1d(t_Tmin, vp_daily, fill_value='extrapolate')
     vp_disagg = interp(ts * np.arange(0, n_out))
 
      # Account for situations where vapor pressure is higher than saturation point
-    vp_sat = svp(temp) * cnst.BAR_TO_MBAR
+    vp_sat = svp(temp) * cnst.MBAR_PER_BAR
     vp_disagg = np.where(vp_sat < vp_disagg, vp_sat, vp_disagg)
     return vp_disagg
 
@@ -157,12 +157,12 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
     ts_per_day = cnst.HOURS_PER_DAY * (cnst.MIN_PER_HOUR/int(params['time_step']))
     disaggrad = np.zeros(int(n_days*ts_per_day) + 1)
     tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0)
-                   / (cnst.HOURS_PER_DAY/360)))
+                   / (cnst.HOURS_PER_DAY/cnst.DEG_PER_REV)))
 
     # Tinystep represents a daily set of values - but is constant across days
     tinystep = np.arange(cnst.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
     tinystep[np.array(tinystep<0)] += cnst.HOURS_PER_DAY * tiny_step_per_hour
-    tinystep[np.array(tinystep>(24*tiny_step_per_hour-1))] -= (
+    tinystep[np.array(tinystep>(cnst.HOURS_PER_DAY*tiny_step_per_hour-1))] -= (
             cnst.HOURS_PER_DAY * tiny_step_per_hour)
 
     # Chunk sum takes in the distribution of radiation throughout the day
