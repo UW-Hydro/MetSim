@@ -29,7 +29,7 @@ def init(opts):
     config = config['MetSim']
     out_dir = config['out_dir']
     method = config['method']
-
+    
     # If the forcing variable is a directory, scan it for files
     if os.path.isdir(config['forcing']):
         forcing_files = [os.path.join(config['forcing'],fn) for fn in
@@ -54,6 +54,7 @@ def init(opts):
     to_list = lambda s : json.loads(s.replace("'", '"'))
     setup = {"stop"       : stop,
              "start"      : start,
+             "nprocs"     : opts.n_processes,
              "method"     : method,
              "out_dir"    : out_dir,
              "domain"     : domain_file,

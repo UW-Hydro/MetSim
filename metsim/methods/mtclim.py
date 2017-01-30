@@ -101,7 +101,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
         sum_precip = df['precip'].values.sum()
         eff_ann_precip = (sum_precip / params['n_days']) * cnst.DAYS_PER_YEAR
         eff_ann_precip = np.maximum(eff_ann_precip, 8.0)
-        parray = eff_ann_precip
+        parray = pd.Series(eff_ann_precip, index=df.index)
     else:
         # Calculate effective annual precip using 3 month moving window
         window = pd.Series(np.zeros(params['n_days'] + 90))
