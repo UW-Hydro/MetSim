@@ -46,7 +46,7 @@ def calc_t_air(df: pd.DataFrame, params: dict):
     Adjust temperatures according to lapse rates 
     and calculate t_day
     """
-    dZ = (df['elev'][0] - params['base_elev'])/1000.
+    dZ = (df['elev'][0] - params['base_elev'])/cnst.M_PER_KM
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
     t_max = df['t_max'] + dZ * lapse_rates[1]
     t_min = df['t_min'].where(df['t_min'] + dZ * lapse_rates[0] < t_max-0.5, t_max-0.5)
@@ -120,7 +120,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
                     .mean()[90:] * cnst.DAYS_PER_YEAR)
 
     # Convert to mm 
-    parray = parray.where(parray>80.0, 80.0) * cnst.CM_TO_MM
+    parray = parray.where(parray>80.0, 80.0) / cnst.MM_PER_CM
     # Doing this way because parray.reindex_like(df) returns all nan
     parray.index = df.index 
     df['tfmax'] = _calc_tfmax(df['precip'], dtr, sm_dtr) 
@@ -134,7 +134,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     # it converges sufficiently 
     tdew_old = tdew
     tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr)
-    while(np.sqrt(np.mean((tdew-tdew_old)**2)) > 1e-3):
+    while(np.sqrt(np.mean((tdew-tdew_old)**2)) > cnst.TDEW_TOL):
         tdew_old = np.copy(tdew)
         tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr)
     df['vapor_pressure'] = pva 
