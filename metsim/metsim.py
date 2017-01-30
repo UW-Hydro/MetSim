@@ -3,13 +3,24 @@ Handles the synchronization of multiple processes for MetSim
 """
 
 import os
+import time
 import struct
 import numpy as np
 import pandas as pd
 import xarray as xr
 from netCDF4 import Dataset
+from multiprocessing import Process, Value
 
 from metsim.methods import mtclim
+
+def sync_io(io_func):
+    """Decorator to hold a lock on writeout"""
+    def wrapper(*args):
+        while MetSim.writable.value == 0:
+            time.sleep(0.05)
+        return io_func(*args)
+    return wrapper
+
 
 class MetSim(object):
     """
@@ -19,6 +30,8 @@ class MetSim(object):
     """
 
     # Class variables
+    writable = Value('b', True, lock=False)
+    process_handles = []
     methods = {'mtclim': mtclim}
     params = {
         "method":'',
@@ -57,13 +70,20 @@ class MetSim(object):
         self.lats = np.array(domain['lat'])
         self.lons = np.array(domain['lon'])
         domain.close()
+    
+    def run(self, job_list):
+        """Farm out the jobs to separate processes"""
+        jobs = np.array_split(np.array(job_list), MetSim.params['nprocs'])
+        process_handles = [Process(target=self._run, args=([job])) 
+                           for job in jobs]
+        for p in process_handles:
+            p.start()
+        for p in process_handles:
+            p.join()
 
-        # If we are outputting netcdf, intiialize the file
-        if MetSim.params.get('out_format', 'netcdf') == 'netcdf':
-            self.init_netcdf()
 
 
-    def run(self, forcings):
+    def _run(self, forcings):
         """
         Kicks off the disaggregation and queues up data for IO
         """
@@ -71,22 +91,19 @@ class MetSim(object):
         out_dict = {}
         method = MetSim.methods[MetSim.params.get('method', 'mtclim')]
 
-        # Coerce the forcings into a list if it's not one
-        if type(forcings) is not list:
-            forcings = [forcings]
-
         # Do the forcing generation and dissaggregation if required
         for forcing in forcings:
             met_data = self.read(forcing)
-            for i in range(len(met_data.lat)):
-                out_dict[i] = {}
-                for j in range(len(met_data.lon)):
-                    out_dict[i][j] = method.run(met_data.isel(lat=[i], lon=[j])
-                                                .to_dataframe(), MetSim.params,
-                                                disagg=True)
-            # Write out
-            self.write(out_dict)
-
+            for i, lat in enumerate(sorted(met_data.lat.values)):
+                out_dict[str(lat)] = out_dict.get(str(lat), {}) 
+                for j, lon in enumerate(sorted(met_data.lon.values)):
+                    print("Processing {} {}".format(lat, lon))
+                    out_dict[str(lat)][str(lon)] = (
+                        method.run(met_data.isel(lat=[i], lon=[j])
+                                   .to_dataframe(), MetSim.params,
+                                   disagg=True))
+        # Write out
+        self.write(out_dict)
         if MetSim.params.get('out_format', 'netcdf') == 'netcdf':
             self.output.close()
 
@@ -102,7 +119,8 @@ class MetSim(object):
         """Updates the global parameters dictionary"""
         MetSim.params.update(new_params)
 
-
+    
+    @sync_io
     def write(self, data: dict):
         """
         Dispatch to the right function based on the configuration given
@@ -111,7 +129,9 @@ class MetSim(object):
                 'netcdf' : self.write_netcdf,
                 'ascii'  : self.write_ascii
                 }
+        MetSim.writable.value = False
         dispatch[MetSim.params.get('out_format', 'netcdf').lower()](data)
+        MetSim.writable.value = True
 
 
     def init_netcdf(self):
@@ -145,6 +165,7 @@ class MetSim(object):
         lats = data.keys()
         for lat in lats:
             for lon in data[lat].keys():
+                print(lat, lon)
                 for varname in MetSim.params['out_vars']:
                     self.output.variables[varname][:, lat, lon] = (
                             data[lat][lon][varname].values)
