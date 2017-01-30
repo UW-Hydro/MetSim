@@ -2,6 +2,7 @@
 Stores default constants, parameters, and options.  
 """
 
+DEG_PER_REV = 360.0       # Number of degrees in full revolution
 SEC_PER_RAD = 13750.9871  # seconds per radian of hour angle
 RAD_PER_DAY = 0.017214    # radians of Earth orbit per julian day
 RAD_PER_DEG = 0.01745329  # radians per degree
@@ -28,11 +29,12 @@ SEC_PER_HOUR = 3600
 STEFAN_B = 5.669e-8      # (W m^-22 K^-4) Stefan Boltzmann constant 
 TDAY_COEF = 0.45         # (dim) daylight air temperature coefficient
 
-BAR_TO_MBAR = 1./1000
-CM_TO_MM = 1./10
+M_PER_KM = 1000.0
+MBAR_PER_BAR = 1000.0
+MM_PER_CM = 10.0
+MAX_PERCENT = 100.0
 
-
-# parameters for the snowpack algorithm
+# parameters for the snowpack algorithm (from mtclim)
 SNOW_TCRIT = -6.0   # (deg C) critical temperature for snowmelt
 SNOW_TRATE = 0.042  # (cm/degC/day) snowmelt rate
 
@@ -54,4 +56,5 @@ MTCLIM_SWE_CORR = False
 VP_ITER = 'VP_ITER_ALWAYS'
 LW_CLOUD = 'CLOUD_DEARDORFF'
 LW_TYPE = 'PRATA'
+TDEW_TOL = 1e-3
 
