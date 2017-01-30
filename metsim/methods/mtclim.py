@@ -51,7 +51,7 @@ def calc_t_air(df: pd.DataFrame, params: dict):
     t_max = df['t_max'] + dZ * lapse_rates[1]
     t_min = df['t_min'].where(df['t_min'] + dZ * lapse_rates[0] < t_max-0.5, t_max-0.5)
     t_mean = (t_min + t_max)/2
-    df['t_day'] = ((t_max - t_mean) * cnst.TDAYCOEF) + t_mean
+    df['t_day'] = ((t_max - t_mean) * cnst.TDAY_COEF) + t_mean
 
 
 def calc_precip(df: pd.DataFrame, params: dict):
