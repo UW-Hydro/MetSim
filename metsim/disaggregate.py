@@ -151,7 +151,7 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
     """
     TODO
     """
-    tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SRADDT
+    tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SW_RAD_DT
     tmp_rad = sw_rad * daylength / cnst.SEC_PER_HOUR
     n_days = len(tmp_rad)
     ts_per_day = cnst.HOURS_PER_DAY * (cnst.MIN_PER_HOUR/int(params['time_step']))
