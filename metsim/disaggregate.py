@@ -99,20 +99,19 @@ def relative_humidity(vapor_pressure, temp):
     """
     TODO
     """
-    rh = 100 * (vapor_pressure / cnst.MBAR_PER_BAR) / svp(temp)
+    rh = cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure/svp(temp))
     return rh.where(rh < cnst.MAX_PERCENT, cnst.MAX_PERCENT) 
 
 
-def vapor_pressure(hum_daily, temp, t_Tmin, n_out, ts):
+def vapor_pressure(vp_daily, temp, t_Tmin, n_out, ts):
     """Calculate vapor pressure"""
-    # Scale down to millibar
-    vp_daily = hum_daily * cnst.MBAR_PER_BAR 
     # Linearly interpolate the values
-    interp = scipy.interpolate.interp1d(t_Tmin, vp_daily, fill_value='extrapolate')
+    interp = scipy.interpolate.interp1d(t_Tmin, vp_daily/cnst.MBAR_PER_BAR, 
+                                        fill_value='extrapolate')
     vp_disagg = interp(ts * np.arange(0, n_out))
 
-     # Account for situations where vapor pressure is higher than saturation point
-    vp_sat = svp(temp) * cnst.MBAR_PER_BAR
+    # Account for situations where vapor pressure is higher than saturation point
+    vp_sat = svp(temp) / cnst.MBAR_PER_BAR
     vp_disagg = np.where(vp_sat < vp_disagg, vp_sat, vp_disagg)
     return vp_disagg
 
