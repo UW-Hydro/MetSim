@@ -26,7 +26,7 @@ def init(opts):
         exit("Invalid configuration given.  Use `ms -h` for more information.")
     config = ConfigParser()
     config.read(opts.config)
-    config = config['MetSim']
+    config = dict(config['MetSim'])
     out_dir = config['out_dir']
     method = config['method']
     
@@ -52,20 +52,20 @@ def init(opts):
                         int(end_month),
                         int(end_day))
     to_list = lambda s : json.loads(s.replace("'", '"'))
-    setup = {"stop"       : stop,
-             "start"      : start,
-             "nprocs"     : opts.n_processes,
-             "method"     : method,
-             "out_dir"    : out_dir,
-             "domain"     : domain_file,
-             "forcings"   : forcing_files,
-             "in_vars"    : to_list(config.get('in_vars', '[]')),
-             "out_vars"   : to_list(config.get('out_vars', '[]')),
-             "time_step"  : config['time_step'],
-             "out_format" : config['out_format'],
-             "in_format"  : config['in_format']}
-    setup = {k : v for k, v in setup.items() if v != [] and v is not None}
-    return setup
+    
+    config.update({"stop" : stop,
+                   "start" : start,
+                   "nprocs" : opts.n_processes,
+                   "method" : method,
+                   "out_dir" : out_dir,
+                   "domain" : domain_file,
+                   "forcings" : forcing_files})
+    config['in_vars'] = to_list(config.get('in_vars', '[]')) 
+    config['out_vars'] = to_list(config.get('out_vars', '[]')) 
+    config['t_min_lr'] = float(config['t_min_lr'])
+    config['t_max_lr'] = float(config['t_max_lr'])
+    config = {k : v for k, v in config.items() if v != [] and v is not None}
+    return config 
 
 
 def main():
@@ -73,7 +73,7 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    ms.run(setup['forcings'])
+    ms.launch(setup['forcings'])
 
 
 if __name__ == '__main__':

@@ -134,6 +134,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     # it converges sufficiently 
     tdew_old = tdew
     tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr)
+    print(pva)
     while(np.sqrt(np.mean((tdew-tdew_old)**2)) > cnst.TDEW_TOL):
         tdew_old = np.copy(tdew)
         tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr)
