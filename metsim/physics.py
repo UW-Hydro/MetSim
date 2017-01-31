@@ -19,8 +19,8 @@ physics
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
-from metsim.configuration import CONSTS as consts
-from metsim.configuration import PARAMS as params
+from numba import jit
+import metsim.constants as cnst
 
 def calc_pet(rad, ta, pa, dayl, dt=0.2):
     '''
@@ -65,7 +65,7 @@ def calc_pet(rad, ta, pa, dayl, dt=0.2):
     # where:
     # cp       (J/kg K)   specific heat of air
     # epsilon  (unitless) ratio of molecular weights of water and air
-    gamma = consts['CP'] * pa / (lhvap * consts['EPS'])
+    gamma = cnst.CP * pa / (lhvap * cnst.EPS)
 
     # estimate the slope of the saturation vapor pressure curve at ta
     # temperature offsets for slope estimate
@@ -110,11 +110,12 @@ def atm_pres(elev):
       Edition. D. Reidel Publishing Company, Dordrecht, The Netherlands.
       (p. 168)
     '''
-    t1 = 1.0 - (consts['LR_STD'] * elev) / consts['T_STD']
-    t2 = consts['G_STD'] / (consts['LR_STD'] * (consts['R']/consts['MA']))
-    return consts['P_STD'] * np.power(t1, t2)
+    t1 = 1.0 - (cnst.LR_STD * elev) / cnst.T_STD
+    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R/cnst.MA))
+    return cnst.P_STD * np.power(t1, t2)
 
 
+@jit
 def svp(temp, a=0.61078, b=17.269, c=237.3):
     '''Compute the saturated vapor pressure.
 
@@ -161,84 +162,85 @@ def svp_slope(temp, a=0.61078, b=17.269, c=237.3):
     return (b * c) / ((c + temp) * (c + temp)) * svp(temp, a=a, b=b, c=c)
 
 
-def solar_geom(elev: float, lat: float) -> dict:
+
+
+@jit(nopython=True, cache=True)
+def solar_geom(elev, lat):
     """
     Flat earth assumption
     """
-    dayperyear = int(np.ceil(consts['DAYS_PER_YEAR']))
+    # optical airmass by degrees
+    OPTAM = [2.90,  3.05,  3.21,  3.39,  3.69,  3.82,  4.07, 
+             4.37,  4.72,  5.12,  5.60,  6.18,  6.88,  7.77, 
+             8.90, 10.39, 12.44, 15.36, 19.79, 26.96, 30.00]
+    dayperyear = int(np.ceil(cnst.DAYS_PER_YEAR))
     tt_max0   = np.zeros(dayperyear)
     daylength = np.zeros(dayperyear)
-    potrad    = np.zeros(dayperyear) 
-    t1 = 1.0 - (consts['LR_STD'] * elev)/consts['T_STD']
-    t2 = consts['G_STD'] / (consts['LR_STD'] * (consts['R'] / consts['MA']))
-    trans = np.power(params['TBASE'], np.power(t1, t2))
+    flat_potrad    = np.zeros(dayperyear) 
+    t1 = 1.0 - (cnst.LR_STD * elev)/cnst.T_STD
+    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R /cnst.MA))
+    trans = np.power(cnst.TBASE, np.power(t1, t2))
    
     # Translate lat to rad
-    lat    = np.clip(lat * consts['RADPERDEG'], -np.pi/2., np.pi/2.0)
+    lat    = np.minimum(np.maximum(lat * cnst.RAD_PER_DEG, -np.pi/2.), np.pi/2.0)
     coslat = np.cos(lat)
     sinlat = np.sin(lat)
 
     # Sub-daily time step and angular step
-    dt     = consts['SRADDT']  
-    dh     = dt / consts['SECPERRAD'] 
+    dt = cnst.SW_RAD_DT  
+    dh = dt / cnst.SEC_PER_RAD 
 
-    tiny_step_per_day = int(consts['SEC_PER_DAY'] / consts['SRADDT'])
-    tiny_rad_fract    = np.zeros(shape=(dayperyear, tiny_step_per_day), dtype=np.float64)
-    for i in range(int(dayperyear-1)):
+    tiny_step_per_day = int(cnst.SEC_PER_DAY / cnst.SW_RAD_DT)
+    tiny_rad_fract = np.zeros((dayperyear, tiny_step_per_day))
+    for i in range(dayperyear-1):
         # Declination and quantities of interest
-        decl = consts['MINDECL'] * np.cos((i + consts['DAYSOFF']) * consts['RADPERDAY'])
+        decl = cnst.MIN_DECL * np.cos((i + cnst.DAYS_OFF) * cnst.RAD_PER_DAY)
         cosdecl = np.cos(decl)
         sindecl = np.sin(decl)
-        cosegeom = coslat * cosdecl
-    
-        sinegeom = sinlat * sindecl
-        coshss = np.clip(-sinegeom / cosegeom, -1, 1)
-        hss = np.arccos(coshss)  
-        daylength[i] = np.minimum(2.0 * hss * consts['SECPERRAD'], consts['SEC_PER_DAY'])
-        dir_beam_topa = (1368.0 + 45.5 * np.sin((2.0 * np.pi * i / 365.25) + 1.7)) * dt
-
-        # Set up angular calculations in vectorized array
-        h = np.arange(-hss, hss, dh)
-        cosh = np.cos(h)
-        cza  = cosegeom * cosh + sinegeom
-        cza_inds = np.array(cza > 0.)
        
-        dir_flat_topa = -1 * np.ones(len(h))
-        dir_flat_topa[cza_inds] = dir_beam_topa * cza[cza_inds]
-        
-        am = np.zeros(len(h))
-        am[cza_inds] = 1.0 / (cza[cza_inds] + 0.0000001)
-        am_inds = np.array(am > 2.9)
-
-        ami = np.zeros(len(am_inds))
-        ami = (np.arccos(cza[am_inds])/consts['RADPERDEG'] - 69).astype(int)
-        if len(ami) != 0:
-            ami = np.clip(ami, 0, 20)
-            am[am_inds] = consts['OPTAM'][ami]
-
-        trans2 = np.power(trans, am)
-        sum_trans = sum(trans2 * dir_flat_topa)
-        sum_flat_potrad = sum(dir_flat_topa)
-        tinystep = np.clip((12*consts['SEC_PER_HOUR']+h*consts['SECPERRAD'])/dt,
-                        0, tiny_step_per_day-1).astype(int)
-        tiny_rad_fract[i][tinystep] = dir_flat_topa
-        
+        # calculate daylength as a function of lat and decl
+        cosegeom = coslat * cosdecl
+        sinegeom = sinlat * sindecl
+        coshss = min(max(-sinegeom / cosegeom, -1), 1)
+        hss = np.arccos(coshss)  
+        daylength[i] = min(2.0 * hss * cnst.SEC_PER_RAD, cnst.SEC_PER_DAY)
+        dir_beam_topa = (1368.0+45.5*np.sin((2.0*np.pi*i/cnst.DAYS_PER_YEAR)+1.7))*dt
+        sum_trans = 0
+        sum_flat_potrad= 0
+        # Set up angular calculations 
+        for h in np.arange(-hss, hss, dh):
+            cosh = np.cos(h)
+            cza  = cosegeom * cosh + sinegeom
+            if (cza > 0):
+                dir_flat_topa = dir_beam_topa * cza
+                am = 1.0 / (cza + 0.0000001)
+                if (am > 2.9):
+                    ami = min(max(int(np.arccos(cza)/cnst.RAD_PER_DEG) - 69, 0), 20)
+                    am = OPTAM[ami]
+                sum_trans += (np.power(trans, am) * dir_flat_topa)
+                sum_flat_potrad += dir_flat_topa
+            else:
+                dir_flat_topa = 0 
+            
+            tinystep = int(min(
+                               max((12*cnst.SEC_PER_HOUR+h*cnst.SEC_PER_RAD)/dt,0), 
+                               tiny_step_per_day-1))
+            tiny_rad_fract[i][tinystep] = dir_flat_topa
+            
         if daylength[i] and sum_flat_potrad > 0:
-            tiny_rad_fract[i] /= sum_flat_potrad
+           tiny_rad_fract[i] /= sum_flat_potrad
 
-        if daylength[i] > 0:
+        if daylength[i]:
             tt_max0[i] = sum_trans / sum_flat_potrad
-            potrad[i] = sum_flat_potrad / daylength[i]
+            flat_potrad[i] = sum_flat_potrad / daylength[i]
         else:
             tt_max0[i] = 0.
-            potrad[i] = 0.
-    tt_max0[-1] = tt_max0[-2]
-    potrad[-1] = potrad[-2]
-    daylength[-1] = daylength[-2]
-    tiny_rad_fract[-1] = tiny_rad_fract[-2]
-    solar_geom = {"tt_max0" : tt_max0,
-                  "potrad" : potrad,
-                  "daylength" : daylength,
-                  "tiny_rad_fract" : tiny_rad_fract}
-    return solar_geom 
- 
+            flat_potrad[i] = 0.
+    tt_max0[dayperyear-1] = tt_max0[dayperyear-2]
+    flat_potrad[dayperyear-1] = flat_potrad[dayperyear-2]
+    daylength[dayperyear-1] = daylength[dayperyear-2]
+    tiny_rad_fract[dayperyear-1] = tiny_rad_fract[dayperyear-2]
+
+    return tiny_rad_fract, daylength, flat_potrad, tt_max0
+
+

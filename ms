@@ -11,7 +11,6 @@ import argparse
 import pandas as pd
 from configparser import ConfigParser
 
-from metsim.configuration import METHODS as methods
 
 def parse(args):
     """Parse the command line arguments"""
@@ -29,25 +28,17 @@ def init(opts):
     config.read(opts.config)
     config = config['MetSim']
     out_dir = config['out_dir']
-    
-    try:
-        os.mkdir(out_dir)
-    except:
-        print("ERROR: Could not create directory: " + out_dir)
-        exit(1)
+    method = config['method']
 
-    #NOTE: This will silently override invalid methods in the configuration file
-    method = methods.get(config['method'], 'mtclim')
-   
     # If the forcing variable is a directory, scan it for files
     if os.path.isdir(config['forcing']):
-        forcing_files = [os.path.join(config['forcing'],fn) for fn in 
+        forcing_files = [os.path.join(config['forcing'],fn) for fn in
                          next(os.walk(config['forcing']))[2]]
     else:
         forcing_files = [config['forcing']]
-    
+
     # We assume there is only one domain file
-    domain_file = config['domain']
+    domain_file = config.get('domain', None)
 
     # Generate the date range that will be put into the data frame
     start_date, start_hour = config['start'].split(':')
@@ -60,27 +51,29 @@ def init(opts):
     stop  = pd.datetime(int(end_year),
                         int(end_month),
                         int(end_day))
-    to_list = lambda s : json.loads(s.replace("'", '"') )
-    setup = {"stop"      : stop,
-             "start"     : start, 
-             "method"    : method, 
-             "out_dir"   : out_dir,
-             "domain"    : domain_file,
-             "forcings"  : forcing_files,
-             "in_vars"   : to_list(config['in_vars']),
-             "out_vars"  : to_list(config['out_vars']),
-             "time_step" : config['time_step']}
-    return setup 
+    to_list = lambda s : json.loads(s.replace("'", '"'))
+    setup = {"stop"       : stop,
+             "start"      : start,
+             "method"     : method,
+             "out_dir"    : out_dir,
+             "domain"     : domain_file,
+             "forcings"   : forcing_files,
+             "in_vars"    : to_list(config.get('in_vars', '[]')),
+             "out_vars"   : to_list(config.get('out_vars', '[]')),
+             "time_step"  : config['time_step'],
+             "out_format" : config['out_format']}
+    setup = {k : v for k, v in setup.items() if v is not [] or v is not None}
+    return setup
 
 
 def main():
     """Runs MetSim"""
-    from metsim.metsim import MetSim 
-    setup = init(parse(sys.argv[1:])) 
-    ms = MetSim(setup['domain'], setup)
-    ms.run(setup['method'], setup['forcings'])
+    from metsim.metsim import MetSim
+    setup = init(parse(sys.argv[1:]))
+    ms = MetSim(setup)
+    ms.run(setup['forcings'])
 
 
 if __name__ == '__main__':
     main()
-    
+
