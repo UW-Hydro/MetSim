@@ -55,7 +55,7 @@ def set_min_max_hour(disagg_rad, n_days, ts):
     diff_mask = np.diff(rad_mask)
     rise_times = np.where(diff_mask>0)[0] * ts
     set_times = np.where(diff_mask<0)[0] * ts
-    t_t_max = 0.67 * (set_times - rise_times) + rise_times
+    t_t_max = cnst.TMAX_DAYLENGTH_FRACTION * (set_times - rise_times) + rise_times
     t_t_min = rise_times
     return t_t_min, t_t_max
 
