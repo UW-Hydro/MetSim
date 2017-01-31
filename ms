@@ -62,8 +62,9 @@ def init(opts):
              "in_vars"    : to_list(config.get('in_vars', '[]')),
              "out_vars"   : to_list(config.get('out_vars', '[]')),
              "time_step"  : config['time_step'],
-             "out_format" : config['out_format']}
-    setup = {k : v for k, v in setup.items() if v is not [] or v is not None}
+             "out_format" : config['out_format'],
+             "in_format"  : config['in_format']}
+    setup = {k : v for k, v in setup.items() if v != [] and v is not None}
     return setup
 
 

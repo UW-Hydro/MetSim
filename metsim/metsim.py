@@ -41,6 +41,7 @@ class MetSim(object):
         "stop":'',
         "time_step":'',
         "out_format":'',
+        "in_format" : None,
         "base_elev" : 0,
         "t_max_lr": np.nan,
         "t_min_lr": np.nan,
@@ -59,12 +60,25 @@ class MetSim(object):
         # Get the necessary information from the domain
         domain = Dataset(MetSim.params['domain'], 'r')
         self.elev = np.array(domain['elev'])
-        self.lats = np.array(domain['lat'])
-        self.lons = np.array(domain['lon'])
         domain.close()
-    
+        
+        # Validate input parameters
+        #TODO
+
+
     def run(self, job_list):
         """Farm out the jobs to separate processes"""
+        # Used to dispatch to the correct preprocessing functions 
+        in_preprocess = {"ascii" : self.ascii_in_preprocess,
+                         "binary" : self.binary_in_preprocess,
+                         "netcdf" : self.netdf_in_preprocess}
+        out_preprocess = {"ascii" : self.ascii_out_preprocess,
+                          "netcdf" : self.netcdf_out_preprocess}
+        in_preprocess[MetSim.params['in_format']](job_list)
+        out_preprocess[MetSim.params['out_format']]()
+        
+        # Split the jobs up into groups based on the number 
+        # of desired processes
         jobs = np.array_split(np.array(job_list), MetSim.params['nprocs'])
         process_handles = [Process(target=self._run, args=([job])) 
                            for job in jobs]
@@ -73,6 +87,8 @@ class MetSim(object):
         for p in process_handles:
             p.join()
 
+        if MetSim.params.get('out_format', 'netcdf') == 'netcdf':
+            self.output.close()
 
 
     def _run(self, forcings):
@@ -96,9 +112,6 @@ class MetSim(object):
                                    disagg=True))
         # Write out
         self.write(out_dict)
-        if MetSim.params.get('out_format', 'netcdf') == 'netcdf':
-            self.output.close()
-
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
@@ -111,22 +124,32 @@ class MetSim(object):
         """Updates the global parameters dictionary"""
         MetSim.params.update(new_params)
 
-    
-    @sync_io
-    def write(self, data: dict):
-        """
-        Dispatch to the right function based on the configuration given
-        """
-        dispatch = {
-                'netcdf' : self.write_netcdf,
-                'ascii'  : self.write_ascii
-                }
-        MetSim.writable.value = False
-        dispatch[MetSim.params.get('out_format', 'netcdf').lower()](data)
-        MetSim.writable.value = True
+ 
+    def ascii_in_preprocess(self, job_list):
+        pass     
 
 
-    def init_netcdf(self):
+    def netdf_in_preprocess(self, job_list):
+        """Get the extent of the first file and use that"""
+        in_forcing = Dataset(job_list[0], 'r')
+        self.lats = np.array(in_forcing['lat'])
+        self.lons = np.array(in_forcing['lon'])
+        in_forcing.close()
+
+
+    def binary_in_preprocess(self, job_list):
+        """Process all files to find spatial extent"""
+        # Binary forcing files have naming format $NAME_$LAT_$LON
+        sets = [os.path.basename(fpath).split("_") for fpath in job_list]
+        self.lats = np.unique(sorted([float(s[2]) for s in sets]))
+        self.lons = np.unique(sorted([float(s[2]) for s in sets]))
+        
+
+    def ascii_out_preprocess(self):
+        pass
+
+
+    def netcdf_out_preprocess(self):
         """Initialize the output file"""
         print("Initializing netcdf...")
         out_dir = MetSim.params.get('out_dir', './results/')
@@ -150,16 +173,29 @@ class MetSim(object):
         for varname in MetSim.params['out_vars']:
             self.output.createVariable(varname, 'd', ('time', 'lat','lon'))
 
+   
+    @sync_io
+    def write(self, data: dict):
+        """
+        Dispatch to the right function based on the configuration given
+        """
+        dispatch = {
+                'netcdf' : self.write_netcdf,
+                'ascii'  : self.write_ascii
+                }
+        MetSim.writable.value = False
+        dispatch[MetSim.params.get('out_format', 'netcdf').lower()](data)
+        MetSim.writable.value = True
+
 
     def write_netcdf(self, data:dict):
         """Write out as NetCDF to the output file"""
         print("Writing netcdf...")
         lats = data.keys()
-        for lat in lats:
-            for lon in data[lat].keys():
-                print(lat, lon)
+        for i, lat in enumerate(lats):
+            for j, lon in enumerate(data[lat].keys()):
                 for varname in MetSim.params['out_vars']:
-                    self.output.variables[varname][:, lat, lon] = (
+                    self.output.variables[varname][:, i, j] = (
                             data[lat][lon][varname].values)
 
 
@@ -174,6 +210,18 @@ class MetSim(object):
             for lon in data[lat].keys():
                 out_file = '_'.join(["forcing", str(lat), str(lon)])
                 data[lat][lon].to_csv(os.path.join(out_dir, out_file), sep='\t')
+    
+    
+    def read(self, fpath:str) -> xr.Dataset:
+        """
+        Dispatch to the right function based on the file extension
+        """
+        ext_to_fun = {
+                '.bin'   : self.read_binary,
+                '.nc'    : self.read_netcdf,
+                '.nc4'   : self.read_netcdf
+                }
+        return ext_to_fun.get(os.path.splitext(fpath)[-1], self.read_binary)(fpath)
 
 
     def read_binary(self, fpath: str) -> xr.Dataset:
@@ -250,19 +298,9 @@ class MetSim(object):
         #      structure this will have to be implemented
         #in_lats, in_lons = np.meshgrid(self.lats, self.lons)
         #out_lats, out_lons = np.meshgrid(ds.lat, ds.lon)
-        #self.elev = basemap.interp(self.elev, self.lats, self.lons, out_lats, out_lons, order=1)
+        #self.elev = basemap.interp(self.elev, self.lats, self.lons, 
+        #                            out_lats, out_lons, order=1)
         return ds
 
-
-    def read(self, fpath:str) -> xr.Dataset:
-        """
-        Dispatch to the right function based on the file extension
-        """
-        ext_to_fun = {
-                '.bin'   : self.read_binary,
-                '.nc'    : self.read_netcdf,
-                '.nc4'   : self.read_netcdf
-                }
-        return ext_to_fun.get(os.path.splitext(fpath)[-1], self.read_binary)(fpath)
 
 
