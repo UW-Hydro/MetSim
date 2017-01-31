@@ -47,8 +47,6 @@ class MetSim(object):
         # Record parameters
         self.update(params)
         self.output = None 
-        
-        import pprint; pprint.pprint(params)
 
         # Get the necessary information from the domain
         domain = Dataset(MetSim.params['domain'], 'r')

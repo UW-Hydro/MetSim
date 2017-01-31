@@ -71,7 +71,6 @@ def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
 
 def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     """Calculate shortwave, humidity"""
-
     def _calc_tfmax(precip, dtr, sm_dtr):
         b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
         t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
@@ -134,7 +133,6 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     # it converges sufficiently 
     tdew_old = tdew
     tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr)
-    print(pva)
     while(np.sqrt(np.mean((tdew-tdew_old)**2)) > cnst.TDEW_TOL):
         tdew_old = np.copy(tdew)
         tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr)
