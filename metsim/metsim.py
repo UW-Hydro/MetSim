@@ -109,7 +109,7 @@ class MetSim(object):
     def init_netcdf(self):
         """Initialize the output file"""
         print("Initializing netcdf...")
-        out_dir = MetSim.params.get('out_dir', './results/')
+        out_dir = MetSim.params['out_dir']
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
