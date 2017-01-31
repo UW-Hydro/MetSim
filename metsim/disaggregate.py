@@ -55,7 +55,7 @@ def set_min_max_hour(disagg_rad, n_days, ts):
     diff_mask = np.diff(rad_mask)
     rise_times = np.where(diff_mask>0)[0] * ts
     set_times = np.where(diff_mask<0)[0] * ts
-    t_t_max = 0.67 * (set_times - rise_times) + rise_times
+    t_t_max = cnst.TMAX_DAYLENGTH_FRACTION * (set_times - rise_times) + rise_times
     t_t_min = rise_times
     return t_t_min, t_t_max
 
@@ -105,7 +105,7 @@ def relative_humidity(vapor_pressure, temp):
 
 def vapor_pressure(hum_daily, temp, t_Tmin, n_out, ts):
     """Calculate vapor pressure"""
-    # Scale down to milibar
+    # Scale down to millibar
     vp_daily = hum_daily * cnst.MBAR_PER_BAR 
     # Linearly interpolate the values
     interp = scipy.interpolate.interp1d(t_Tmin, vp_daily, fill_value='extrapolate')
