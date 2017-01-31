@@ -105,7 +105,7 @@ def relative_humidity(vapor_pressure, temp):
 
 def vapor_pressure(hum_daily, temp, t_Tmin, n_out, ts):
     """Calculate vapor pressure"""
-    # Scale down to milibar
+    # Scale down to millibar
     vp_daily = hum_daily * cnst.MBAR_PER_BAR 
     # Linearly interpolate the values
     interp = scipy.interpolate.interp1d(t_Tmin, vp_daily, fill_value='extrapolate')
