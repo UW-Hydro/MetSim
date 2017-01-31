@@ -118,7 +118,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
         parray = (window.rolling(window=90, win_type=win_type, axis=0) 
                     .mean()[90:] * cnst.DAYS_PER_YEAR)
 
-    # Convert to mm 
+    # Convert to cm 
     parray = parray.where(parray>80.0, 80.0) / cnst.MM_PER_CM
     # Doing this way because parray.reindex_like(df) returns all nan
     parray.index = df.index 

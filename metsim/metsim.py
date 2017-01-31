@@ -49,10 +49,10 @@ class MetSim(object):
         self.output = None 
 
         # Get the necessary information from the domain
-        domain = Dataset(MetSim.params['domain'], 'r')
-        self.elev = np.array(domain['elev'])
-        domain.close()
-      
+        self.domain = Dataset(MetSim.params['domain'], 'r')
+        self.domain_lats = np.array(self.domain['lat'])
+        self.domain_lons = np.array(self.domain['lon'])
+
         # Create the data structures for writeout
         self.manager = Manager()
         self.queue = self.manager.Queue()
@@ -117,9 +117,9 @@ class MetSim(object):
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
-        lat_idx = np.abs(self.lats - lat).argmin()
-        lon_idx = np.abs(self.lons - lon).argmin()
-        return self.elev[lat_idx, lon_idx]
+        lat_idx = np.abs(self.domain_lats - lat).argmin()
+        lon_idx = np.abs(self.domain_lons - lon).argmin()
+        return self.domain['elev'][lat_idx, lon_idx]
 
 
     def update(self, new_params):
