@@ -4,6 +4,7 @@ Handles the synchronization of multiple processes for MetSim
 
 import os
 import struct
+import itertools
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -35,7 +36,7 @@ class MetSim(object):
         "base_elev" : 0,
         "t_max_lr": '',
         "t_min_lr": '',
-        "out_vars" : ['temp', 'precip', 'shortwave', 'longwave',
+        "out_vars" : ['temp', 'prec', 'shortwave', 'longwave',
                       'wind', 'vapor_pressure', 'rel_humid']
     }
 
@@ -46,54 +47,50 @@ class MetSim(object):
         """
         # Record parameters
         self.update(params)
-        self.output = None 
+        MetSim.params['dates'] = pd.date_range(params['start'], params['stop'])
+        self.output = None
 
         # Get the necessary information from the domain
         self.domain = Dataset(MetSim.params['domain'], 'r')
         self.domain_lats = np.array(self.domain['lat'])
         self.domain_lons = np.array(self.domain['lon'])
+        self.elev = np.array(self.domain['elev'])
 
         # Create the data structures for writeout
         self.manager = Manager()
         self.queue = self.manager.Queue()
 
-        # Validate input parameters
-        #TODO
-
 
     def launch(self, job_list):
         """Farm out the jobs to separate processes"""
-        # Used to dispatch to the correct preprocessing functions 
+        # Used to dispatch to the correct preprocessing functions
         in_preprocess = {"ascii" : self.ascii_in_preprocess,
                          "binary" : self.binary_in_preprocess,
                          "netcdf" : self.netdf_in_preprocess}
-        out_preprocess = {"ascii" : self.ascii_out_preprocess,
-                          "netcdf" : self.netcdf_out_preprocess}
-        in_preprocess[MetSim.params['in_format']](job_list)
-        out_preprocess[MetSim.params['out_format']]()
-       
-        # Start up the IO Process 
+        met_data = in_preprocess[MetSim.params['in_format']](job_list)
+
+        # Start up the IO Process
         io_process = Process(target=self.create_io_process, args=(self.queue,))
         io_process.start()
 
-        # Split the jobs up into groups based on the number 
+        # Split the jobs up into groups based on the number
         # of desired processes
-        jobs = np.array_split(np.array(job_list), MetSim.params['nprocs'])
-        process_handles = [Process(target=self.run, args=(job, self.queue)) 
-                           for job in jobs]
-        
+        self.locations = np.array_split(np.array(self.locations),  MetSim.params['nprocs'])
+        process_handles = [Process(target=self.run, args=(met_data, locs, self.queue))
+                           for locs in self.locations]
+
         # Runs everything
         for p in process_handles:
             p.start()
         for p in process_handles:
             p.join()
-        
+
         # Close everything out
         self.queue.put("done")
         io_process.join()
 
 
-    def run(self, forcings, queue):
+    def run(self, met_data, locations, queue):
         """
         Kicks off the disaggregation and queues up data for IO
         """
@@ -102,17 +99,12 @@ class MetSim(object):
         method = MetSim.methods[MetSim.params.get('method', 'mtclim')]
 
         # Do the forcing generation and dissaggregation if required
-        for forcing in forcings:
-            met_data = self.read(forcing)
-            for i, lat in enumerate(sorted(met_data.lat.values)):
-                out_dict[str(lat)] = out_dict.get(str(lat), {}) 
-                for j, lon in enumerate(sorted(met_data.lon.values)):
-                    print("Processing {} {}".format(lat, lon))
-                    out_dict[str(lat)][str(lon)] = (
-                        method.run(met_data.isel(lat=[i], lon=[j])
-                                   .to_dataframe(), MetSim.params,
-                                   disagg=True))
-        queue.put(out_dict) 
+        for i, j in locations:
+            print("Processing {} {}".format(i, j))
+            out_dict["{}_{}".format(i,j)]  = (
+                    method.run(met_data.sel(lat=[i], lon=[j]).to_dataframe(),
+                               MetSim.params, disagg=True))
+        queue.put(out_dict)
 
 
     def find_elevation(self, lat: float, lon: float) -> float:
@@ -126,7 +118,22 @@ class MetSim(object):
         """Updates the global parameters dictionary"""
         MetSim.params.update(new_params)
 
- 
+
+    def netdf_in_preprocess(self, filename):
+        """Get the extent and load the data"""
+        # Get the information for splitting up the job
+        in_forcing = Dataset(filename, 'r')
+        self.locations = list(itertools.product(in_forcing['lat'], in_forcing['lon']))
+        self.lats = np.array(in_forcing['lat'])
+        self.lons = np.array(in_forcing['lon'])
+        self.lat_idx = {str(lat): i for i, lat in enumerate(self.lats)}
+        self.lon_idx = {str(lon): j for j, lon in enumerate(self.lons)}
+        in_forcing.close()
+        # Now read in the file properly
+        met_data = self.read(filename)
+        return met_data
+
+
     def ascii_in_preprocess(self, job_list):
         """Process all files to find spatial extent"""
         # Binary forcing files have naming format $NAME_$LAT_$LON
@@ -135,27 +142,41 @@ class MetSim(object):
         self.lons = np.unique(sorted([float(s[2]) for s in sets]))
         self.lat_idx = {str(lat): i for i, lat in enumerate(self.lats)}
         self.lon_idx = {str(lon): j for j, lon in enumerate(self.lons)}
-        
-
-    def netdf_in_preprocess(self, job_list):
-        """Get the extent of the first file and use that"""
-        in_forcing = Dataset(job_list[0], 'r')
-        self.lats = np.array(in_forcing['lat'])
-        self.lons = np.array(in_forcing['lon'])
-        self.lat_idx = {str(lat): i for i, lat in enumerate(self.lats)}
-        self.lon_idx = {str(lon): j for j, lon in enumerate(self.lons)}
-        in_forcing.close()
 
 
     def binary_in_preprocess(self, job_list):
         """Process all files to find spatial extent"""
         # Binary forcing files have naming format $NAME_$LAT_$LON
         sets = [os.path.basename(fpath).split("_") for fpath in job_list]
+        self.locations = [(float(s[1]), float(s[2])) for s in sets]
         self.lats = np.unique(sorted([float(s[1]) for s in sets]))
         self.lons = np.unique(sorted([float(s[2]) for s in sets]))
         self.lat_idx = {str(lat): i for i, lat in enumerate(self.lats)}
         self.lon_idx = {str(lon): j for j, lon in enumerate(self.lons)}
-        
+
+        # Creates the master dataset which will be used to parallelize
+        met_data = xr.Dataset(coords={'time' : MetSim.params['dates'],
+                                      'lon' : self.lons,
+                                      'lat' : self.lats},
+                              attrs={'n_days' : len(MetSim.params['dates'])})
+        shape = (len(MetSim.params['dates']), len(self.lats), len(self.lons))
+
+        # Create the empty variables
+        met_data['elev'] = (('lat', 'lon'),
+                           np.full((len(self.lats), len(self.lons)), np.nan))
+        for var in MetSim.params['in_vars']:
+            met_data[var] = (('time', 'lat', 'lon'),np.full(shape, np.nan))
+
+        # Fill in the data
+        for job in job_list:
+            _, lat, lon = os.path.basename(job).split("_")
+            ds = self.read(job)
+            met_data['elev'][self.lat_idx[lat], self.lon_idx[lon]] = (
+                    self.find_elevation(float(lat), float(lon)))
+            for var in MetSim.params['in_vars']:
+                met_data[var][:, self.lat_idx[lat], self.lon_idx[lon]] = ds[var]
+        return met_data
+
 
     def ascii_out_preprocess(self):
         """Dummy function"""
@@ -186,20 +207,23 @@ class MetSim(object):
         for varname in MetSim.params['out_vars']:
             self.output.createVariable(varname, 'd', ('time', 'lat','lon'))
 
-    
+
     def create_io_process(self, queue):
         """Launch the IO process"""
+        out_preprocess = {"ascii" : self.ascii_out_preprocess,
+                          "netcdf" : self.netcdf_out_preprocess}
+        out_preprocess[MetSim.params['out_format']]()
         # Wait for data to come in
         while 1:
             data = queue.get()
             if data == "done":
                 break
             self.write(data)
-        
+
         # Close the dataset when done
         if self.output:
             self.output.close()
-  
+
 
     def write(self, data: dict):
         """
@@ -215,13 +239,12 @@ class MetSim(object):
     def write_netcdf(self, data:dict):
         """Write out as NetCDF to the output file"""
         print("Writing netcdf...")
-        lats = data.keys()
-        for lat in lats:
-            for lon in data[lat].keys():
-                for varname in MetSim.params['out_vars']:
-                    i, j = self.lat_idx[lat], self.lon_idx[lon]
-                    self.output.variables[varname][:, i, j] = (
-                            data[lat][lon][varname].values)
+        for l in data.keys():
+            lat, lon = l.split("_")
+            for varname in MetSim.params['out_vars']:
+                i, j = self.lat_idx[lat], self.lon_idx[lon]
+                self.output.variables[varname][:, i, j] = (
+                        data[l][varname].values)
 
 
     def write_ascii(self, data: dict):
@@ -230,13 +253,12 @@ class MetSim(object):
         out_dir = MetSim.params.get('out_dir', './results/')
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
-        lats = data.keys()
-        for lat in lats:
-            for lon in data[lat].keys():
-                out_file = '_'.join(["forcing", str(lat), str(lon)])
-                data[lat][lon].to_csv(os.path.join(out_dir, out_file), sep='\t')
-    
-    
+        for l in data.keys():
+            lat, lon = l.split("_")
+            out_file = '_'.join(["forcing", str(lat), str(lon)])
+            data[l].to_csv(os.path.join(out_dir, out_file), sep='\t')
+
+
     def read(self, fpath:str) -> xr.Dataset:
         """
         Dispatch to the right function based on the file extension
@@ -286,7 +308,7 @@ class MetSim(object):
                   "n_days" : int(n_days)}
         MetSim.params.update(params)
         params['elev'] = [[self.find_elevation(params['lat'], params['lon'])]]
-        df = xr.Dataset({"precip"      : (['time'], precip),
+        df = xr.Dataset({"prec"      : (['time'], precip),
                          "t_min"       : (['time'], t_min),
                          "t_max"       : (['time'], t_max),
                          "wind"        : (['time'], wind),
@@ -307,7 +329,7 @@ class MetSim(object):
         n_days = len(dates)
         ds = xr.open_dataset(fpath)
         ds = ds.sel(time=slice(MetSim.params['start'], MetSim.params['stop']))
-        ds.rename({"Prec" : "precip",
+        ds.rename({"Prec" : "prec",
                    "Tmax" : "t_max",
                    "Tmin" : "t_min"}, inplace=True)
 
