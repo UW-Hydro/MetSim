@@ -13,7 +13,6 @@ from multiprocessing import Process, Manager
 
 from metsim.methods import mtclim
 
-
 class MetSim(object):
     """
     MetSim handles the distribution of jobs that write to a common file
@@ -40,6 +39,10 @@ class MetSim(object):
                       'wind', 'vapor_pressure', 'rel_humid']
     }
 
+    missing_data_msg = """No data to run on!  Use the `load`
+                          method to set the data to operate on.  
+                          For more information about how to use 
+                          MetSim refer to the documentation."""
 
     def __init__(self, params:dict):
         """
@@ -49,34 +52,45 @@ class MetSim(object):
         self.update(params)
         MetSim.params['dates'] = pd.date_range(params['start'], params['stop'])
         self.output = None
-
-        # Get the necessary information from the domain
-        self.domain = Dataset(MetSim.params['domain'], 'r')
-        self.domain_lats = np.array(self.domain['lat'])
-        self.domain_lons = np.array(self.domain['lon'])
-        self.elev = np.array(self.domain['elev'])
-
+        self.met_data = None
+        self.ready = False
+        
         # Create the data structures for writeout
         self.manager = Manager()
         self.queue = self.manager.Queue()
 
+    
+    def load(self, job_list, domain):
+        """Preprocess the input data"""
+        # Get the necessary information from the domain
+        self.domain = Dataset(domain, 'r')
+        self.domain_lats = np.array(self.domain['lat'])
+        self.domain_lons = np.array(self.domain['lon'])
+        self.elev = np.array(self.domain['elev'])
 
-    def launch(self, job_list):
-        """Farm out the jobs to separate processes"""
         # Used to dispatch to the correct preprocessing functions
         in_preprocess = {"ascii" : self.ascii_in_preprocess,
                          "binary" : self.binary_in_preprocess,
                          "netcdf" : self.netdf_in_preprocess}
-        met_data = in_preprocess[MetSim.params['in_format']](job_list)
+        self.met_data = in_preprocess[MetSim.params['in_format']](job_list)
 
+        self.ready = True
+
+
+    def launch(self, job_list):
+        """Farm out the jobs to separate processes"""
+        # Load in the data
+        self.load(job_list, self.params['domain'])
+        
         # Start up the IO Process
-        io_process = Process(target=self.create_io_process, args=(self.queue,))
+        io_process = Process(target=self._create_io_process, args=(self.queue,))
         io_process.start()
 
         # Split the jobs up into groups based on the number
         # of desired processes
-        self.locations = np.array_split(np.array(self.locations),  MetSim.params['nprocs'])
-        process_handles = [Process(target=self.run, args=(met_data, locs, self.queue))
+        self.locations = np.array_split(np.array(self.locations),  
+                                        MetSim.params['nprocs'])
+        process_handles = [Process(target=self.run, args=(locs, self.queue))
                            for locs in self.locations]
 
         # Runs everything
@@ -90,21 +104,27 @@ class MetSim(object):
         io_process.join()
 
 
-    def run(self, met_data, locations, queue):
+    def run(self, locations, queue=None):
         """
         Kicks off the disaggregation and queues up data for IO
         """
         # Where we will store the results for writing out
         out_dict = {}
         method = MetSim.methods[MetSim.params.get('method', 'mtclim')]
+        
+        if self.met_data is None:
+            raise Exception(MetSim.missing_data_msg)
 
         # Do the forcing generation and dissaggregation if required
         for i, j in locations:
             print("Processing {} {}".format(i, j))
             out_dict["{}_{}".format(i,j)]  = (
-                    method.run(met_data.sel(lat=[i], lon=[j]).to_dataframe(),
+                    method.run(self.met_data.sel(lat=[i], lon=[j]).to_dataframe(),
                                MetSim.params, disagg=True))
-        queue.put(out_dict)
+        if queue is not None:
+            queue.put(out_dict)
+        else:
+            return out_dict
 
 
     def find_elevation(self, lat: float, lon: float) -> float:
@@ -208,7 +228,7 @@ class MetSim(object):
             self.output.createVariable(varname, 'd', ('time', 'lat','lon'))
 
 
-    def create_io_process(self, queue):
+    def _create_io_process(self, queue):
         """Launch the IO process"""
         out_preprocess = {"ascii" : self.ascii_out_preprocess,
                           "netcdf" : self.netcdf_out_preprocess}
@@ -223,6 +243,15 @@ class MetSim(object):
         # Close the dataset when done
         if self.output:
             self.output.close()
+
+
+    def _validate_parameters(self):
+        """
+        Make sure that all of the necessary parameters
+        have been provided.
+        """
+        validation_msg = ""
+        raise Exception(validation_msg)
 
 
     def write(self, data: dict):
