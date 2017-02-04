@@ -35,7 +35,7 @@ def init(opts):
         forcing_files = [os.path.join(config['forcing'],fn) for fn in
                          next(os.walk(config['forcing']))[2]]
     else:
-        forcing_files = [config['forcing']]
+        forcing_files = config['forcing']
 
     # We assume there is only one domain file
     domain_file = config.get('domain', None)
