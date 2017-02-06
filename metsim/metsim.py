@@ -98,7 +98,7 @@ class MetSim(object):
         out_dict = {}
         method = MetSim.methods[MetSim.params.get('method', 'mtclim')]
 
-        # Do the forcing generation and dissaggregation if required
+        # Do the forcing generation and disaggregation if required
         for i, j in locations:
             print("Processing {} {}".format(i, j))
             out_dict["{}_{}".format(i,j)]  = (
