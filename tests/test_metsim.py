@@ -48,7 +48,7 @@ def domain_file():
 
 @pytest.fixture()
 def test_params(in_format, out_format, method):
-    start = dates[in_format][0] 
+    start = dates[in_format][0]
     stop = dates[in_format][1]
     in_vars = ['prec', 'wind', 't_max', 't_min']
     out_dir = "./tmp"
@@ -94,7 +94,7 @@ def test_setup(test_params, domain_file):
     assert ms.ready
 
     # Check to see that the data is valid
-    assert type(ms.met_data) is xr.Dataset 
+    assert type(ms.met_data) is xr.Dataset
 
     return ms
 
@@ -103,7 +103,7 @@ def test_mtclim(test_setup):
     # Here we only test a single grid cell
     loc = test_setup.locations[0]
     strloc = "{}_{}".format(loc[0], loc[1])
-    n_days = len(test_setup.met_data.time) 
+    n_days = len(test_setup.met_data.time)
 
     # Run the forcing generation, but not the disaggregation
     daily = test_setup.run([loc], disagg=False)[strloc]
@@ -115,5 +115,7 @@ def test_mtclim(test_setup):
     # Now test the disaggregation as well as forcing generation
     hourly = test_setup.run([loc])[strloc]
     assert len(hourly) == (n_days * const.HOURS_PER_DAY)+1
+    for var in test_setup.params['out_vars']:
+        assert var in hourly
 
 
