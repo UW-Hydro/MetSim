@@ -5,6 +5,7 @@ Unit tests for MetSim
 
 import os
 import pytest
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -15,13 +16,20 @@ in_fmts = ['ascii', 'binary', 'netcdf']
 out_fmts = ['ascii', 'netcdf']
 
 data_locations = {'netcdf' : './tests/data/test.nc',
-                  'ascii'  : './tests/data/ascii/',
+                  'ascii' : './tests/data/ascii/',
                   'binary' : './tests/data/binary/'}
 
-# TODO: Fix these for each dataset
 dates = {'netcdf' : (pd.datetime(1950,1,1), pd.datetime(1950,1,31)),
          'binary' : (pd.datetime(1949,1,1), pd.datetime(1949,12,31)),
          'ascii' : (pd.datetime(1949,1,1), pd.datetime(2005,12,31))}
+
+data_ranges = {'temp' : (-50,40),
+               'prec' : (0,8),
+               'shortwave' : (0,1000),
+               'longwave' : (0,450),
+               'wind' : (0,10),
+               'vapor_pressure' : (0,1.4),
+               'rel_humid' : (0,100)}
 
 methods = ['mtclim']
 
@@ -50,9 +58,9 @@ def domain_file():
 def test_params(in_format, out_format, method):
     start = dates[in_format][0]
     stop = dates[in_format][1]
-    in_vars = ['prec', 'wind', 't_max', 't_min']
+    in_vars = ['prec', 't_max', 't_min', 'wind']
     out_dir = "./tmp"
-    lr = 0.00065
+    lr = 0.0065
     params = {'start' : start,
               'stop' : stop,
               'in_vars' : in_vars,
@@ -117,5 +125,30 @@ def test_mtclim(test_setup):
     assert len(hourly) == (n_days * const.HOURS_PER_DAY)+1
     for var in test_setup.params['out_vars']:
         assert var in hourly
+        l, h = data_ranges[var]
+        assert hourly[var].between(l, h).all()
 
+
+def test_disaggregation_values():
+    params = {'start' : dates['binary'][0],
+              'stop' : dates['binary'][1],
+              'in_vars' : ['prec', 't_max', 't_min', 'wind'],
+              'in_format' : 'binary',
+              'out_format' : 'ascii',
+              'domain' : './tests/data/domain.nc',
+              'forcings' : ['./tests/data/binary/data_48.3125_-120.5625'],
+              'method' : 'mtclim',
+              'time_step' : "60",
+              't_max_lr' : 0.00065,
+              't_min_lr' : 0.00065,
+              'out_dir' : "./tmp" 
+              }   
+    loc = (48.3125,-120.5625)
+    ms = MetSim(params)
+    ms.load(params['forcings'], params['domain'])
+    out = ms.run([loc])["{}_{}".format(loc[0], loc[1])]
+    good = pd.read_table('./tests/data/validated_48.3125_-120.5625', index_col=0)
+    assert type(out) is pd.DataFrame
+    for var in out.keys():
+        assert np.allclose(out[var], good[var], 1e-5, 0.005)
 
