@@ -10,4 +10,5 @@ setup(name='metsim',
       description='Meteorology Simulator',
       author='Andrew Bennett',
       author_email='bennett.andr@gmail.com',
-      packages=['metsim']
+      packages=['metsim'],
+      scripts=['scripts/ms'])
