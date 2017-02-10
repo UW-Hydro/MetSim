@@ -153,7 +153,7 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     if (cnst.MTCLIM_SWE_CORR):
         inds = np.logical_and(df['swe'] > 0.,  daylength[yday] > 0.)
         sc[inds] = (1.32 + 0.096 * df['swe'][inds]) * 1.0e6 / daylength[yday][inds]
-        sc = np.maximum(sc, 100.)  # JJH - this is fishy
+        sc = np.maximum(sc, cnst.MAX_PERCENT)  # JJH - this is fishy
 
     # Calculation of shortwave is split into 2 components:
     # 1. Radiation from incident light
