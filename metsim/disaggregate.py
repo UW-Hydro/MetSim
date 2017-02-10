@@ -17,7 +17,7 @@ def disaggregate(df_daily, params, solar_geom):
     stop = params['stop'] + pd.Timedelta('1 days')
     dates_disagg = pd.date_range(params['start'], stop, freq=params['time_step']+'T')
     df_disagg = pd.DataFrame(index=dates_disagg)
-    n_days = len(df_daily.index)
+    n_days = len(df_daily)
     n_disagg = len(df_disagg)
     ts = float(params['time_step'])
 
@@ -89,7 +89,7 @@ def prec(prec, ts):
     Splits the daily precipitation evenly throughout the day
     """
     scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
-    return (prec*scale).resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
+    return (prec * scale).resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
 
 
 def wind(wind, ts):
@@ -103,7 +103,7 @@ def relative_humidity(vapor_pressure, temp):
     """
     TODO
     """
-    rh = cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure/svp(temp))
+    rh = cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure / svp(temp))
     return rh.where(rh < cnst.MAX_PERCENT, cnst.MAX_PERCENT)
 
 
