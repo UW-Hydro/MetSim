@@ -56,7 +56,7 @@ def calc_t_air(df: pd.DataFrame, params: dict):
 
 def calc_prec(df: pd.DataFrame, params: dict):
     """ Adjust precitation according to isoh """
-    df['prec'] = (df['prec'] * (df.get('site_isoh', 1) / df.get('base_isoh', 1)))
+    df['prec'] *= (df.get('site_isoh', 1) / df.get('base_isoh', 1))
 
 
 def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
