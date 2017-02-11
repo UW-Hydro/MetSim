@@ -25,6 +25,7 @@ class MetSim(object):
     methods = {'mtclim': mtclim}
     params = {
         "method":'',
+        "forcing": '',
         "domain":'',
         "out_dir":'',
         "start":'',
@@ -139,6 +140,37 @@ class MetSim(object):
     def update(self, new_params):
         """Updates the global parameters dictionary"""
         MetSim.params.update(new_params)
+        errs = [""]
+
+        # Make sure there's some input
+        if not len(self.params['forcing']):
+            errs.append("Requires input forcings to be specified")
+
+        # Parameters that can't be empty strings or None
+        non_empty = ['method', 'domain', 'out_dir',
+                     'start', 'stop', 'time_step', 'out_format',
+                     'in_format', 't_max_lr', 't_min_lr']
+        for each in non_empty:
+            if self.params[each] is None or self.params[each] == '':
+                errs.append("Cannot have empty value for {}".format(each))
+
+        # Check for required input variable specification
+        required_in = ['t_min', 't_max', 'prec']
+        for each in required_in:
+            if each not in self.params['in_vars']:
+                errs.append("Input requires {}".format(each))
+
+        # Convert data types as necessary
+        self.params['t_max_lr'] = float(self.params['t_max_lr'])
+        self.params['t_min_lr'] = float(self.params['t_min_lr'])
+
+        # Make sure that we are going to write out some data
+        if not len(self.params['out_vars']):
+            errs.append("Output variable list must not be empty")
+
+        # If any errors, raise and give a summary
+        if len(errs) > 1:
+            raise Exception("\n  ".join(errs))
 
 
     def netdf_in_preprocess(self, filename):
@@ -276,15 +308,6 @@ class MetSim(object):
         # Close the dataset when done
         if self.output:
             self.output.close()
-
-
-    def _validate_parameters(self):
-        """
-        Make sure that all of the necessary parameters
-        have been provided.
-        """
-        validation_msg = ""
-        raise Exception(validation_msg)
 
 
     def write(self, data: dict):

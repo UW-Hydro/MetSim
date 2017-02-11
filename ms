@@ -27,23 +27,23 @@ def init(opts):
     config = ConfigParser()
     config.read(opts.config)
     config = dict(config['MetSim'])
-    out_dir = config['out_dir']
-    method = config['method']
+    out_dir = config.get('out_dir', '')
+    method = config.get('method', '')
     
     # If the forcing variable is a directory, scan it for files
-    if os.path.isdir(config['forcing']):
-        forcing_files = [os.path.join(config['forcing'],fn) for fn in
-                         next(os.walk(config['forcing']))[2]]
+    if os.path.isdir(config.get('forcing', '')):
+        forcing_files = [os.path.join(config.get('forcing', ''),fn) for fn in
+                         next(os.walk(config.get('forcing', '')))[2]]
     else:
-        forcing_files = config['forcing']
+        forcing_files = config.get('forcing', '')
 
     # We assume there is only one domain file
     domain_file = config.get('domain', None)
 
     # Generate the date range that will be put into the data frame
-    start_date, start_hour = config['start'].split(':')
+    start_date, start_hour = config.get('start', '').split(':')
     start_year, start_month, start_day = start_date.split('/')
-    end_year, end_month, end_day = config['stop'].split('/')
+    end_year, end_month, end_day = config.get('stop', '').split('/')
     start = pd.datetime(int(start_year),
                         int(start_month),
                         int(start_day),
@@ -62,8 +62,8 @@ def init(opts):
                    "forcings" : forcing_files})
     config['in_vars'] = to_list(config.get('in_vars', '[]')) 
     config['out_vars'] = to_list(config.get('out_vars', '[]')) 
-    config['t_min_lr'] = float(config['t_min_lr'])
-    config['t_max_lr'] = float(config['t_max_lr'])
+    config['t_min_lr'] = config.get('t_min_lr', "")
+    config['t_max_lr'] = config.get('t_max_lr', "")
     config = {k : v for k, v in config.items() if v != [] and v is not None}
     return config 
 
