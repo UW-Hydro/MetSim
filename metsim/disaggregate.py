@@ -17,7 +17,7 @@ def disaggregate(df_daily, params, solar_geom):
     stop = params['stop'] + pd.Timedelta('1 days')
     dates_disagg = pd.date_range(params['start'], stop, freq=params['time_step']+'T')
     df_disagg = pd.DataFrame(index=dates_disagg)
-    n_days = len(df_daily.index)
+    n_days = len(df_daily)
     n_disagg = len(df_disagg)
     ts = float(params['time_step'])
 
@@ -75,12 +75,8 @@ def temp(df_daily, df_disagg, t_t_min, t_t_max, ts):
     temp = np.append(np.insert(temp, 0, temp[0:2]), temp[-2:])
 
     # Interpolate the values
-    try:
-        interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
-        temps = interp(ts * np.arange(0, len(df_disagg.index)))
-    except ValueError:
-        temps = np.full(len(df_disagg.index), np.nan)
-
+    interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
+    temps = interp(ts * np.arange(0, len(df_disagg.index)))
     return temps
 
 
@@ -89,7 +85,7 @@ def prec(prec, ts):
     Splits the daily precipitation evenly throughout the day
     """
     scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
-    return (prec*scale).resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
+    return (prec * scale).resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
 
 
 def wind(wind, ts):
@@ -103,19 +99,16 @@ def relative_humidity(vapor_pressure, temp):
     """
     TODO
     """
-    rh = cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure/svp(temp))
+    rh = cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure / svp(temp))
     return rh.where(rh < cnst.MAX_PERCENT, cnst.MAX_PERCENT)
 
 
 def vapor_pressure(vp_daily, temp, t_Tmin, n_out, ts):
     """Calculate vapor pressure"""
     # Linearly interpolate the values
-    try:
-        interp = scipy.interpolate.interp1d(t_Tmin, vp_daily/cnst.MBAR_PER_BAR,
-                                            fill_value='extrapolate')
-        vp_disagg = interp(ts * np.arange(0, n_out))
-    except ValueError:
-        vp_disagg = np.full(len(temp), np.nan)
+    interp = scipy.interpolate.interp1d(t_Tmin, vp_daily/cnst.MBAR_PER_BAR,
+                                        fill_value='extrapolate')
+    vp_disagg = interp(ts * np.arange(0, n_out))
 
     # Account for situations where vapor pressure is higher than saturation point
     vp_sat = svp(temp) / cnst.MBAR_PER_BAR
