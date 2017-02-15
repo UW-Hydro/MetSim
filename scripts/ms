@@ -80,8 +80,11 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    ms.load(setup['forcings'], setup['domain'])
-    ms.launch(setup['forcings'])
+    ms.load(setup['forcings'])
+    if ms.params['nprocs'] > 1:
+        ms.launch(setup['forcings'])
+    else:
+        ms.run(ms.locations)
 
     end = time.time()
     print('time elapsed: %s ' % (end - start))
