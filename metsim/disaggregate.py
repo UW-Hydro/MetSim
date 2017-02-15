@@ -187,5 +187,4 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
         dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
         disaggrad[dslice] = (
             chunk_sum(rad[np.array(tinystep).astype(np.int32)]) * tmp_rad[day])
-
     return disaggrad

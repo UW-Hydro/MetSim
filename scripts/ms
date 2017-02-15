@@ -80,6 +80,7 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
+    ms.load(setup['forcings'], setup['domain'])
     ms.launch(setup['forcings'])
 
     end = time.time()
