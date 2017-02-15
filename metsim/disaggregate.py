@@ -17,7 +17,7 @@ def disaggregate(df_daily, params, solar_geom):
     """
     stop = params['stop'] + pd.Timedelta('1 days')
     dates_disagg = pd.date_range(params['start'], stop,
-                                 freq=params['time_step']+'T')
+                                 freq='{}T'.format(params['time_step']))
     df_disagg = pd.DataFrame(index=dates_disagg)
     n_days = len(df_daily)
     n_disagg = len(df_disagg)
