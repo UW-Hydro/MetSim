@@ -10,6 +10,7 @@ import metsim.constants as cnst
 from metsim.disaggregate import disaggregate
 from metsim.physics import svp, calc_pet, atm_pres, solar_geom
 
+
 def run(forcing: pd.DataFrame, params: dict, disagg=True):
     """
     Run all of the mtclim forcing generation
@@ -24,10 +25,10 @@ def run(forcing: pd.DataFrame, params: dict, disagg=True):
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dataframe here
     sg = solar_geom(forcing['elev'][0], forcing.index.levels[lat_idx][0])
-    sg = {'tiny_rad_fract' : sg[0],
-          'daylength' : sg[1],
-          'potrad' : sg[2],
-          'tt_max0' : sg[3]}
+    sg = {'tiny_rad_fract': sg[0],
+          'daylength': sg[1],
+          'potrad': sg[2],
+          'tt_max0': sg[3]}
     forcing.index = forcing.index.levels[time_idx]
     params['n_days'] = len(forcing.index)
     calc_t_air(forcing, params)
@@ -49,8 +50,9 @@ def calc_t_air(df: pd.DataFrame, params: dict):
     dZ = (df['elev'][0] - params['base_elev'])/cnst.M_PER_KM
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
     t_max = df['t_max'] + dZ * lapse_rates[1]
-    t_min = df['t_min'].where(df['t_min'] + dZ * lapse_rates[0] < t_max-0.5, t_max-0.5)
-    t_mean = (t_min + t_max)/2
+    t_min = df['t_min'].where(df['t_min'] + dZ * lapse_rates[0] < t_max-0.5,
+                              t_max - 0.5)
+    t_mean = (t_min + t_max) / 2
     df['t_day'] = ((t_max - t_mean) * cnst.TDAY_COEF) + t_mean
 
 
@@ -63,7 +65,7 @@ def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
     """Calculate snowpack as swe."""
     swe = pd.Series(snowpack, index=df.index)
     accum = (df['t_min'] <= cnst.SNOW_TCRIT)
-    melt = (df['t_min'] >  cnst.SNOW_TCRIT)
+    melt = (df['t_min'] > cnst.SNOW_TCRIT)
     swe[accum] += df['prec'][accum]
     swe[melt] -= cnst.SNOW_TRATE * (df['t_min'][melt] - cnst.SNOW_TCRIT)
     df['swe'] = np.maximum(np.cumsum(swe), 0.0)
@@ -81,18 +83,12 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     # Calculate the diurnal temperature range
     df['t_max'] = np.maximum(df['t_max'], df['t_min'])
     dtr = df['t_max'] - df['t_min']
-    sm_dtr = pd.Series(dtr).rolling(window=30, win_type=win_type,
-                axis=0).mean().fillna(method='bfill')
+    sm_dtr = pd.Series(dtr).rolling(
+        window=30, win_type=win_type, axis=0).mean().fillna(method='bfill')
     if params['n_days'] <= 30:
         warn('Timeseries is shorter than rolling mean window, filling ')
         warn('missing values with unsmoothed data')
         sm_dtr.fillna(dtr, inplace=True)
-
-    # Calculate annual total prec
-    sum_prec = df['prec'].values.sum()
-    ann_prec = (sum_prec / params['n_days']) * cnst.DAYS_PER_YEAR
-    if ann_prec == 0.0:
-        ann_prec = 1.0
 
     # Effective annual prec
     if params['n_days'] <= 90:
@@ -110,16 +106,17 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
         # the end of the input to generate the beginning by looping around
         # If not, just duplicate the first 90 days
         start_day, end_day = df.index.dayofyear[0], df.index.dayofyear[-1]
-        if (start_day%365 == (end_day%365)+1) or (start_day%366 == (end_day%366)+1):
+        if ((start_day % 365 == (end_day % 365) + 1) or
+                (start_day % 366 == (end_day % 366) + 1)):
             window[:90] = df['prec'][-90:]
         else:
             window[:90] = df['prec'][:90]
 
-        parray = (window.rolling(window=90, win_type=win_type, axis=0)
-                    .mean()[90:] * cnst.DAYS_PER_YEAR)
+        parray = cnst.DAYS_PER_YEAR * window.rolling(
+            window=90, win_type=win_type, axis=0).mean()[90:]
 
     # Convert to cm
-    parray = parray.where(parray>80.0, 80.0) / cnst.MM_PER_CM
+    parray = parray.where(parray > 80.0, 80.0) / cnst.MM_PER_CM
     # Doing this way because parray.reindex_like(df) returns all nan
     parray.index = df.index
     df['tfmax'] = _calc_tfmax(df['prec'], dtr, sm_dtr)
@@ -152,8 +149,9 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     sc = np.zeros_like(df['swe'])
     if (cnst.MTCLIM_SWE_CORR):
         inds = np.logical_and(df['swe'] > 0.,  daylength[yday] > 0.)
-        sc[inds] = (1.32 + 0.096 * df['swe'][inds]) * 1.0e6 / daylength[yday][inds]
-        sc = np.maximum(sc, cnst.MAX_PERCENT)  # JJH - this is fishy
+        sc[inds] = ((1.32 + 0.096 * df['swe'][inds]) *
+                    1.0e6 / daylength[yday][inds])
+        sc = np.maximum(sc, 100.)
 
     # Calculation of shortwave is split into 2 components:
     # 1. Radiation from incident light
@@ -172,8 +170,7 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     ratio = pet / parray
     df['pet'] = parray
     tmink = df['t_min'] + cnst.KELVIN
-    tdew = tmink*(-0.127 + 1.121*(1.003 - 1.444*ratio + 12.312*np.power(ratio, 2)
-            - 32.766*np.power(ratio, 3)) + 0.0006*dtr) - cnst.KELVIN
+    tdew = tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio +
+                    12.312 * np.power(ratio, 2) -
+                    32.766 * np.power(ratio, 3)) + 0.0006 * dtr) - cnst.KELVIN
     return tdew, svp(tdew)
-
-
