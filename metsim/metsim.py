@@ -6,6 +6,7 @@ Handles the synchronization of multiple processes for MetSim
 
 import os
 import struct
+import itertools
 import time as tm
 from getpass import getuser
 from multiprocessing import Pool
@@ -253,17 +254,19 @@ class MetSim(object):
                               unlimited_dims=['time'],
                               encoding={'time': {'dtype': 'f8'}})
 
-    def write_ascii(self, data: dict):
+    def write_ascii(self):
         """Write out as ASCII to the output file"""
         print("Writing ascii...")
-        out_dir = MetSim.params.get('out_dir', './results/')
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        for l in self.output.keys():
-            lat, lon = l.split("_")
-            out_file = '_'.join(["forcing", str(lat), str(lon)])
-            data[l].to_csv(os.path.join(out_dir, out_file), sep='\t')
-
+        shape = self.output.dims
+        for i, j in itertools.product(range(shape['lat']), range(shape['lon'])):
+            if self.output.mask[i, j]>0:
+                lat = self.output.lat.values[i]
+                lon = self.output.lon.values[j]
+                fname = os.path.join(self.params['out_dir'], 
+                            "forcing_{}_{}.csv".format(lat, lon))
+                self.output.isel(lat=i, lon=j).to_dataframe()[
+                        self.params['out_vars']].to_csv(fname)
+        
     def read(self, fpath: str) -> xr.Dataset:
         """
         Dispatch to the right function based on the file extension
