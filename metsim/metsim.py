@@ -285,8 +285,8 @@ class MetSim(object):
         data_list = [[] for var in MetSim.params['in_vars'].keys()]
         n_vars = len(var_names)
         params = [p for p in MetSim.params['in_vars'].values()]
-        scales = [s[0] for s in params]
-        datatypes = [type_lookup[s[1]] for s in params]
+        scales = [float(s.split()[0]) for s in params]
+        datatypes = [type_lookup[s.split()[-1]] for s in params]
         with open(fpath, 'rb') as f:
             i = 0
             points_read = 0
