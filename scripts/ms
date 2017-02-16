@@ -85,7 +85,7 @@ def main():
         ms.launch(setup['forcings'])
     else:
         ms.run(ms.locations)
-
+    ms.write()
     end = time.time()
     print('time elapsed: %s ' % (end - start))
 

@@ -161,7 +161,6 @@ class MetSim(object):
         # Check that everything worked
         [stat.get() for stat in status]
         self.pool.join()
-        self.write()
 
     def _unpack_results(self, results):
         """Put results into the master dataset"""
@@ -188,7 +187,6 @@ class MetSim(object):
                     lat=lat, disagg=self.disagg)
             results.append((locs, df))
         self._unpack_results(results)
-        self.write()
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
