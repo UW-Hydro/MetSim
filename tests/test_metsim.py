@@ -14,9 +14,7 @@ import metsim.constants as const
 
 # Parameters to test over
 in_fmts = ['ascii', 'binary', 'netcdf']
-in_fmts = ['netcdf']
 out_fmts = ['ascii', 'netcdf']
-out_fmts = ['netcdf']
 methods = ['mtclim']
 
 # Where datasets for each input type are found
@@ -113,7 +111,6 @@ def test_params(in_format, out_format, method):
               'in_format' : in_format,
               'out_format' : out_format,
               'domain' : domain_files[in_format],
-              'forcings' : data_locations[in_format],
               'method' : method,
               'time_step' : "60",
               't_max_lr' : lr,
@@ -132,15 +129,13 @@ def test_setup(test_params, domain_file):
     loc = data_locations[in_fmt]
 
     # Get the files and make sure the right amount exist
-    if in_fmt == 'binary':
+    if in_fmt == 'binary' or in_fmt == 'ascii':
         data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
         assert len(data_files) == 16
-    elif in_fmt == 'ascii':
-        data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
-        assert len(data_files) == 1
     else:
         data_files = loc
         assert data_files == './tests/data/test.nc'
+    test_params['forcings'] = data_files
 
     # Test construction - should not yet be ready to run
     ms = MetSim(test_params)
