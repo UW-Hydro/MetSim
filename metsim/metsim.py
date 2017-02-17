@@ -14,7 +14,6 @@ from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 import xarray as xr
-# from netCDF4 import Dataset
 
 from metsim.methods import mtclim
 import metsim.constants as cnst
