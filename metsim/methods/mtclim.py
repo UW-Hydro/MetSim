@@ -11,8 +11,8 @@ from metsim.disaggregate import disaggregate
 from metsim.physics import svp, calc_pet, atm_pres, solar_geom
 
 
-def run(forcing: pd.DataFrame, params: dict, elev: float, 
-        lat: float, disagg=True):
+def run(forcing: pd.DataFrame, params: dict, elev: float, lat: float,
+        disagg=True):
     """
     Run all of the mtclim forcing generation
 
@@ -29,10 +29,10 @@ def run(forcing: pd.DataFrame, params: dict, elev: float,
           'potrad': sg[2],
           'tt_max0': sg[3]}
     params['n_days'] = len(forcing)
-    calc_t_air(forcing, params)
+    calc_t_air(forcing, elev, params)
     calc_prec(forcing, params)
     calc_snowpack(forcing, params)
-    calc_srad_hum(forcing, sg, params)
+    calc_srad_hum(forcing, sg, elev, params)
 
     if disagg:
         forcing = disaggregate(forcing, params, sg)
@@ -40,12 +40,12 @@ def run(forcing: pd.DataFrame, params: dict, elev: float,
     return forcing
 
 
-def calc_t_air(df: pd.DataFrame, params: dict):
+def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
     """
     Adjust temperatures according to lapse rates
     and calculate t_day
     """
-    dZ = (df['elev'][0] - params['base_elev'])/cnst.M_PER_KM
+    dZ = (elev - params['base_elev'])/cnst.M_PER_KM
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
     t_max = df['t_max'] + dZ * lapse_rates[1]
     t_min = df['t_min'].where(df['t_min'] + dZ * lapse_rates[0] < t_max-0.5,
@@ -69,7 +69,8 @@ def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
     df['swe'] = np.maximum(np.cumsum(swe), 0.0)
 
 
-def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
+def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
+                  params: dict, win_type='boxcar'):
     """Calculate shortwave, humidity"""
     def _calc_tfmax(prec, dtr, sm_dtr):
         b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
@@ -126,7 +127,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, params: dict, win_type='boxcar'):
     df['tfmax'] = _calc_tfmax(df['prec'], dtr, sm_dtr)
     tdew = df.get('tdew', df['t_min'])
     pva = df.get('hum', svp(tdew))
-    pa = atm_pres(df['elev'][0])
+    pa = atm_pres(elev)
     yday = df.index.dayofyear - 1
     df['dayl'] = sg['daylength'][yday]
 
