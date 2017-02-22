@@ -14,7 +14,6 @@ from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 import xarray as xr
-# from netCDF4 import Dataset
 
 from metsim.methods import mtclim
 import metsim.constants as cnst
@@ -26,7 +25,7 @@ Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen, and D. P. Letten
 now = tm.ctime(tm.time())
 user = getuser()
 
-attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
+attrs = {'pet': {'units': 'cm d-1', 'long_name': 'potential evaporation',
                  'standard_name': 'water_potential_evaporation_flux'},
          'prec': {'units': 'mm d-1', 'long_name': 'precipitation',
                   'standard_name': 'precipitation_flux'},
@@ -257,13 +256,13 @@ class MetSim(object):
         print("Writing ascii...")
         shape = self.output.dims
         for i, j in itertools.product(range(shape['lat']), range(shape['lon'])):
-            if self.output.mask[i, j]>0:
+            if self.output.mask[i, j] > 0:
                 lat = self.output.lat.values[i]
                 lon = self.output.lon.values[j]
                 fname = os.path.join(self.params['out_dir'], 
                             "forcing_{}_{}.csv".format(lat, lon))
-                self.output.isel(lat=i, lon=j).to_dataframe()[
-                        self.params['out_vars']].to_csv(fname)
+                self.output.isel(lat=i, lon=j)[self.params[
+                    'out_vars']].to_dataframe().to_csv(fname)
         
     def read(self, fpath: str) -> xr.Dataset:
         """
