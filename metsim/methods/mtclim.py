@@ -173,7 +173,7 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     pet = calc_pet(df['swrad'], df['t_day'], pa, df['dayl'])
     # Calculate ratio (PET/effann_prcp) and correct the dewpoint
     ratio = pet / parray
-    df['pet'] = pet
+    df['pet'] = pet * cnst.MM_PER_CM
     tmink = df['t_min'] + cnst.KELVIN
     tdew = tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio +
                     12.312 * np.power(ratio, 2) -
