@@ -373,7 +373,7 @@ class MetSim(object):
     def read_ascii(self, fpath:str) -> xr.Dataset:
         """Read in an ascii forcing file"""
         dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
-        ds = pd.read_table(fpath, header=None,
+        ds = pd.read_table(fpath, header=None, delim_whitespace=True,
                 names=MetSim.params['in_vars'].keys()).head(len(dates))
         ds.index = dates
         return ds
