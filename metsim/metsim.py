@@ -145,8 +145,10 @@ class MetSim(object):
         nprocs = MetSim.params['nprocs']
         self.pool = Pool(processes=nprocs)
 
-        # TODO: fix the hard coded 10
-        locations = np.array_split(list(zip(self.i_idx, self.j_idx)), nprocs * 10)
+        # Split the input into chunks to run in parallel
+        locations = np.array_split(list(zip(self.i_idx, self.j_idx)), 
+                nprocs * cnst.CHUNK_SIZE)
+
         # Do the forcing generation and disaggregation if required
         status = []
         for loc_chunk in locations:
