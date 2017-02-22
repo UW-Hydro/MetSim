@@ -19,18 +19,15 @@ def run(forcing: pd.DataFrame, params: dict, disagg=True):
         forcing: The daily forcings given from input
         solar_geom: Solar geometry of the site
     """
-    lat_idx = forcing.index.names.index('lat')
-    time_idx = forcing.index.names.index('time')
 
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dataframe here
-    sg = solar_geom(forcing['elev'][0], forcing.index.levels[lat_idx][0])
+    sg = solar_geom(forcing['elev'][0], forcing['lat'][0])
     sg = {'tiny_rad_fract': sg[0],
           'daylength': sg[1],
           'potrad': sg[2],
           'tt_max0': sg[3]}
-    forcing.index = forcing.index.levels[time_idx]
-    params['n_days'] = len(forcing.index)
+    params['n_days'] = len(forcing)
     calc_t_air(forcing, params)
     calc_prec(forcing, params)
     calc_snowpack(forcing, params)
@@ -57,7 +54,7 @@ def calc_t_air(df: pd.DataFrame, params: dict):
 
 
 def calc_prec(df: pd.DataFrame, params: dict):
-    """ Adjust precitation according to isoh """
+    """Adjust precitation according to isoh"""
     df['prec'] *= (df.get('site_isoh', 1) / df.get('base_isoh', 1))
 
 
@@ -168,7 +165,7 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     pet = calc_pet(df['swrad'], df['t_day'], pa, df['dayl'])
     # Calculate ratio (PET/effann_prcp) and correct the dewpoint
     ratio = pet / parray
-    df['pet'] = parray
+    df['pet'] = pet
     tmink = df['t_min'] + cnst.KELVIN
     tdew = tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio +
                     12.312 * np.power(ratio, 2) -
