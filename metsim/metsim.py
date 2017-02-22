@@ -25,7 +25,7 @@ Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen, and D. P. Letten
 now = tm.ctime(tm.time())
 user = getuser()
 
-attrs = {'pet': {'units': 'cm d-1', 'long_name': 'potential evaporation',
+attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
                  'standard_name': 'water_potential_evaporation_flux'},
          'prec': {'units': 'mm d-1', 'long_name': 'precipitation',
                   'standard_name': 'precipitation_flux'},
