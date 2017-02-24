@@ -82,13 +82,8 @@ def temp(df_daily, df_disagg, t_t_min, t_t_max, ts):
     temp = np.append(np.insert(temp, 0, temp[0:2]), temp[-2:])
 
     # Interpolate the values
-    try:
-        interp = scipy.interpolate.PchipInterpolator(time, temp,
-                                                     extrapolate=True)
-        temps = interp(ts * np.arange(0, len(df_disagg.index)))
-    except ValueError:
-        temps = np.full(len(df_disagg.index), np.nan)
-
+    interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
+    temps = interp(ts * np.arange(0, len(df_disagg.index)))
     return temps
 
 
@@ -119,12 +114,9 @@ def relative_humidity(vapor_pressure, temp):
 def vapor_pressure(vp_daily, temp, t_Tmin, n_out, ts):
     """Calculate vapor pressure"""
     # Linearly interpolate the values
-    try:
-        interp = scipy.interpolate.interp1d(t_Tmin, vp_daily/cnst.MBAR_PER_BAR,
-                                            fill_value='extrapolate')
-        vp_disagg = interp(ts * np.arange(0, n_out))
-    except ValueError:
-        vp_disagg = np.full(len(temp), np.nan)
+    interp = scipy.interpolate.interp1d(t_Tmin, vp_daily/cnst.MBAR_PER_BAR,
+                                        fill_value='extrapolate')
+    vp_disagg = interp(ts * np.arange(0, n_out))
 
     # Account for situations where vapor pressure is higher than
     # saturation point

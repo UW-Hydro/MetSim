@@ -89,12 +89,6 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
         warn('missing values with unsmoothed data')
         sm_dtr.fillna(dtr, inplace=True)
 
-    # Calculate annual total prec
-    sum_prec = df['prec'].values.sum()
-    ann_prec = (sum_prec / params['n_days']) * cnst.DAYS_PER_YEAR
-    if ann_prec == 0.0:
-        ann_prec = 1.0
-
     # Effective annual prec
     if params['n_days'] <= 90:
         # Simple scaled method, minimum of 8 cm
