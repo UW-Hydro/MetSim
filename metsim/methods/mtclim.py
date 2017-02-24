@@ -22,7 +22,7 @@ def run(forcing: pd.DataFrame, params: dict, elev: float, lat: float,
     """
 
     # solar_geom returns a tuple due to restrictions of numba
-    # for clarity we convert it to a dataframe here
+    # for clarity we convert it to a dictionary here
     sg = solar_geom(elev, lat)
     sg = {'tiny_rad_fract': sg[0],
           'daylength': sg[1],
@@ -75,7 +75,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     def _calc_tfmax(prec, dtr, sm_dtr):
         b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
         t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
-        inds = np.array(prec > cnst.SW_PREC_THRESH)
+        inds = np.array(prec > params['sw_prec_thresh'])
         t_fmax[inds] *= cnst.RAIN_SCALAR
         return t_fmax
 
@@ -134,14 +134,14 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     # Calculation of tdew and swrad. tdew is iterated on until
     # it converges sufficiently
     tdew_old = tdew
-    tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr)
-    while(np.sqrt(np.mean((tdew-tdew_old)**2)) > cnst.TDEW_TOL):
+    tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr, params)
+    while(np.sqrt(np.mean((tdew-tdew_old)**2)) > params['tdew_tol']):
         tdew_old = np.copy(tdew)
-        tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr)
+        tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr, params)
     df['vapor_pressure'] = pva
 
 
-def sw_hum_iter(df, sg, pa, pva, parray, dtr):
+def sw_hum_iter(df, sg, pa, pva, parray, dtr, params):
     tt_max0 = sg['tt_max0']
     potrad = sg['potrad']
     daylength = sg['daylength']
@@ -164,7 +164,7 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr):
     df['swrad'] = potrad[yday] * t_final + sc
 
     # Calculate cloud effect
-    if (cnst.LW_CLOUD.upper() == 'CLOUD_DEARDORFF'):
+    if (params['lw_cloud'].upper() == 'CLOUD_DEARDORFF'):
         df['tskc'] = (1. - df['tfmax'])
     else:
         df['tskc'] = np.sqrt((1. - df['tfmax']) / 0.65)
