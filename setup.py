@@ -14,4 +14,3 @@ setup(name='metsim',
       scripts=['scripts/ms'],
       install_requires=['xarray', 'numba'],
       tests_require=['pytest'],)
-
