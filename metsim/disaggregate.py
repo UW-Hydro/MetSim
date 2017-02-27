@@ -29,7 +29,7 @@ def disaggregate(df_daily, params, solar_geom):
                                        solar_geom['tiny_rad_fract'],
                                        params)
 
-    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'], 
+    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'],
                                       n_days, ts, params)
 
     df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts, params)
@@ -42,8 +42,8 @@ def disaggregate(df_daily, params, solar_geom):
                                                df_disagg['temp'], params)
 
     df_disagg['longwave'], df_disagg['tskc'] = longwave(
-                                                    df_disagg['temp'], 
-                                                    df_disagg['vapor_pressure'], 
+                                                    df_disagg['temp'],
+                                                    df_disagg['vapor_pressure'],
                                                     df_daily['tskc'],
                                                     params)
 
@@ -178,11 +178,11 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
     # and collapses it into chunks that correspond to the desired timestep
     def chunk_sum(x):
         return np.sum(x.reshape((int(len(x)/120), 120)), axis=1)
-    
+
     for day in range(n_days):
         rad = tiny_rad_fract[day_of_year[day] - 1]
         dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
         disaggrad[dslice] = (
             chunk_sum(rad[np.array(tinystep).astype(np.int32)]) * tmp_rad[day])
-    
+
     return disaggrad

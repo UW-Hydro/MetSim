@@ -153,8 +153,8 @@ class MetSim(object):
         self.pool = Pool(processes=nprocs)
 
         # Split the input into chunks to run in parallel
-        locations = np.array_split(list(zip(self.i_idx, self.j_idx)), 
-                nprocs * cnst.CHUNK_SIZE)
+        locations = np.array_split(list(zip(self.i_idx, self.j_idx)),
+                                   nprocs * cnst.CHUNK_SIZE)
 
         # Do the forcing generation and disaggregation if required
         status = []
@@ -254,15 +254,15 @@ class MetSim(object):
         """Process all files to find spatial extent"""
         # Creates the master dataset which will be used to parallelize
         self.met_data = xr.Dataset(coords={'time' : MetSim.params['dates'],
-                                      'lon' : self.lon,
-                                      'lat' : self.lat},
-                              attrs={'n_days' : len(MetSim.params['dates'])})
+                                           'lon' : self.lon,
+                                           'lat' : self.lat},
+                                   attrs={'n_days' : len(MetSim.params['dates'])})
         shape = (len(MetSim.params['dates']), len(self.lat), len(self.lon))
 
         self.met_data['elev'] = (('lat', 'lon'),
                            np.full((len(self.lat), len(self.lon)), np.nan))
         for var in MetSim.params['in_vars']:
-            self.met_data[var] = (('time', 'lat', 'lon'),np.full(shape, np.nan))
+            self.met_data[var] = (('time', 'lat', 'lon'), np.full(shape, np.nan))
 
         # Fill in the data
         for job in job_list:
@@ -308,11 +308,11 @@ class MetSim(object):
             if self.output.mask[i, j] > 0:
                 lat = self.output.lat.values[i]
                 lon = self.output.lon.values[j]
-                fname = os.path.join(self.params['out_dir'], 
+                fname = os.path.join(self.params['out_dir'],
                             "forcing_{}_{}.csv".format(lat, lon))
                 self.output.isel(lat=i, lon=j)[self.params[
                     'out_vars']].to_dataframe().to_csv(fname)
-        
+
     def read(self, fpath: str) -> xr.Dataset:
         """
         Dispatch to the right function based on the file extension
