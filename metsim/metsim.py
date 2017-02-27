@@ -198,8 +198,8 @@ class MetSim(object):
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
-        i = int(np.abs(self.lat - lat).argmin())
-        j = int(np.abs(self.lon - lon).argmin())
+        i = self.lat.index(lat)
+        j = self.lon.index(lon)
         return self.elev.isel(lat=i, lon=j)
 
     def _validate_setup(self):
