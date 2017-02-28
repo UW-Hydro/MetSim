@@ -146,7 +146,7 @@ class MetSim(object):
         self.pool = Pool(processes=nprocs)
 
         # Split the input into chunks to run in parallel
-        locations = np.array_split(list(zip(self.i_idx, self.j_idx)), 
+        locations = np.array_split(list(zip(self.i_idx, self.j_idx)),
                 nprocs * cnst.CHUNK_SIZE)
 
         # Do the forcing generation and disaggregation if required
@@ -261,11 +261,11 @@ class MetSim(object):
             if self.output.mask[i, j] > 0:
                 lat = self.output.lat.values[i]
                 lon = self.output.lon.values[j]
-                fname = os.path.join(self.params['out_dir'], 
+                fname = os.path.join(self.params['out_dir'],
                             "forcing_{}_{}.csv".format(lat, lon))
                 self.output.isel(lat=i, lon=j)[self.params[
                     'out_vars']].to_dataframe().to_csv(fname)
-        
+
     def read(self, fpath: str) -> xr.Dataset:
         """
         Dispatch to the right function based on the file extension
@@ -365,4 +365,3 @@ def wrap_run(func, loc_chunk, met_data, disagg):
         df = func(df, MetSim.params, elev=elev, lat=lat, disagg=disagg)
         results.append((locs, df))
     return results
-
