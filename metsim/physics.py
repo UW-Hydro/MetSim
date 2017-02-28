@@ -1,9 +1,9 @@
 '''
 physics
 '''
-
-# Mountain Climate Simulator, meteorological forcing disaggregator
-# Copyright (C) 2015  Joe Hamman
+# Meteorology Simulator
+# Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
+# and Environmental Engineering, University of Washington.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
