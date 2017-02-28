@@ -25,7 +25,7 @@ before_install:
 install:
   - conda env create --file ci/requirements-$TRAVIS_PYTHON_VERSION.yml
   - source activate test_env
-  - python setup.py install
+  - python setup.py develop
 
 script:
   - py.test --verbose
