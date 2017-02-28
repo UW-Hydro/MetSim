@@ -44,6 +44,7 @@ attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
                      'references': references,
                      'comment': 'no comment at this time'}}
 
+
 class MetSim(object):
     """
     MetSim handles the distribution of jobs that write to a common file
@@ -129,9 +130,9 @@ class MetSim(object):
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding=None)
         # Input preprocessing
-        in_preprocess = {"ascii" : self.vic_in_preprocess,
-                         "binary" : self.vic_in_preprocess,
-                         "netcdf" : self.netcdf_in_preprocess}
+        in_preprocess = {"ascii": self.vic_in_preprocess,
+                         "binary": self.vic_in_preprocess,
+                         "netcdf": self.netcdf_in_preprocess}
         in_preprocess[MetSim.params['in_format']](job_list)
 
         # Output preprocessing
@@ -146,8 +147,8 @@ class MetSim(object):
         self.pool = Pool(processes=nprocs)
 
         # Split the input into chunks to run in parallel
-        locations = np.array_split(list(zip(self.i_idx, self.j_idx)), 
-                nprocs * cnst.CHUNK_SIZE)
+        locations = np.array_split(list(zip(self.i_idx, self.j_idx)),
+                                   nprocs * cnst.CHUNK_SIZE)
 
         # Do the forcing generation and disaggregation if required
         status = []
@@ -185,7 +186,7 @@ class MetSim(object):
             elev = ds['elev'].values
             df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
             df = self.method.run(df, MetSim.params, elev=elev,
-                    lat=lat, disagg=self.disagg)
+                                 lat=lat, disagg=self.disagg)
             results.append((locs, df))
         self._unpack_results(results)
 
@@ -205,17 +206,19 @@ class MetSim(object):
 
     def vic_in_preprocess(self, job_list):
         """Process all files to find spatial extent"""
-       # Creates the master dataset which will be used to parallelize
-        self.met_data = xr.Dataset(coords={'time' : MetSim.params['dates'],
-                                      'lon' : self.lon,
-                                      'lat' : self.lat},
-                              attrs={'n_days' : len(MetSim.params['dates'])})
+        # Creates the master dataset which will be used to parallelize
+        self.met_data = xr.Dataset(
+            coords={'time': MetSim.params['dates'],
+                    'lon': self.lon,
+                    'lat': self.lat},
+            attrs={'n_days': len(MetSim.params['dates'])})
         shape = (len(MetSim.params['dates']), len(self.lat), len(self.lon))
 
-        self.met_data['elev'] = (('lat', 'lon'),
-                           np.full((len(self.lat), len(self.lon)), np.nan))
+        self.met_data['elev'] = xr.Variable(
+            ('lat', 'lon'), np.full((len(self.lat), len(self.lon)), np.nan))
         for var in MetSim.params['in_vars']:
-            self.met_data[var] = (('time', 'lat', 'lon'),np.full(shape, np.nan))
+            self.met_data[var] = xr.Variable(
+                ('time', 'lat', 'lon'), np.full(shape, np.nan))
 
         # Fill in the data
         for job in job_list:
@@ -234,7 +237,8 @@ class MetSim(object):
     def netcdf_out_preprocess(self):
         """Initialize the output file"""
         print("Initializing netcdf...")
-        self.output_filename = os.path.join(self.params['out_dir'], "forcing.nc")
+        self.output_filename = os.path.join(self.params['out_dir'],
+                                            "forcing.nc")
 
     def write(self):
         """
@@ -257,15 +261,16 @@ class MetSim(object):
         """Write out as ASCII to the output file"""
         print("Writing ascii...")
         shape = self.output.dims
-        for i, j in itertools.product(range(shape['lat']), range(shape['lon'])):
+        for i, j in itertools.product(range(shape['lat']),
+                                      range(shape['lon'])):
             if self.output.mask[i, j] > 0:
                 lat = self.output.lat.values[i]
                 lon = self.output.lon.values[j]
-                fname = os.path.join(self.params['out_dir'], 
-                            "forcing_{}_{}.csv".format(lat, lon))
+                fname = os.path.join(self.params['out_dir'],
+                                     "forcing_{}_{}.csv".format(lat, lon))
                 self.output.isel(lat=i, lon=j)[self.params[
                     'out_vars']].to_dataframe().to_csv(fname)
-        
+
     def read(self, fpath: str) -> xr.Dataset:
         """
         Dispatch to the right function based on the file extension
@@ -325,15 +330,16 @@ class MetSim(object):
                         attrs={'n_days': params['n_days']})
         return df
 
-    def read_ascii(self, fpath:str) -> xr.Dataset:
+    def read_ascii(self, fpath: str) -> xr.Dataset:
         """Read in an ascii forcing file"""
         dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
-        ds = pd.read_table(fpath, header=None,
-                names=MetSim.params['in_vars'].keys()).head(len(dates))
+        ds = pd.read_table(
+            fpath, header=None,
+            names=MetSim.params['in_vars'].keys()).head(len(dates))
         ds.index = dates
         return ds
 
-    def read_netcdf(self, fpath:str) -> xr.Dataset:
+    def read_netcdf(self, fpath: str) -> xr.Dataset:
         """
         Read in a NetCDF file and add elevation information
         """
@@ -365,4 +371,3 @@ def wrap_run(func, loc_chunk, met_data, disagg):
         df = func(df, MetSim.params, elev=elev, lat=lat, disagg=disagg)
         results.append((locs, df))
     return results
-
