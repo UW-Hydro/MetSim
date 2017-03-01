@@ -199,9 +199,7 @@ class MetSim(object):
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
-        i = self.lat.index(lat)
-        j = self.lon.index(lon)
-        return self.elev.isel(lat=i, lon=j)
+        return self.elev.sel(lat=lat, lon=lon, method='nearest')
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
@@ -380,10 +378,9 @@ class MetSim(object):
     def read_ascii(self, fpath: str) -> xr.Dataset:
         """Read in an ascii forcing file"""
         dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
-        ds = pd.read_table(fpath,
-                           header=None,
-                           delim_whitespace=True,
-                           names=MetSim.params['in_vars'].keys()).head(len(dates))
+        names = MetSim.params['in_vars'].keys()
+        ds = pd.read_table(fpath, header=None, delim_whitespace=True,
+                           names=names).head(len(dates))
         ds.index = dates
         return ds
 
