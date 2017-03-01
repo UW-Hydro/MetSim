@@ -10,8 +10,7 @@ setup(name='metsim',
       description='Meteorology Simulator',
       author='Andrew Bennett',
       author_email='bennett.andr@gmail.com',
-      packages=['metsim'],
+      packages=['metsim', 'metsim.methods'],
       scripts=['scripts/ms'],
       install_requires=['xarray', 'numba'],
       tests_require=['pytest'],)
-
