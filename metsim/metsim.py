@@ -1,5 +1,15 @@
 """
-Handles the synchronization of multiple processes for MetSim
+The main object of the MetSim package. The MetSim object
+is used to set up and launch forcing generation and/or
+disaggregation routines.
+
+The MetSim object uses a class dictionary to refer to
+the model setup, which can be modified after instantiation
+if necessary.  Before calling `run` or `launch` on the
+instance it is required to call the `load` function to
+ensure that all of the required parameters have been
+set and that the input data is sufficient to provide the
+output specified.
 """
 # Meteorology Simulator
 # Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
@@ -151,6 +161,7 @@ class MetSim(object):
                 coords=coords, dims=dims,
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding=None)
+
         # Input preprocessing
         in_preprocess = {"ascii": self.vic_in_preprocess,
                          "binary": self.vic_in_preprocess,

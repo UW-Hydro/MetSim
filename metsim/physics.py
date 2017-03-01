@@ -23,29 +23,23 @@ from numba import jit
 import metsim.constants as cnst
 
 
-def calc_pet(rad, ta, pa, dayl, dt=0.2):
+def calc_pet(rad: float, ta: float, pa: float,
+             dayl: float, dt: float=0.2) -> float:
     '''
-    calculates the potential evapotranspiration for aridity corrections in
+    Calculates the potential evapotranspiration for aridity corrections in
     `calc_vpd()`, according to Kimball et al., 1997
 
-    Parameters
-    ----------
-    rad : scalar or numpy.ndarray
-        daylight average incident shortwave radiation (W/m2)
-    ta : scalar or numpy.ndarray
-        daylight average air temperature (deg C)
-    pa : scalar or numpy.ndarray
-        air pressure (Pa)
-    dayl : scalar or numpy.ndarray
-        daylength (s)
-    dt : scalar, optional
-        offset for saturation vapor pressure calculation, default = 0.2
+    Args:
+        rad: daylight average incident shortwave radiation (W/m2)
+        ta: daylight average air temperature (deg C)
+        pa: air pressure (Pa)
+        dayl: daylength (s)
+        dt: offset for saturation vapor pressure calculation
 
-    Returns
-    ----------
-    pet : scalar or numpy.ndarray
+    Returns:
         Potential evapotranspiration (cm/day)
     '''
+    # Definition of parameters:
     # rnet       # (W m-2) absorbed shortwave radiation avail. for ET
     # lhvap      # (J kg-1) latent heat of vaporization of water
     # gamma      # (Pa K-1) psychrometer parameter
@@ -92,24 +86,20 @@ def calc_pet(rad, ta, pa, dayl, dt=0.2):
     return (pet / 10.)
 
 
-def atm_pres(elev):
-    '''atmospheric pressure (Pa) as a function of elevation (m)
+def atm_pres(elev: float) -> float:
+    '''
+    Atmospheric pressure (Pa) as a function of elevation (m)
 
-    Parameters
-    ----------
-    elev : scalar or numpy.ndarray
-        Elevation (meters)
+    References:
+        * Iribane, J.V., and W.L. Godson, 1981. Atmospheric
+          Thermodynamics, 2nd Edition. D. Reidel Publishing
+          Company, Dordrecht, The Netherlands (p. 168)
 
-    Returns
-    -------
-    pressure : scalar or numpy.ndarray
-        Atmospheric pressure at elevation `elev` (Pa)
+    Args:
+        elev: Elevation in meters
 
-    References
-    ----------
-    * Iribane, J.V., and W.L. Godson, 1981. Atmospheric Thermodynamics, 2nd
-      Edition. D. Reidel Publishing Company, Dordrecht, The Netherlands.
-      (p. 168)
+    Returns:
+        pressure: Atmospheric pressure (Pa)
     '''
     t1 = 1.0 - (cnst.LR_STD * elev) / cnst.T_STD
     t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R/cnst.MA))
@@ -118,22 +108,18 @@ def atm_pres(elev):
 
 @jit
 def svp(temp, a=0.61078, b=17.269, c=237.3):
-    '''Compute the saturated vapor pressure.
+    '''
+    Compute the saturated vapor pressure.
 
-    Parameters
-    ----------
-    temp : numpy.ndarray
-        Temperature (degrees Celsius)
+    References:
+        * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+          1992 Equation 4.2.2.
 
-    Returns
-    ----------
-    pressure : numpy.ndarray
-        Saturated vapor pressure at temperature `temp` (Pa)
+    Args:
+        temp: Temperature (degrees Celsius)
 
-    References
-    ----------
-    * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc., 1992.
-      Equation 4.2.2.
+    Returns:
+        Saturated vapor pressure (Pa)
     '''
     svp = a * np.exp((b * temp) / (c + temp))
     inds = np.nonzero(temp < 0.)[0]
@@ -142,31 +128,33 @@ def svp(temp, a=0.61078, b=17.269, c=237.3):
 
 
 def svp_slope(temp, a=0.61078, b=17.269, c=237.3):
-    '''Compute the gradient of the saturated vapor pressure as a function of
+    '''
+    Compute the gradient of the saturated vapor pressure as a function of
     temperature.
 
-    Parameters
-    ----------
-    temp : numpy.ndarray
-        Temperature (degrees Celsius)
+    References:
+        * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+          1992. Equation 4.2.3.
+    Args:
+        temp: Temperature (degrees Celsius)
 
-    Returns
-    -------
-    gradient : numpy.ndarray
+    Returns:
         Gradient of d(svp)/dT.
-
-    References
-    ----------
-    * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc., 1992.
-      Equation 4.2.3.
     '''
     return (b * c) / ((c + temp) * (c + temp)) * svp(temp, a=a, b=b, c=c)
 
 
 @jit(nopython=True, cache=True)
-def solar_geom(elev, lat):
+def solar_geom(elev: float, lat: float) -> tuple:
     """
     Flat earth assumption
+
+    Args:
+        elev: Elevation in meters
+        lat: Latitude in decimal format
+
+    Returns:
+        (tiny_rad_fract, daylength, flat_potrad, tt_max0)
     """
     # optical airmass by degrees
     OPTAM = [2.90,  3.05,  3.21,  3.39,  3.69,  3.82,  4.07,
@@ -241,5 +229,4 @@ def solar_geom(elev, lat):
     flat_potrad[dayperyear-1] = flat_potrad[dayperyear-2]
     daylength[dayperyear-1] = daylength[dayperyear-2]
     tiny_rad_fract[dayperyear-1] = tiny_rad_fract[dayperyear-2]
-
     return tiny_rad_fract, daylength, flat_potrad, tt_max0

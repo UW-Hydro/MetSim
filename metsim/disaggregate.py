@@ -29,7 +29,19 @@ from metsim.physics import svp
 
 def disaggregate(df_daily, params, solar_geom):
     """
-    TODO
+    Take a daily timeseries and scale it down to a finer
+    time scale.
+
+    Args:
+        df_daily: Dataframe containing daily timeseries.
+            Should be the result of one of the methods
+            provided in the `methods` directory.
+        params: A dictionary containing the class parameters
+            of the MetSim object.
+        solar_geom: A dictionary of solar geometry variables
+
+    Returns:
+        A dataframe with sub-daily timeseries.
     """
     stop = params['stop'] + pd.Timedelta('1 days')
     dates_disagg = pd.date_range(params['start'], stop,
@@ -58,10 +70,10 @@ def disaggregate(df_daily, params, solar_geom):
                                                df_disagg['temp'], params)
 
     df_disagg['longwave'], df_disagg['tskc'] = longwave(
-                                                    df_disagg['temp'],
-                                                    df_disagg['vapor_pressure'],
-                                                    df_daily['tskc'],
-                                                    params)
+                                                   df_disagg['temp'],
+                                                   df_disagg['vapor_pressure'],
+                                                   df_daily['tskc'],
+                                                   params)
 
     df_disagg['prec'] = prec(df_daily['prec'], ts)
     df_disagg['wind'] = wind(df_daily['wind'], ts)
@@ -71,7 +83,19 @@ def disaggregate(df_daily, params, solar_geom):
 
 def set_min_max_hour(disagg_rad, n_days, ts, params):
     """
-    TODO
+    Determine the time at which min and max temp
+    is reached for each day.
+
+    Args:
+        disagg_rad: Shortwave radiation disaggregated
+            to sub-daily timesteps.
+        n_days: The number of days being disaggregated
+        params: A dictionary of class parameters of
+            the MetSim object.
+
+    Returns:
+        A tuple containing 2 timeseries, corresponding
+        to time of min and max temp, respectively
     """
     rad_mask = 1*(disagg_rad > 0)
     diff_mask = np.diff(rad_mask)
@@ -85,7 +109,20 @@ def set_min_max_hour(disagg_rad, n_days, ts, params):
 
 def temp(df_daily, df_disagg, t_t_min, t_t_max, ts):
     """
-    TODO
+    Disaggregate temperature using a Hermite polynomial
+    interpolation scheme.
+
+    Args:
+        df_daily: A dataframe of daily values.
+        df_disagg: A dataframe of sub-daily values.
+        t_t_min: Time at which minimum daily
+            temperatures are reached.
+        t_t_max: Time at which maximum daily
+            temperatures are reached.
+        ts: Timestep for disaggregation
+
+    Returns:
+        A sub-daily timeseries of temperature.
     """
     # Calculate times of min/max temps
     time = np.array(list(next(it) for it in itertools.cycle(
@@ -106,6 +143,13 @@ def temp(df_daily, df_disagg, t_t_min, t_t_max, ts):
 def prec(prec, ts):
     """
     Splits the daily precipitation evenly throughout the day
+
+    Args:
+        prec: Daily timeseries of precipitation
+        ts: Timestep to disaggregate down to
+
+    Returns:
+        A sub-daily timeseries of precipitation
     """
     scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
     return (prec * scale).resample(
@@ -115,22 +159,55 @@ def prec(prec, ts):
 def wind(wind, ts):
     """
     Wind is assumed constant throughout the day
+
+    Args:
+        wind: Daily timeseries of wind
+        ts: Timestep to disaggregate down to
+
+    Returns:
+        A sub-daily timeseries of precipitation
     """
     return wind.resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
 
 
 def relative_humidity(vapor_pressure, temp):
     """
-    TODO
+    Calculate relative humidity from vapor pressure
+    and temperature.
+
+    Args:
+        vapor_pressure: A sub-daily timeseries of vapor pressure
+        temp: A sub-daily timeseries of temperature
+
+    Returns:
+        A sub-daily timeseries of relative humidity
     """
     rh = cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure / svp(temp))
     return rh.where(rh < cnst.MAX_PERCENT, cnst.MAX_PERCENT)
 
 
-def vapor_pressure(vp_daily, temp, t_Tmin, n_out, ts):
-    """Calculate vapor pressure"""
+def vapor_pressure(vp_daily, temp, t_t_min, n_out, ts):
+    """
+    Calculate vapor pressure.  First a linear inerpolation
+    of the daily values is calculated.  Then this is compared
+    to the saturated vapor pressure calculated using the
+    disaggregated temperature. When the interpolated vapor
+    pressure is greater than the calculated saturated
+    vapor pressure, the interpolation is replaced with the
+    saturation value.
+
+    Args:
+        vp_daily: Daily vapor pressure
+        temp: Sub-daily temperature
+        t_t_min: Timeseries of minimum daily temperature
+        n_out: Number of output observations
+        ts: Timestep to disaggregate down to
+
+    Returns:
+        A sub-daily timeseries of the vapor pressure
+    """
     # Linearly interpolate the values
-    interp = scipy.interpolate.interp1d(t_Tmin, vp_daily/cnst.MBAR_PER_BAR,
+    interp = scipy.interpolate.interp1d(t_t_min, vp_daily/cnst.MBAR_PER_BAR,
                                         fill_value='extrapolate')
     vp_disagg = interp(ts * np.arange(0, n_out))
 
@@ -142,7 +219,26 @@ def vapor_pressure(vp_daily, temp, t_Tmin, n_out, ts):
 
 
 def longwave(air_temp, vapor_pressure, tskc, params):
-    """ Calculate longwave """
+    """
+    Calculate longwave. This calculation can be performed
+    using a variety of parameterizations for both the
+    clear sky and cloud covered emissivity. Options for
+    choosing these parameterizations should be passed in
+    via the `params` argument.
+
+    Args:
+        air_temp: Sub-daily temperature
+        vapor_pressure: Sub-daily vapor pressure
+        tskc: Daily cloud fraction
+        params: A dictionary of parameters, which contains
+            information about which emissivity and cloud
+            fraction methods to use.
+
+    Returns:
+        A sub-daily timeseries of the longwave radiation
+        as well as a sub-daily timeseries of the cloud
+        cover fraction.
+    """
     emissivity_calc = {
         'DEFAULT': lambda vp: vp,
         'TVA': lambda vp: 0.74 + 0.0049 * vp,
@@ -164,7 +260,8 @@ def longwave(air_temp, vapor_pressure, tskc, params):
     vapor_pressure = vapor_pressure * 10
 
     # Calculate longwave radiation based on the options
-    emissivity_clear = emissivity_calc[params['lw_type'].upper()](vapor_pressure)
+    emissivity_clear = emissivity_calc[params['lw_type'].upper()](
+                            vapor_pressure)
     emissivity = cloud_calc[params['lw_cloud'].upper()](emissivity_clear)
     lwrad = emissivity * cnst.STEFAN_B * np.power(air_temp, 4)
     return lwrad, tskc
@@ -172,7 +269,17 @@ def longwave(air_temp, vapor_pressure, tskc, params):
 
 def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
     """
-    TODO
+    Disaggregate shortwave radiation down to a subdaily timeseries.
+
+    Args:
+        sw_rad: Daily incoming shortwave radiation
+        day_of_year: Timeseries of index of days since Jan-1
+        tiny_rad_fract: Fraction of the daily potential radiation
+            during a radiation time step defined by SW_RAD_DT
+        params: Dictionary of parameters from the MetSim object
+
+    Returns:
+        A sub-daily timeseries of shortwave radiation.
     """
     tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SW_RAD_DT
     tmp_rad = sw_rad * daylength / cnst.SEC_PER_HOUR
