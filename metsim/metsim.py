@@ -92,6 +92,8 @@ class MetSim(object):
         "base_elev": 0,
         "t_max_lr": '',
         "t_min_lr": '',
+        "site_isoh": 1,
+        "base_isoh": 1,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
         "lw_cloud": 'cloud_deardorff',

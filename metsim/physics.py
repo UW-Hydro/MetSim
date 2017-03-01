@@ -164,6 +164,8 @@ def solar_geom(elev: float, lat: float) -> tuple:
     tt_max0 = np.zeros(dayperyear)
     daylength = np.zeros(dayperyear)
     flat_potrad = np.zeros(dayperyear)
+
+    # Calculate pressure ratio as a function of elevation
     t1 = 1.0 - (cnst.LR_STD * elev)/cnst.T_STD
     t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R / cnst.MA))
     trans = np.power(cnst.TBASE, np.power(t1, t2))
@@ -177,6 +179,7 @@ def solar_geom(elev: float, lat: float) -> tuple:
     dt = cnst.SW_RAD_DT
     dh = dt / cnst.SEC_PER_RAD
 
+    # Allocate the radiation arrays
     tiny_step_per_day = int(cnst.SEC_PER_DAY / cnst.SW_RAD_DT)
     tiny_rad_fract = np.zeros((dayperyear, tiny_step_per_day))
     for i in range(dayperyear-1):
@@ -191,15 +194,22 @@ def solar_geom(elev: float, lat: float) -> tuple:
         coshss = min(max(-sinegeom / cosegeom, -1), 1)
         hss = np.arccos(coshss)
         daylength[i] = min(2.0 * hss * cnst.SEC_PER_RAD, cnst.SEC_PER_DAY)
+        # Extraterrestrial radiation perpendicular to beam,
+        # total over the timestep (J)
         dir_beam_topa = (1368.0+45.5 * np.sin(
             (2.0 * np.pi * i / cnst.DAYS_PER_YEAR) + 1.7)) * dt
         sum_trans = 0
         sum_flat_potrad = 0
         # Set up angular calculations
         for h in np.arange(-hss, hss, dh):
+            # Cosine of the hour angle and solar zenith angle
             cosh = np.cos(h)
             cza = cosegeom * cosh + sinegeom
             if (cza > 0):
+                # When sun is above flat horizon do flat-surface
+                # calculations to determine daily total transmittance
+                # and save potential radiation for calculation of
+                # diffuse portion
                 dir_flat_topa = dir_beam_topa * cza
                 am = 1.0 / (cza + 0.0000001)
                 if (am > 2.9):
@@ -209,6 +219,7 @@ def solar_geom(elev: float, lat: float) -> tuple:
                 sum_trans += (np.power(trans, am) * dir_flat_topa)
                 sum_flat_potrad += dir_flat_topa
             else:
+                # Sun not above horizon
                 dir_flat_topa = 0
 
             tinystep = int(min(max(
@@ -220,9 +231,12 @@ def solar_geom(elev: float, lat: float) -> tuple:
             tiny_rad_fract[i] /= sum_flat_potrad
 
         if daylength[i]:
+            # Transmittance and potential radiation
+            # averaged over daylength
             tt_max0[i] = sum_trans / sum_flat_potrad
             flat_potrad[i] = sum_flat_potrad / daylength[i]
         else:
+            # No daytime - no radiation
             tt_max0[i] = 0.
             flat_potrad[i] = 0.
     tt_max0[dayperyear-1] = tt_max0[dayperyear-2]

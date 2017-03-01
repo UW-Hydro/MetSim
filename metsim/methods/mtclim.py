@@ -60,6 +60,13 @@ def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
     """
     Adjust temperatures according to lapse rates
     and calculate t_day
+
+    Args:
+        df: Dataframe with daily max and min temperatures
+        elev: Elevation in meters
+        params: Dictionary containing parameters from a
+            MetSim object. Lapse rates are used in this
+            calculation.
     """
     dZ = (elev - params['base_elev'])/cnst.M_PER_KM
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
@@ -71,12 +78,28 @@ def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
 
 
 def calc_prec(df: pd.DataFrame, params: dict):
-    """Adjust precitation according to isoh"""
-    df['prec'] *= (df.get('site_isoh', 1) / df.get('base_isoh', 1))
+    """
+    Adjust precitation according to ratio of
+    isohyet ratio of the given site to some base
+    value.
+
+    Args:
+        df: Dataframe containing daily precipitation
+            timeseries.
+        params: Dictionary containing isohyet values
+    """
+    df['prec'] *= (params['site_isoh'] / params['base_isoh'])
 
 
-def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
-    """Calculate snowpack as swe."""
+def calc_snowpack(df: pd.DataFrame, snowpack=0.0):
+    """
+    Estimate snowpack as swe.
+
+    Args:
+        df: Dataframe with daily timeseries of precipitation
+            and minimum temperature.
+        snowpack: (Optional - defaults to 0) Initial snowpack
+    """
     swe = pd.Series(snowpack, index=df.index)
     accum = (df['t_min'] <= cnst.SNOW_TCRIT)
     melt = (df['t_min'] > cnst.SNOW_TCRIT)
@@ -87,7 +110,17 @@ def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
 
 def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
                   params: dict, win_type='boxcar'):
-    """Calculate shortwave, humidity"""
+    """
+    Calculate shortwave, humidity
+
+    Args:
+        df: Dataframe containing daily timeseries
+        elev: Elevation in meters
+        params: A dictionary of parameters from the
+            MetSim object
+        win_type: (Optional) The method used to calculate
+            the 60 day rolling average of precipitation
+    """
     def _calc_tfmax(prec, dtr, sm_dtr):
         b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
         t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
@@ -152,6 +185,26 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
 
 
 def sw_hum_iter(df, sg, pa, pva, parray, dtr, params):
+    """
+    Calculated updated values for dewpoint temperature
+    and saturation vapor pressure.
+
+    Args:
+        df: Dataframe containing daily timeseries of
+            cloud cover fraction, tfmax, swe, and
+            shortwave radiation
+        sg: Solar geometry dictionary, calculated with
+            `metsim.physics.solar_geom`.
+        pa: Air pressure in Pascals
+        pva: Vapor presure in Pascals
+        parray: 60 day rolling average of precipitation in cm
+        dtr: Daily temperature range
+        params: A dictionary of parameters from a MetSim object
+
+    Returns:
+        A tuple of dewpoint temperature and saturation
+        vapor pressure
+    """
     tt_max0 = sg['tt_max0']
     potrad = sg['potrad']
     daylength = sg['daylength']

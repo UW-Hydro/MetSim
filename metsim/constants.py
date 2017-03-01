@@ -1,5 +1,5 @@
 """
-Stores default constants, parameters, and options.
+Stores default constants
 """
 # Meteorology Simulator
 # Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
@@ -67,4 +67,4 @@ RAIN_SCALAR = 0.75  # (dim) correction to trans. for rain day
 DIF_ALB = 0.6       # (dim) diffuse albedo for horizon correction
 SC_INT = 1.32       # (MJ/m2/day) snow correction intercept
 SC_SLOPE = 0.096    # (MJ/m2/day/cm) snow correction slope
-CHUNK_SIZE = 10     
+CHUNK_SIZE = 10
