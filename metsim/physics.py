@@ -19,12 +19,13 @@ physics
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
+import pandas as pd
 from numba import jit
 import metsim.constants as cnst
 
 
-def calc_pet(rad: float, ta: float, pa: float,
-             dayl: float, dt: float=0.2) -> float:
+def calc_pet(rad: pd.Series, ta: pd.Series, dayl: pd.Series,
+             pa: float, dt: float=0.2) -> pd.Series:
     '''
     Calculates the potential evapotranspiration for aridity corrections in
     `calc_vpd()`, according to Kimball et al., 1997
@@ -32,8 +33,8 @@ def calc_pet(rad: float, ta: float, pa: float,
     Args:
         rad: daylight average incident shortwave radiation (W/m2)
         ta: daylight average air temperature (deg C)
-        pa: air pressure (Pa)
         dayl: daylength (s)
+        pa: air pressure (Pa)
         dt: offset for saturation vapor pressure calculation
 
     Returns:
@@ -107,7 +108,7 @@ def atm_pres(elev: float) -> float:
 
 
 @jit
-def svp(temp, a=0.61078, b=17.269, c=237.3):
+def svp(temp: pd.Series, a: float=0.61078, b: float=17.269, c: float=237.3):
     '''
     Compute the saturated vapor pressure.
 
@@ -117,6 +118,9 @@ def svp(temp, a=0.61078, b=17.269, c=237.3):
 
     Args:
         temp: Temperature (degrees Celsius)
+        a: (optional) parameter
+        b: (optional) parameter
+        c: (optional) parameter
 
     Returns:
         Saturated vapor pressure (Pa)
@@ -127,7 +131,8 @@ def svp(temp, a=0.61078, b=17.269, c=237.3):
     return svp * 1000.
 
 
-def svp_slope(temp, a=0.61078, b=17.269, c=237.3):
+def svp_slope(temp: pd.Series, a: float=0.61078,
+              b: float=17.269, c: float=237.3):
     '''
     Compute the gradient of the saturated vapor pressure as a function of
     temperature.

@@ -116,7 +116,7 @@ class MetSim(object):
         self.met_data = None
         self.ready = False
 
-    def load(self, job_list):
+    def load(self, job_list: list):
         """Load the necessary datasets into memory"""
         # Get the necessary information from the domain
         domain = self.params['domain']
@@ -176,7 +176,7 @@ class MetSim(object):
         out_preprocess[MetSim.params['out_format']]()
         self.ready = True
 
-    def launch(self, job_list):
+    def launch(self, job_list: list):
         """Farm out the jobs to separate processes"""
         nprocs = MetSim.params['nprocs']
         self.pool = Pool(processes=nprocs)
@@ -199,7 +199,7 @@ class MetSim(object):
         [stat.get() for stat in status]
         self.pool.join()
 
-    def _unpack_results(self, results):
+    def _unpack_results(self, results: list):
         """Put results into the master dataset"""
         for result in results:
             locs, df = result
@@ -208,7 +208,7 @@ class MetSim(object):
             for varname in self.params['out_vars']:
                 self.output[varname].values[:, i, j] = df[varname].values
 
-    def run(self, locations):
+    def run(self, locations: list):
         """
         Kicks off the disaggregation and queues up data for IO
         """
@@ -273,11 +273,11 @@ class MetSim(object):
         if len(errs) > 1:
             raise Exception("\n  ".join(errs))
 
-    def netcdf_in_preprocess(self, filename):
+    def netcdf_in_preprocess(self, filename: str):
         """Get the extent and load the data"""
         self.met_data = self.read(filename)
 
-    def vic_in_preprocess(self, job_list):
+    def vic_in_preprocess(self, job_list: list):
         """Process all files to find spatial extent"""
         # Creates the master dataset which will be used to parallelize
         self.met_data = xr.Dataset(
@@ -431,8 +431,20 @@ class MetSim(object):
         return ds
 
 
-def wrap_run(func, loc_chunk, met_data, disagg):
-    # this is wrapped so we can return a tuple of locs and df
+def wrap_run(func: callable, loc_chunk: list,
+             met_data: xr.Dataset, disagg: bool):
+    """
+    Iterate over a chunk of the domain. This is wrapped
+    so we can return a tuple of locs and df.
+    Args:
+        func: The function to call to do the work
+        loc_chunk: Some subset of the domain to do work on
+        met_data: Input forcings and domain
+        disagg: Whether or not we should run a disagg routine
+
+    Returns:
+        A list of tuples arranged as (location, output)
+    """
     results = []
     for i, j in loc_chunk:
         print("Processing {} {}".format(i, j))

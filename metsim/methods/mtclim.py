@@ -95,7 +95,7 @@ def calc_prec(df: pd.DataFrame, params: dict):
     df['prec'] *= (params['site_isoh'] / params['base_isoh'])
 
 
-def calc_snowpack(df: pd.DataFrame, snowpack=0.0):
+def calc_snowpack(df: pd.DataFrame, snowpack: float=0.0):
     """
     Estimate snowpack as swe.
 
@@ -113,7 +113,7 @@ def calc_snowpack(df: pd.DataFrame, snowpack=0.0):
 
 
 def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
-                  params: dict, win_type='boxcar'):
+                  params: dict, win_type: str='boxcar'):
     """
     Calculate shortwave, humidity
 
@@ -188,7 +188,8 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     df['vapor_pressure'] = pva
 
 
-def sw_hum_iter(df, sg, pa, pva, parray, dtr, params):
+def sw_hum_iter(df: pd.Dataframe, sg: dict, pa: float, pva: pd.Series, parray:
+                pd.Series, dtr: pd.Series, params: dict):
     """
     Calculated updated values for dewpoint temperature
     and saturation vapor pressure.

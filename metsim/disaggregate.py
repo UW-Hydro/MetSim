@@ -27,7 +27,8 @@ import metsim.constants as cnst
 from metsim.physics import svp
 
 
-def disaggregate(df_daily, params, solar_geom):
+def disaggregate(df_daily: pd.Dataframe, params: dict,
+                 solar_geom: dict):
     """
     Take a daily timeseries and scale it down to a finer
     time scale.
@@ -79,7 +80,8 @@ def disaggregate(df_daily, params, solar_geom):
     return df_disagg.fillna(method='ffill')
 
 
-def set_min_max_hour(disagg_rad, n_days, ts, params):
+def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
+                     ts: float, params: dict):
     """
     Determine the time at which min and max temp
     is reached for each day.
@@ -88,6 +90,7 @@ def set_min_max_hour(disagg_rad, n_days, ts, params):
         disagg_rad: Shortwave radiation disaggregated
             to sub-daily timesteps.
         n_days: The number of days being disaggregated
+        ts: Timestep used for disaggregation
         params: A dictionary of class parameters of
             the MetSim object.
 
@@ -105,7 +108,8 @@ def set_min_max_hour(disagg_rad, n_days, ts, params):
     return t_t_min, t_t_max
 
 
-def temp(df_daily, df_disagg, t_t_min, t_t_max, ts):
+def temp(df_daily: pd.DataFrame, df_disagg: pd.Dataframe,
+         t_t_min: np.array, t_t_max: np.array, ts: float):
     """
     Disaggregate temperature using a Hermite polynomial
     interpolation scheme.
@@ -113,9 +117,9 @@ def temp(df_daily, df_disagg, t_t_min, t_t_max, ts):
     Args:
         df_daily: A dataframe of daily values.
         df_disagg: A dataframe of sub-daily values.
-        t_t_min: Time at which minimum daily
+        t_t_min: Times at which minimum daily
             temperatures are reached.
-        t_t_max: Time at which maximum daily
+        t_t_max: Times at which maximum daily
             temperatures are reached.
         ts: Timestep for disaggregation
 
@@ -138,7 +142,7 @@ def temp(df_daily, df_disagg, t_t_min, t_t_max, ts):
     return temps
 
 
-def prec(prec, ts):
+def prec(prec: pd.Series, ts: float):
     """
     Splits the daily precipitation evenly throughout the day
 
@@ -154,7 +158,7 @@ def prec(prec, ts):
         '{:0.0f}T'.format(ts)).fillna(method='ffill')
 
 
-def wind(wind, ts):
+def wind(wind: pd.Series, ts: float):
     """
     Wind is assumed constant throughout the day
 
@@ -168,7 +172,7 @@ def wind(wind, ts):
     return wind.resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
 
 
-def relative_humidity(vapor_pressure, temp):
+def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
     """
     Calculate relative humidity from vapor pressure
     and temperature.
@@ -184,7 +188,8 @@ def relative_humidity(vapor_pressure, temp):
     return rh.where(rh < cnst.MAX_PERCENT, cnst.MAX_PERCENT)
 
 
-def vapor_pressure(vp_daily, temp, t_t_min, n_out, ts):
+def vapor_pressure(vp_daily: pd.Series, temp: pd.Series,
+                   t_t_min: np.array, n_out: int, ts: float):
     """
     Calculate vapor pressure.  First a linear inerpolation
     of the daily values is calculated.  Then this is compared
@@ -216,7 +221,8 @@ def vapor_pressure(vp_daily, temp, t_t_min, n_out, ts):
     return vp_disagg
 
 
-def longwave(air_temp, vapor_pressure, tskc, params):
+def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
+             tskc: pd.Series, params: dict):
     """
     Calculate longwave. This calculation can be performed
     using a variety of parameterizations for both the
@@ -266,12 +272,14 @@ def longwave(air_temp, vapor_pressure, tskc, params):
     return lwrad, tskc
 
 
-def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
+def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
+              tiny_rad_fract: np.array, params: dict):
     """
     Disaggregate shortwave radiation down to a subdaily timeseries.
 
     Args:
         sw_rad: Daily incoming shortwave radiation
+        daylength: List of daylength time for each day of year
         day_of_year: Timeseries of index of days since Jan-1
         tiny_rad_fract: Fraction of the daily potential radiation
             during a radiation time step defined by SW_RAD_DT
