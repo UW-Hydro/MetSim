@@ -52,6 +52,10 @@ def run(forcing: pd.DataFrame, params: dict, elev: float, lat: float,
 
     if disagg:
         forcing = disaggregate(forcing, params, sg)
+    else:
+        # convert srad to daily average flux from daytime flux
+        print(forcing.head())
+        forcing['swrad'] *= forcing['dayl'] / cnst.SEC_PER_DAY
 
     return forcing
 
