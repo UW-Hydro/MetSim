@@ -116,8 +116,7 @@ def test_params(in_format, out_format, method):
               't_min_lr': lr,
               'out_dir': out_dir,
               'in_vars': in_vars,
-              'domain_vars': domain_vars
-              }
+              'domain_vars': domain_vars}
     return params
 
 
@@ -235,3 +234,4 @@ def test_disaggregation_values():
         l = min([good[var].min(), out[var].min()])
         nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
         assert nrmse < 0.02
+

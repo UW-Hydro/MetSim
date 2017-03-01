@@ -67,6 +67,12 @@ class MetSim(object):
         "base_elev": 0,
         "t_max_lr": '',
         "t_min_lr": '',
+        "sw_prec_thresh": 0.0,
+        "mtclim_swe_corr": False,
+        "lw_cloud": 'cloud_deardorff',
+        "lw_type": 'prata',
+        "tdew_tol": 1e-3,
+        "tmax_daylength_fraction": 0.67,
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'wind', 'vapor_pressure', 'rel_humid']
     }
@@ -76,8 +82,9 @@ class MetSim(object):
         Constructor
         """
         # Record parameters
-        self.update(params)
+        MetSim.params.update(params)
         MetSim.params['dates'] = pd.date_range(params['start'], params['stop'])
+
         self.output = None
         self.met_data = None
         self.ready = False
@@ -192,13 +199,53 @@ class MetSim(object):
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
-        i = int(np.abs(self.lat - lat).argmin())
-        j = int(np.abs(self.lon - lon).argmin())
+        i = self.lat.index(lat)
+        j = self.lon.index(lon)
         return self.elev.isel(lat=i, lon=j)
 
-    def update(self, new_params):
+    def _validate_setup(self):
         """Updates the global parameters dictionary"""
-        MetSim.params.update(new_params)
+        errs = [""]
+
+        # Make sure there's some input
+        if not len(self.params['forcing']):
+            errs.append("Requires input forcings to be specified")
+
+        # Parameters that can't be empty strings or None
+        non_empty = ['method', 'domain', 'out_dir',
+                     'start', 'stop', 'time_step', 'out_format',
+                     'in_format', 't_max_lr', 't_min_lr']
+        for each in non_empty:
+            if self.params[each] is None or self.params[each] == '':
+                errs.append("Cannot have empty value for {}".format(each))
+
+        # Check for required input variable specification
+        required_in = ['t_min', 't_max', 'prec']
+        for each in required_in:
+            if each not in self.met_data.variables:
+                errs.append("Input requires {}".format(each))
+
+        # Convert data types as necessary
+        self.params['t_max_lr'] = float(self.params['t_max_lr'])
+        self.params['t_min_lr'] = float(self.params['t_min_lr'])
+
+        # Make sure that we are going to write out some data
+        if not len(self.params['out_vars']):
+            errs.append("Output variable list must not be empty")
+
+        # Check that the parameters specified are available
+        opts = {'mtclim_swe_corr': [True, False],
+                'lw_cloud': ['default', 'cloud_deardorff'],
+                'lw_type': ['default', 'tva', 'anderson',
+                            'brutsaert', 'satterlund',
+                            'idso', 'prata']}
+        for k, v in opts.items():
+            if not MetSim.params[k] in v:
+                errs.append("Invalid option given for {}".format(k))
+
+        # If any errors, raise and give a summary
+        if len(errs) > 1:
+            raise Exception("\n  ".join(errs))
 
     def netcdf_in_preprocess(self, filename):
         """Get the extent and load the data"""
@@ -333,9 +380,10 @@ class MetSim(object):
     def read_ascii(self, fpath: str) -> xr.Dataset:
         """Read in an ascii forcing file"""
         dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
-        ds = pd.read_table(
-            fpath, header=None,
-            names=MetSim.params['in_vars'].keys()).head(len(dates))
+        ds = pd.read_table(fpath,
+                           header=None,
+                           delim_whitespace=True,
+                           names=MetSim.params['in_vars'].keys()).head(len(dates))
         ds.index = dates
         return ds
 

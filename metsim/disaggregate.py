@@ -29,18 +29,23 @@ def disaggregate(df_daily, params, solar_geom):
                                        solar_geom['tiny_rad_fract'],
                                        params)
 
-    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'], n_days, ts)
-    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts)
+    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'],
+                                      n_days, ts, params)
+
+    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts, params)
 
     df_disagg['vapor_pressure'] = vapor_pressure(df_daily['vapor_pressure'],
                                                  df_disagg['temp'],
-                                                 t_Tmin, n_disagg, ts)
+                                                 t_Tmin, n_disagg, ts, params)
 
     df_disagg['rel_humid'] = relative_humidity(df_disagg['vapor_pressure'],
-                                               df_disagg['temp'])
+                                               df_disagg['temp'], params)
 
     df_disagg['longwave'], df_disagg['tskc'] = longwave(
-        df_disagg['temp'], df_disagg['vapor_pressure'], df_daily['tskc'])
+                                                    df_disagg['temp'],
+                                                    df_disagg['vapor_pressure'],
+                                                    df_daily['tskc'],
+                                                    params)
 
     df_disagg['prec'] = prec(df_daily['prec'], ts)
     df_disagg['wind'] = wind(df_daily['wind'], ts)
@@ -48,7 +53,7 @@ def disaggregate(df_daily, params, solar_geom):
     return df_disagg.fillna(method='ffill')
 
 
-def set_min_max_hour(disagg_rad, n_days, ts):
+def set_min_max_hour(disagg_rad, n_days, ts, params):
     """
     TODO
     """
@@ -56,8 +61,8 @@ def set_min_max_hour(disagg_rad, n_days, ts):
     diff_mask = np.diff(rad_mask)
     rise_times = np.where(diff_mask > 0)[0] * ts
     set_times = np.where(diff_mask < 0)[0] * ts
-    t_t_max = (cnst.TMAX_DAYLENGTH_FRACTION * (set_times - rise_times) +
-               rise_times)
+    t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times)
+               + rise_times)
     t_t_min = rise_times
     return t_t_min, t_t_max
 
@@ -120,7 +125,7 @@ def vapor_pressure(vp_daily, temp, t_Tmin, n_out, ts):
     return vp_disagg
 
 
-def longwave(air_temp, vapor_pressure, tskc):
+def longwave(air_temp, vapor_pressure, tskc, params):
     """ Calculate longwave """
     emissivity_calc = {
         'DEFAULT': lambda vp: vp,
@@ -134,8 +139,8 @@ def longwave(air_temp, vapor_pressure, tskc):
             -np.sqrt((1.2 + 3. * (46.5*vp / air_temp)))))
         }
     cloud_calc = {
-        'DEFAULT': lambda emmis: (1.0 + (0.17 * tskc ** 2)) * emmis,
-        'CLOUD_DEARDORFF': lambda emmis: tskc + (1 - tskc)*emmis
+        'DEFAULT': lambda emis: (1.0 + (0.17 * tskc ** 2)) * emis,
+        'CLOUD_DEARDORFF': lambda emis: tskc + (1 - tskc) * emis
         }
     # Reindex and fill cloud cover, then convert temps to K
     tskc = tskc.reindex_like(air_temp).fillna(method='ffill')
@@ -143,8 +148,8 @@ def longwave(air_temp, vapor_pressure, tskc):
     vapor_pressure = vapor_pressure * 10
 
     # Calculate longwave radiation based on the options
-    emissivity_clear = emissivity_calc[cnst.LW_TYPE.upper()](vapor_pressure)
-    emissivity = cloud_calc[cnst.LW_CLOUD.upper()](emissivity_clear)
+    emissivity_clear = emissivity_calc[params['lw_type'].upper()](vapor_pressure)
+    emissivity = cloud_calc[params['lw_cloud'].upper()](emissivity_clear)
     lwrad = emissivity * cnst.STEFAN_B * np.power(air_temp, 4)
     return lwrad, tskc
 
@@ -173,9 +178,11 @@ def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
     # and collapses it into chunks that correspond to the desired timestep
     def chunk_sum(x):
         return np.sum(x.reshape((int(len(x)/120), 120)), axis=1)
+
     for day in range(n_days):
-        rad = tiny_rad_fract[day_of_year[day]-1]
-        dslice = slice(int(day * ts_per_day), int((day+1) * ts_per_day))
+        rad = tiny_rad_fract[day_of_year[day] - 1]
+        dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
         disaggrad[dslice] = (
             chunk_sum(rad[np.array(tinystep).astype(np.int32)]) * tmp_rad[day])
+
     return disaggrad
