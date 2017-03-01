@@ -32,20 +32,18 @@ def disaggregate(df_daily, params, solar_geom):
     t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'],
                                       n_days, ts, params)
 
-    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts, params)
+    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts)
 
     df_disagg['vapor_pressure'] = vapor_pressure(df_daily['vapor_pressure'],
                                                  df_disagg['temp'],
-                                                 t_Tmin, n_disagg, ts, params)
+                                                 t_Tmin, n_disagg, ts)
 
     df_disagg['rel_humid'] = relative_humidity(df_disagg['vapor_pressure'],
-                                               df_disagg['temp'], params)
+                                               df_disagg['temp'])
 
     df_disagg['longwave'], df_disagg['tskc'] = longwave(
-                                                    df_disagg['temp'],
-                                                    df_disagg['vapor_pressure'],
-                                                    df_daily['tskc'],
-                                                    params)
+        df_disagg['temp'], df_disagg['vapor_pressure'],
+        df_daily['tskc'], params)
 
     df_disagg['prec'] = prec(df_daily['prec'], ts)
     df_disagg['wind'] = wind(df_daily['wind'], ts)
@@ -148,8 +146,10 @@ def longwave(air_temp, vapor_pressure, tskc, params):
     vapor_pressure = vapor_pressure * 10
 
     # Calculate longwave radiation based on the options
-    emissivity_clear = emissivity_calc[params['lw_type'].upper()](vapor_pressure)
-    emissivity = cloud_calc[params['lw_cloud'].upper()](emissivity_clear)
+    emiss_func = emissivity_calc[params['lw_type'].upper()]
+    emissivity_clear = emiss_func(vapor_pressure)
+    emiss_func = cloud_calc[params['lw_cloud'].upper()]
+    emissivity = emiss_func(emissivity_clear)
     lwrad = emissivity * cnst.STEFAN_B * np.power(air_temp, 4)
     return lwrad, tskc
 
