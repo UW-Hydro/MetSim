@@ -188,7 +188,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     df['vapor_pressure'] = pva
 
 
-def sw_hum_iter(df: pd.Dataframe, sg: dict, pa: float, pva: pd.Series, parray:
+def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series, parray:
                 pd.Series, dtr: pd.Series, params: dict):
     """
     Calculated updated values for dewpoint temperature

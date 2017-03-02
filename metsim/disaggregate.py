@@ -27,7 +27,7 @@ import metsim.constants as cnst
 from metsim.physics import svp
 
 
-def disaggregate(df_daily: pd.Dataframe, params: dict,
+def disaggregate(df_daily: pd.DataFrame, params: dict,
                  solar_geom: dict):
     """
     Take a daily timeseries and scale it down to a finer
@@ -108,7 +108,7 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
     return t_t_min, t_t_max
 
 
-def temp(df_daily: pd.DataFrame, df_disagg: pd.Dataframe,
+def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
          t_t_min: np.array, t_t_max: np.array, ts: float):
     """
     Disaggregate temperature using a Hermite polynomial
