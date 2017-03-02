@@ -220,7 +220,7 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series, parray:
 
     # Snowpack contribution
     sc = np.zeros_like(df['swe'])
-    if (cnst.MTCLIM_SWE_CORR):
+    if (params['mtclim_swe_corr']):
         inds = np.logical_and(df['swe'] > 0.,  daylength[yday] > 0.)
         sc[inds] = ((1.32 + 0.096 * df['swe'][inds]) *
                     1.0e6 / daylength[yday][inds])
