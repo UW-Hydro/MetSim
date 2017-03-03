@@ -30,14 +30,22 @@ def calc_pet(rad: pd.Series, ta: pd.Series, dayl: pd.Series,
     Calculates the potential evapotranspiration for aridity corrections in
     `calc_vpd()`, according to Kimball et al., 1997
 
-    Args:
-        rad: daylight average incident shortwave radiation (W/m2)
-        ta: daylight average air temperature (deg C)
-        dayl: daylength (s)
-        pa: air pressure (Pa)
-        dt: offset for saturation vapor pressure calculation
+    Parameters
+    ----------
+    rad:
+        daylight average incident shortwave radiation (W/m2)
+    ta:
+        daylight average air temperature (deg C)
+    dayl:
+        daylength (s)
+    pa:
+        air pressure (Pa)
+    dt:
+        offset for saturation vapor pressure calculation
 
-    Returns:
+    Returns
+    -------
+    pet
         Potential evapotranspiration (cm/day)
     '''
     # Definition of parameters:
@@ -91,16 +99,21 @@ def atm_pres(elev: float) -> float:
     '''
     Atmospheric pressure (Pa) as a function of elevation (m)
 
-    References:
-        * Iribane, J.V., and W.L. Godson, 1981. Atmospheric
-          Thermodynamics, 2nd Edition. D. Reidel Publishing
-          Company, Dordrecht, The Netherlands (p. 168)
+    References
+    ----------
+    * Iribane, J.V., and W.L. Godson, 1981. Atmospheric
+      Thermodynamics, 2nd Edition. D. Reidel Publishing
+      Company, Dordrecht, The Netherlands (p. 168)
 
-    Args:
-        elev: Elevation in meters
+    Parameters
+    ----------
+    elev:
+        Elevation in meters
 
-    Returns:
-        pressure: Atmospheric pressure (Pa)
+    Returns
+    -------
+    pressure:
+        Atmospheric pressure (Pa)
     '''
     t1 = 1.0 - (cnst.LR_STD * elev) / cnst.T_STD
     t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R/cnst.MA))
@@ -112,17 +125,25 @@ def svp(temp: pd.Series, a: float=0.61078, b: float=17.269, c: float=237.3):
     '''
     Compute the saturated vapor pressure.
 
-    References:
-        * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
-          1992 Equation 4.2.2.
+    References
+    ----------
+    * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+      1992 Equation 4.2.2.
 
-    Args:
-        temp: Temperature (degrees Celsius)
-        a: (optional) parameter
-        b: (optional) parameter
-        c: (optional) parameter
+    Parameters
+    ----------
+    temp:
+        Temperature (degrees Celsius)
+    a:
+        (optional) parameter
+    b:
+        (optional) parameter
+    c:
+        (optional) parameter
 
-    Returns:
+    Returns
+    -------
+    svp:
         Saturated vapor pressure (Pa)
     '''
     svp = a * np.exp((b * temp) / (c + temp))
@@ -137,13 +158,19 @@ def svp_slope(temp: pd.Series, a: float=0.61078,
     Compute the gradient of the saturated vapor pressure as a function of
     temperature.
 
-    References:
-        * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
-          1992. Equation 4.2.3.
-    Args:
-        temp: Temperature (degrees Celsius)
+    References
+    ----------
+    * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+      1992. Equation 4.2.3.
 
-    Returns:
+    Parameters
+    ----------
+    temp:
+        Temperature (degrees Celsius)
+
+    Returns
+    -------
+    dsvp_dT:
         Gradient of d(svp)/dT.
     '''
     return (b * c) / ((c + temp) * (c + temp)) * svp(temp, a=a, b=b, c=c)
@@ -154,11 +181,16 @@ def solar_geom(elev: float, lat: float) -> tuple:
     """
     Flat earth assumption
 
-    Args:
-        elev: Elevation in meters
-        lat: Latitude in decimal format
+    Parameters
+    ----------
+    elev:
+        Elevation in meters
+    lat:
+        Latitude in decimal format
 
-    Returns:
+    Returns
+    -------
+    sg:
         (tiny_rad_fract, daylength, flat_potrad, tt_max0)
     """
     # optical airmass by degrees

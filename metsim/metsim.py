@@ -436,13 +436,21 @@ def wrap_run(func: callable, loc_chunk: list,
     """
     Iterate over a chunk of the domain. This is wrapped
     so we can return a tuple of locs and df.
-    Args:
-        func: The function to call to do the work
-        loc_chunk: Some subset of the domain to do work on
-        met_data: Input forcings and domain
-        disagg: Whether or not we should run a disagg routine
 
-    Returns:
+    Parameters
+    ----------
+    func:
+        The function to call to do the work
+    loc_chunk:
+        Some subset of the domain to do work on
+    met_data:
+        Input forcings and domain
+    disagg:
+        Whether or not we should run a disagg routine
+
+    Returns
+    -------
+    results
         A list of tuples arranged as (location, output)
     """
     results = []
