@@ -19,7 +19,8 @@ physics
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
-from metsim.defaults import CONSTS as constants
+from numba import jit
+import metsim.constants as cnst
 
 
 def calc_pet(rad, ta, pa, dayl, dt=0.2):
@@ -65,7 +66,7 @@ def calc_pet(rad, ta, pa, dayl, dt=0.2):
     # where:
     # cp       (J/kg K)   specific heat of air
     # epsilon  (unitless) ratio of molecular weights of water and air
-    gamma = constants['CP'] * pa / (lhvap * constants['EPS'])
+    gamma = cnst.CP * pa / (lhvap * cnst.EPS)
 
     # estimate the slope of the saturation vapor pressure curve at ta
     # temperature offsets for slope estimate
@@ -110,13 +111,12 @@ def atm_pres(elev):
       Edition. D. Reidel Publishing Company, Dordrecht, The Netherlands.
       (p. 168)
     '''
-    t1 = 1.0 - (constants['LR_STD'] * elev) / constants['T_STD']
-    t2 = constants['G_STD'] / (constants['LR_STD'] * (constants['R'] /
-                                                      constants['MA']))
-
-    return constants['P_STD'] * np.power(t1, t2)
+    t1 = 1.0 - (cnst.LR_STD * elev) / cnst.T_STD
+    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R/cnst.MA))
+    return cnst.P_STD * np.power(t1, t2)
 
 
+@jit
 def svp(temp, a=0.61078, b=17.269, c=237.3):
     '''Compute the saturated vapor pressure.
 
@@ -160,5 +160,86 @@ def svp_slope(temp, a=0.61078, b=17.269, c=237.3):
     * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc., 1992.
       Equation 4.2.3.
     '''
-
     return (b * c) / ((c + temp) * (c + temp)) * svp(temp, a=a, b=b, c=c)
+
+
+@jit(nopython=True, cache=True)
+def solar_geom(elev, lat):
+    """
+    Flat earth assumption
+    """
+    # optical airmass by degrees
+    OPTAM = [2.90,  3.05,  3.21,  3.39,  3.69,  3.82,  4.07,
+             4.37,  4.72,  5.12,  5.60,  6.18,  6.88,  7.77,
+             8.90, 10.39, 12.44, 15.36, 19.79, 26.96, 30.00]
+    dayperyear = int(np.ceil(cnst.DAYS_PER_YEAR))
+    tt_max0 = np.zeros(dayperyear)
+    daylength = np.zeros(dayperyear)
+    flat_potrad = np.zeros(dayperyear)
+    t1 = 1.0 - (cnst.LR_STD * elev)/cnst.T_STD
+    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R / cnst.MA))
+    trans = np.power(cnst.TBASE, np.power(t1, t2))
+
+    # Translate lat to rad
+    lat = np.minimum(np.maximum(lat * cnst.RAD_PER_DEG, -np.pi/2.), np.pi/2.0)
+    coslat = np.cos(lat)
+    sinlat = np.sin(lat)
+
+    # Sub-daily time step and angular step
+    dt = cnst.SW_RAD_DT
+    dh = dt / cnst.SEC_PER_RAD
+
+    tiny_step_per_day = int(cnst.SEC_PER_DAY / cnst.SW_RAD_DT)
+    tiny_rad_fract = np.zeros((dayperyear, tiny_step_per_day))
+    for i in range(dayperyear-1):
+        # Declination and quantities of interest
+        decl = cnst.MIN_DECL * np.cos((i + cnst.DAYS_OFF) * cnst.RAD_PER_DAY)
+        cosdecl = np.cos(decl)
+        sindecl = np.sin(decl)
+
+        # calculate daylength as a function of lat and decl
+        cosegeom = coslat * cosdecl
+        sinegeom = sinlat * sindecl
+        coshss = min(max(-sinegeom / cosegeom, -1), 1)
+        hss = np.arccos(coshss)
+        daylength[i] = min(2.0 * hss * cnst.SEC_PER_RAD, cnst.SEC_PER_DAY)
+        dir_beam_topa = (1368.0+45.5 * np.sin(
+            (2.0 * np.pi * i / cnst.DAYS_PER_YEAR) + 1.7)) * dt
+        sum_trans = 0
+        sum_flat_potrad = 0
+        # Set up angular calculations
+        for h in np.arange(-hss, hss, dh):
+            cosh = np.cos(h)
+            cza = cosegeom * cosh + sinegeom
+            if (cza > 0):
+                dir_flat_topa = dir_beam_topa * cza
+                am = 1.0 / (cza + 0.0000001)
+                if (am > 2.9):
+                    ami = min(max(int(
+                        np.arccos(cza) / cnst.RAD_PER_DEG) - 69, 0), 20)
+                    am = OPTAM[ami]
+                sum_trans += (np.power(trans, am) * dir_flat_topa)
+                sum_flat_potrad += dir_flat_topa
+            else:
+                dir_flat_topa = 0
+
+            tinystep = int(min(max(
+                (12 * cnst.SEC_PER_HOUR + h * cnst.SEC_PER_RAD) / dt, 0),
+                               tiny_step_per_day - 1))
+            tiny_rad_fract[i][tinystep] = dir_flat_topa
+
+        if daylength[i] and sum_flat_potrad > 0:
+            tiny_rad_fract[i] /= sum_flat_potrad
+
+        if daylength[i]:
+            tt_max0[i] = sum_trans / sum_flat_potrad
+            flat_potrad[i] = sum_flat_potrad / daylength[i]
+        else:
+            tt_max0[i] = 0.
+            flat_potrad[i] = 0.
+    tt_max0[dayperyear-1] = tt_max0[dayperyear-2]
+    flat_potrad[dayperyear-1] = flat_potrad[dayperyear-2]
+    daylength[dayperyear-1] = daylength[dayperyear-2]
+    tiny_rad_fract[dayperyear-1] = tiny_rad_fract[dayperyear-2]
+
+    return tiny_rad_fract, daylength, flat_potrad, tt_max0

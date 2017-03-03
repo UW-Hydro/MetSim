@@ -1,105 +1,188 @@
 """
-Disaggregates daily data down to hourly data using some heuristics
+Disaggregates daily data down to finer grained data using some heuristics
 """
 
 import numpy as np
 import pandas as pd
+import itertools
+import scipy
 
-import metsim
-from metsim.defaults import PARAMS as params
-from metsim.defaults import CONSTS as consts 
+import metsim.constants as cnst
+from metsim.physics import svp
 
-tiny_rad_fract = np.zeros(366) #This is updated during the mtclim run
 
-def disaggregate(df_daily):
+def disaggregate(df_daily, params, solar_geom):
     """
     TODO
     """
-    dates_hourly = pd.date_range(metsim.start, metsim.stop, freq='H') 
-    df_hourly = pd.DataFrame(index=dates_hourly)
-    _disagg_shortwave(df_daily, df_hourly)
-    _disagg_temp(     df_daily, df_hourly)
-    _disagg_precip(   df_daily, df_hourly)
-    _disagg_thermal(  df_daily, df_hourly)
-    _disagg_wind(     df_daily, df_hourly)
-    return df_hourly
+    stop = params['stop'] + pd.Timedelta('1 days')
+    dates_disagg = pd.date_range(params['start'], stop,
+                                 freq='{}T'.format(params['time_step']))
+    df_disagg = pd.DataFrame(index=dates_disagg)
+    n_days = len(df_daily)
+    n_disagg = len(df_disagg)
+    ts = float(params['time_step'])
+
+    df_disagg['shortwave'] = shortwave(df_daily['swrad'],
+                                       df_daily['dayl'],
+                                       df_daily.index.dayofyear,
+                                       solar_geom['tiny_rad_fract'],
+                                       params)
+
+    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'],
+                                      n_days, ts, params)
+
+    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts)
+
+    df_disagg['vapor_pressure'] = vapor_pressure(df_daily['vapor_pressure'],
+                                                 df_disagg['temp'],
+                                                 t_Tmin, n_disagg, ts)
+
+    df_disagg['rel_humid'] = relative_humidity(df_disagg['vapor_pressure'],
+                                               df_disagg['temp'])
+
+    df_disagg['longwave'], df_disagg['tskc'] = longwave(
+        df_disagg['temp'], df_disagg['vapor_pressure'],
+        df_daily['tskc'], params)
+
+    df_disagg['prec'] = prec(df_daily['prec'], ts)
+    df_disagg['wind'] = wind(df_daily['wind'], ts)
+
+    return df_disagg.fillna(method='ffill')
 
 
-def _disagg_temp(df_daily, df_hourly):
+def set_min_max_hour(disagg_rad, n_days, ts, params):
+    """
+    TODO
+    """
+    rad_mask = 1*(disagg_rad > 0)
+    diff_mask = np.diff(rad_mask)
+    rise_times = np.where(diff_mask > 0)[0] * ts
+    set_times = np.where(diff_mask < 0)[0] * ts
+    t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times)
+               + rise_times)
+    t_t_min = rise_times
+    return t_t_min, t_t_max
+
+
+def temp(df_daily, df_disagg, t_t_min, t_t_max, ts):
     """
     TODO
     """
     # Calculate times of min/max temps
-    set_min_max_hour(df_daily, df_hourly)
-    # Fit hermite polynomial and sample daily 
-   
+    time = np.array(list(next(it) for it in itertools.cycle(
+                [iter(t_t_min), iter(t_t_max)])))
+    temp = np.array(list(next(it) for it in itertools.cycle(
+                [iter(df_daily['t_min']), iter(df_daily['t_max'])])))
+    # Account for end points
+    ts_ends = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
+    time = np.append(np.insert(time, 0, time[0:2]-ts_ends), time[-2:]+ts_ends)
+    temp = np.append(np.insert(temp, 0, temp[0:2]), temp[-2:])
+
+    # Interpolate the values
+    interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
+    temps = interp(ts * np.arange(0, len(df_disagg.index)))
+    return temps
 
 
-def _disagg_precip(df_daily, df_hourly):
+def prec(prec, ts):
+    """
+    Splits the daily precipitation evenly throughout the day
+    """
+    scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
+    return (prec * scale).resample(
+        '{:0.0f}T'.format(ts)).fillna(method='ffill')
+
+
+def wind(wind, ts):
+    """
+    Wind is assumed constant throughout the day
+    """
+    return wind.resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
+
+
+def relative_humidity(vapor_pressure, temp):
     """
     TODO
     """
-    pass
+    rh = cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure / svp(temp))
+    return rh.where(rh < cnst.MAX_PERCENT, cnst.MAX_PERCENT)
 
 
-def _disagg_thermal(df_daily, df_hourly):
+def vapor_pressure(vp_daily, temp, t_Tmin, n_out, ts):
+    """Calculate vapor pressure"""
+    # Linearly interpolate the values
+    interp = scipy.interpolate.interp1d(t_Tmin, vp_daily/cnst.MBAR_PER_BAR,
+                                        fill_value='extrapolate')
+    vp_disagg = interp(ts * np.arange(0, n_out))
+
+    # Account for situations where vapor pressure is higher than
+    # saturation point
+    vp_sat = svp(temp) / cnst.MBAR_PER_BAR
+    vp_disagg = np.where(vp_sat < vp_disagg, vp_sat, vp_disagg)
+    return vp_disagg
+
+
+def longwave(air_temp, vapor_pressure, tskc, params):
+    """ Calculate longwave """
+    emissivity_calc = {
+        'DEFAULT': lambda vp: vp,
+        'TVA': lambda vp: 0.74 + 0.0049 * vp,
+        'ANDERSON': lambda vp: 0.68 + 0.036 * np.power(vp, 0.5),
+        'BRUTSAERT': lambda vp: 1.24 * np.power(vp / air_temp, 0.14285714),
+        'SATTERLUND': lambda vp: 1.08 * (
+            1 - np.exp(-1 * np.power(vp, (air_temp / 2016)))),
+        'IDSO': lambda vp: 0.7 + 5.95e-5 * vp * np.exp(1500 / air_temp),
+        'PRATA': lambda vp: (1 - (1 + (46.5*vp/air_temp)) * np.exp(
+            -np.sqrt((1.2 + 3. * (46.5*vp / air_temp)))))
+        }
+    cloud_calc = {
+        'DEFAULT': lambda emis: (1.0 + (0.17 * tskc ** 2)) * emis,
+        'CLOUD_DEARDORFF': lambda emis: tskc + (1 - tskc) * emis
+        }
+    # Reindex and fill cloud cover, then convert temps to K
+    tskc = tskc.reindex_like(air_temp).fillna(method='ffill')
+    air_temp = air_temp + cnst.KELVIN
+    vapor_pressure = vapor_pressure * 10
+
+    # Calculate longwave radiation based on the options
+    emiss_func = emissivity_calc[params['lw_type'].upper()]
+    emissivity_clear = emiss_func(vapor_pressure)
+    emiss_func = cloud_calc[params['lw_cloud'].upper()]
+    emissivity = emiss_func(emissivity_clear)
+    lwrad = emissivity * cnst.STEFAN_B * np.power(air_temp, 4)
+    return lwrad, tskc
+
+
+def shortwave(sw_rad, daylength, day_of_year, tiny_rad_fract, params):
     """
     TODO
     """
-    pass
-
-
-def _disagg_wind(df_daily, df_hourly):
-    """
-    TODO
-    """   
-    pass
-
-
-def _disagg_shortwave(df_daily, df_hourly):
-    """
-    TODO
-    """
-    tiny_step_per_hour = int(3600 / consts['SRADDT'])
-    tmp_rad = df_daily['s_swrad']
+    tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SW_RAD_DT
+    tmp_rad = sw_rad * daylength / cnst.SEC_PER_HOUR
     n_days = len(tmp_rad)
-    hourlyrad = np.zeros(n_days*24+1)
-    for i in range(n_days):
-        for j in range(24):
-            for k in range(tiny_step_per_hour):
-                tinystep = j*tiny_step_per_hour + k
-                if tinystep < 0:
-                    tinystep += 24*tiny_step_per_hour
-                if tinystep > 24*tiny_step_per_hour - 1:
-                    tinystep -= 24*tiny_step_per_hour
-                hourlyrad[i*24+j] += tiny_rad_fract[df_daily['day_of_year'][i]][tinystep]
-            #FIXME: This calculation is incorrect
-            hourlyrad[i*24+j] *= tmp_rad[i]
-    df_hourly['s_swrad'] = hourlyrad
+    ts_per_day = (cnst.HOURS_PER_DAY *
+                  cnst.MIN_PER_HOUR / int(params['time_step']))
+    disaggrad = np.zeros(int(n_days*ts_per_day) + 1)
+    tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0) /
+                    (cnst.HOURS_PER_DAY / cnst.DEG_PER_REV)))
 
+    # Tinystep represents a daily set of values - but is constant across days
+    tinystep = np.arange(cnst.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
+    inds = np.array(tinystep < 0)
+    tinystep[inds] += cnst.HOURS_PER_DAY * tiny_step_per_hour
+    inds = np.array(tinystep > (cnst.HOURS_PER_DAY * tiny_step_per_hour-1))
+    tinystep[inds] -= (cnst.HOURS_PER_DAY * tiny_step_per_hour)
 
-def set_min_max_hour(df_daily, df_hourly):
-    """
-    TODO
-    """   
-    hourly_rad = df_hourly['s_swrad']
-    n_days = len(df_daily)
-    t_max = np.zeros(n_days)
-    t_min = np.zeros(n_days)
-    for i in range(n_days):
-        risehour = sethour = -999
-        for hour in range(12):
-            if (hourly_rad[i*24+hour] > 0 and 
-                    (i*24+hour==0 or hourly_rad[i*24 + hour-1]<= 0)):
-                risehour = hour
-        for hour in range(12,24):
-            if (hourly_rad[i*24+hour] <= 0 and hourly_rad[i*24+hour-1]>0):
-                sethour = hour
-        if i == n_days -1 and sethour == -999:
-            sethour = 23
-        if risehour >=0 and sethour>=0:
-            t_max[i] - 0.67 * (sethour - risehour) + risehour
-            tminhour[i] = rishour - 1
-    df_daily['t_Tmin'] = tminhour
-    df_daily['t_Tmax'] = tmaxhour
+    # Chunk sum takes in the distribution of radiation throughout the day
+    # and collapses it into chunks that correspond to the desired timestep
+    def chunk_sum(x):
+        return np.sum(x.reshape((int(len(x)/120), 120)), axis=1)
 
+    for day in range(n_days):
+        rad = tiny_rad_fract[day_of_year[day] - 1]
+        dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
+        disaggrad[dslice] = (
+            chunk_sum(rad[np.array(tinystep).astype(np.int32)]) * tmp_rad[day])
+
+    return disaggrad
