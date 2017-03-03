@@ -271,7 +271,7 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series, parray:
         df['tskc'] = np.sqrt((1. - df['tfmax']) / 0.65)
 
     # Compute PET using SW radiation estimate, and update Tdew, pva **
-    pet = calc_pet(df['swrad'], df['t_day'], pa, df['dayl'])
+    pet = calc_pet(df['swrad'], df['t_day'], df['dayl'], pa)
     # Calculate ratio (PET/effann_prcp) and correct the dewpoint
     ratio = pet / parray
     df['pet'] = pet * cnst.MM_PER_CM
