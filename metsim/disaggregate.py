@@ -81,7 +81,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         df_daily['tskc'], params)
 
     df_disagg['prec'] = prec(df_daily['prec'], ts)
-    df_disagg['wind'] = wind(df_daily['wind'], ts)
+    if 'wind' in df_daily:
+        df_disagg['wind'] = wind(df_daily['wind'], ts)
 
     return df_disagg.fillna(method='ffill')
 
@@ -115,8 +116,8 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
     diff_mask = np.diff(rad_mask)
     rise_times = np.where(diff_mask > 0)[0] * ts
     set_times = np.where(diff_mask < 0)[0] * ts
-    t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times)
-               + rise_times)
+    t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
+               rise_times)
     t_t_min = rise_times
     return t_t_min, t_t_max
 
