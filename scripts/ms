@@ -26,6 +26,7 @@ import argparse
 import pandas as pd
 import time
 from configparser import SafeConfigParser
+from collections import OrderedDict
 
 
 def parse(args):
@@ -43,9 +44,9 @@ def init(opts):
     config = SafeConfigParser()
     config.optionxform = str
     config.read(opts.config)
-    conf = dict(config['MetSim'])
-    conf['in_vars'] = dict(config['in_vars'])
-    conf['domain_vars'] = dict(config['domain_vars'])
+    conf = OrderedDict(config['MetSim'])
+    conf['in_vars'] = OrderedDict(config['in_vars'])
+    conf['domain_vars'] = OrderedDict(config['domain_vars'])
     out_dir = conf['out_dir']
     method = conf['method']
 

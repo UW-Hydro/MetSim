@@ -8,6 +8,7 @@ import pytest
 import numpy as np
 import pandas as pd
 import xarray as xr
+from collections import OrderedDict
 
 from metsim.metsim import MetSim
 import metsim.constants as const
@@ -33,33 +34,24 @@ dates = {'netcdf': (pd.datetime(1950, 1, 1), pd.datetime(1950, 1, 31)),
          'ascii': (pd.datetime(1949, 1, 1), pd.datetime(1949, 12, 31))}
 
 # Domain vars
-domain_section = {'netcdf': {'lat': 'lat',
-                             'lon': 'lon',
-                             'mask': 'mask',
-                             'elev': 'elev'},
-                  'binary': {'lat': 'lat',
-                             'lon': 'lon',
-                             'mask': 'mask',
-                             'elev': 'elev'},
-                  'ascii': {'lat': 'lat',
-                            'lon': 'lon',
-                            'mask': 'mask',
-                            'elev': 'elev'}
-                  }
+domain_section = {'netcdf': OrderedDict(lat='lat', lon='lon', mask='mask',
+                                        elev='elev'),
+                  'binary': OrderedDict(lat='lat', lon='lon', mask='mask',
+                                        elev='elev'),
+                  'ascii': OrderedDict(lat='lat', lon='lon', mask='mask',
+                                       elev='elev')}
 
 # Input vars
-in_vars_section = {'netcdf': {'Prec': 'prec',
-                              'Tmax': 't_max',
-                              'Tmin': 't_min'},
-                   'binary': {'prec': '40.0 unsigned',
-                              't_max': '100.0 signed',
-                              't_min': '100.0 signed',
-                              'wind': '100.0 signed'},
-                   'ascii': {'prec': 'prec',
-                             't_max': 't_max',
-                             't_min': 't_min',
-                             'wind': 'wind'}}
-
+in_vars_section = {'netcdf': OrderedDict(Prec='prec', Tmax='t_max',
+                                         Tmin='t_min'),
+                   'binary': OrderedDict([('prec', '40.0 unsigned'),
+                                          ('t_max', '100.0 signed'),
+                                          ('t_min', '100.0 signed'),
+                                          ('wind', '100.0 signed')]),
+                   'ascii': OrderedDict([('prec', 'prec'),
+                                         ('t_max', 't_max'),
+                                         ('t_min', 't_min'),
+                                         ('wind', 'wind')])}
 
 # All values should be in these ranges
 data_ranges = {'temp': (-50, 40),
