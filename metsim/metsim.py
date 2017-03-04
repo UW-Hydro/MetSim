@@ -101,7 +101,7 @@ class MetSim(object):
         "tdew_tol": 1e-3,
         "tmax_daylength_fraction": 0.67,
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'wind', 'vapor_pressure', 'rel_humid']
+                     'vapor_pressure', 'rel_humid']
     }
 
     def __init__(self, params: dict):
@@ -121,7 +121,7 @@ class MetSim(object):
         # Get the necessary information from the domain
         domain = self.params['domain']
         self.domain = xr.open_dataset(domain).rename(
-                MetSim.params['domain_vars'])
+                MetSim.params['domain_vars']).load()
         self.lat = self.domain['lat']
         self.lon = self.domain['lon']
         self.mask = self.domain['mask']
@@ -416,19 +416,19 @@ class MetSim(object):
         """
         Read in a NetCDF file and add elevation information
         """
-        dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
-        n_days = len(dates)
         ds = xr.open_dataset(fpath)
-        ds = ds.sel(time=slice(MetSim.params['start'], MetSim.params['stop']))
         ds.rename(MetSim.params['in_vars'], inplace=True)
-
+        varlist = list(MetSim.params['in_vars'].values())
+        ds = ds[varlist].sel(
+            time=slice(MetSim.params['start'], MetSim.params['stop']))
+        dates = ds.indexes['time']
         # Add elevation and day of year data
-        ds['elev'] = xr.Variable(['lon', 'lat'], self.elev.values)
-        ds['day_of_year'] = xr.Variable(['time'], dates.dayofyear)
+        ds['elev'] = self.elev
+        ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
         # Update the configuration
-        MetSim.params.update({"n_days": n_days})
-        return ds
+        MetSim.params.update({"n_days": len(ds['time'])})
+        return ds.load()
 
 
 def wrap_run(func: callable, loc_chunk: list,

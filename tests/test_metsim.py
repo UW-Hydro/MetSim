@@ -43,7 +43,7 @@ domain_section = {'netcdf': OrderedDict(lat='lat', lon='lon', mask='mask',
 
 # Input vars
 in_vars_section = {'netcdf': OrderedDict(Prec='prec', Tmax='t_max',
-                                         Tmin='t_min'),
+                                         Tmin='t_min', wind='wind'),
                    'binary': OrderedDict([('prec', '40.0 unsigned'),
                                           ('t_max', '100.0 signed'),
                                           ('t_min', '100.0 signed'),
@@ -226,4 +226,3 @@ def test_disaggregation_values():
         l = min([good[var].min(), out[var].min()])
         nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
         assert nrmse < 0.02
-
