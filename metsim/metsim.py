@@ -1,11 +1,36 @@
-
-
 """
-Handles the synchronization of multiple processes for MetSim
+The main object of the MetSim package. The MetSim object
+is used to set up and launch forcing generation and/or
+disaggregation routines.
+
+The MetSim object uses a class dictionary to refer to
+the model setup, which can be modified after instantiation
+if necessary.  Before calling `run` or `launch` on the
+instance it is required to call the `load` function to
+ensure that all of the required parameters have been
+set and that the input data is sufficient to provide the
+output specified.
 """
+# Meteorology Simulator
+# Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
+# and Environmental Engineering, University of Washington.
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
 import struct
+import logging
 import itertools
 import time as tm
 from getpass import getuser
@@ -67,6 +92,8 @@ class MetSim(object):
         "base_elev": 0,
         "t_max_lr": '',
         "t_min_lr": '',
+        "site_isoh": 1,
+        "base_isoh": 1,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
         "lw_cloud": 'cloud_deardorff',
@@ -89,7 +116,7 @@ class MetSim(object):
         self.met_data = None
         self.ready = False
 
-    def load(self, job_list):
+    def load(self, job_list: list):
         """Load the necessary datasets into memory"""
         # Get the necessary information from the domain
         domain = self.params['domain']
@@ -136,6 +163,7 @@ class MetSim(object):
                 coords=coords, dims=dims,
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding=None)
+
         # Input preprocessing
         in_preprocess = {"ascii": self.vic_in_preprocess,
                          "binary": self.vic_in_preprocess,
@@ -148,7 +176,7 @@ class MetSim(object):
         out_preprocess[MetSim.params['out_format']]()
         self.ready = True
 
-    def launch(self, job_list):
+    def launch(self, job_list: list):
         """Farm out the jobs to separate processes"""
         nprocs = MetSim.params['nprocs']
         self.pool = Pool(processes=nprocs)
@@ -171,7 +199,7 @@ class MetSim(object):
         [stat.get() for stat in status]
         self.pool.join()
 
-    def _unpack_results(self, results):
+    def _unpack_results(self, results: list):
         """Put results into the master dataset"""
         for result in results:
             locs, df = result
@@ -180,7 +208,7 @@ class MetSim(object):
             for varname in self.params['out_vars']:
                 self.output[varname].values[:, i, j] = df[varname].values
 
-    def run(self, locations):
+    def run(self, locations: list):
         """
         Kicks off the disaggregation and queues up data for IO
         """
@@ -245,11 +273,11 @@ class MetSim(object):
         if len(errs) > 1:
             raise Exception("\n  ".join(errs))
 
-    def netcdf_in_preprocess(self, filename):
+    def netcdf_in_preprocess(self, filename: str):
         """Get the extent and load the data"""
         self.met_data = self.read(filename)
 
-    def vic_in_preprocess(self, job_list):
+    def vic_in_preprocess(self, job_list: list):
         """Process all files to find spatial extent"""
         # Creates the master dataset which will be used to parallelize
         self.met_data = xr.Dataset(
@@ -403,8 +431,28 @@ class MetSim(object):
         return ds
 
 
-def wrap_run(func, loc_chunk, met_data, disagg):
-    # this is wrapped so we can return a tuple of locs and df
+def wrap_run(func: callable, loc_chunk: list,
+             met_data: xr.Dataset, disagg: bool):
+    """
+    Iterate over a chunk of the domain. This is wrapped
+    so we can return a tuple of locs and df.
+
+    Parameters
+    ----------
+    func:
+        The function to call to do the work
+    loc_chunk:
+        Some subset of the domain to do work on
+    met_data:
+        Input forcings and domain
+    disagg:
+        Whether or not we should run a disagg routine
+
+    Returns
+    -------
+    results
+        A list of tuples arranged as (location, output)
+    """
     results = []
     for i, j in loc_chunk:
         print("Processing {} {}".format(i, j))

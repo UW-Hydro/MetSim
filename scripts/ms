@@ -1,8 +1,23 @@
 #!/usr/bin/env python3
-
 """
 Command line tool for MetSim
 """
+# Meteorology Simulator
+# Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
+# and Environmental Engineering, University of Washington.
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
 import sys
@@ -11,6 +26,7 @@ import argparse
 import pandas as pd
 import time
 from configparser import SafeConfigParser
+from collections import OrderedDict
 
 
 def parse(args):
@@ -28,9 +44,9 @@ def init(opts):
     config = SafeConfigParser()
     config.optionxform = str
     config.read(opts.config)
-    conf = dict(config['MetSim'])
-    conf['in_vars'] = dict(config['in_vars'])
-    conf['domain_vars'] = dict(config['domain_vars'])
+    conf = OrderedDict(config['MetSim'])
+    conf['in_vars'] = OrderedDict(config['in_vars'])
+    conf['domain_vars'] = OrderedDict(config['domain_vars'])
     out_dir = conf['out_dir']
     method = conf['method']
 

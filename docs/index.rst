@@ -20,7 +20,6 @@ If you don't find what you're looking for here, check out metsim's Github page.
    faq
    examples
    installing
-   methods
    api
    whats-new
 

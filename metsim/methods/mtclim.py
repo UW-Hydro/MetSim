@@ -1,6 +1,22 @@
 """
 MTCLIM
 """
+# Meteorology Simulator
+# Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
+# and Environmental Engineering, University of Washington.
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
 import pandas as pd
@@ -16,9 +32,17 @@ def run(forcing: pd.DataFrame, params: dict, elev: float, lat: float,
     """
     Run all of the mtclim forcing generation
 
-    Args:
-        forcing: The daily forcings given from input
-        solar_geom: Solar geometry of the site
+    Parameters
+    ----------
+    forcing:
+        The daily forcings given from input
+    solar_geom:
+        Solar geometry of the site
+
+    Returns
+    -------
+    forcing:
+        Dataframe of daily or subdaily forcings
     """
 
     # solar_geom returns a tuple due to restrictions of numba
@@ -48,6 +72,17 @@ def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
     """
     Adjust temperatures according to lapse rates
     and calculate t_day
+
+    Parameters
+    ----------
+    df:
+        Dataframe with daily max and min temperatures
+    elev:
+        Elevation in meters
+    params:
+        Dictionary containing parameters from a
+        MetSim object. Lapse rates are used in this
+        calculation.
     """
     dZ = (elev - params['base_elev'])/cnst.M_PER_KM
     lapse_rates = [params['t_min_lr'], params['t_max_lr']]
@@ -59,12 +94,34 @@ def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
 
 
 def calc_prec(df: pd.DataFrame, params: dict):
-    """Adjust precitation according to isoh"""
-    df['prec'] *= (df.get('site_isoh', 1) / df.get('base_isoh', 1))
+    """
+    Adjust precitation according to ratio of
+    isohyet ratio of the given site to some base
+    value.
+
+    Parameters
+    ----------
+    df:
+        Dataframe containing daily precipitation
+        timeseries.
+    params:
+        Dictionary containing isohyet values
+    """
+    df['prec'] *= (params['site_isoh'] / params['base_isoh'])
 
 
-def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
-    """Calculate snowpack as swe."""
+def calc_snowpack(df: pd.DataFrame, snowpack: float=0.0):
+    """
+    Estimate snowpack as swe.
+
+    Parameters
+    ----------
+    df:
+        Dataframe with daily timeseries of precipitation
+        and minimum temperature.
+    snowpack:
+        (Optional - defaults to 0) Initial snowpack
+    """
     swe = pd.Series(snowpack, index=df.index)
     accum = (df['t_min'] <= cnst.SNOW_TCRIT)
     melt = (df['t_min'] > cnst.SNOW_TCRIT)
@@ -74,8 +131,23 @@ def calc_snowpack(df: pd.DataFrame, params: dict, snowpack=0.0):
 
 
 def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
-                  params: dict, win_type='boxcar'):
-    """Calculate shortwave, humidity"""
+                  params: dict, win_type: str='boxcar'):
+    """
+    Calculate shortwave, humidity
+
+    Parameters
+    ----------
+    df:
+        Dataframe containing daily timeseries
+    elev:
+        Elevation in meters
+    params:
+        A dictionary of parameters from the
+        MetSim object
+    win_type:
+        (Optional) The method used to calculate
+        the 60 day rolling average of precipitation
+    """
     def _calc_tfmax(prec, dtr, sm_dtr):
         b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
         t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
@@ -139,7 +211,38 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     df['vapor_pressure'] = pva
 
 
-def sw_hum_iter(df, sg, pa, pva, parray, dtr, params):
+def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series, parray:
+                pd.Series, dtr: pd.Series, params: dict):
+    """
+    Calculated updated values for dewpoint temperature
+    and saturation vapor pressure.
+
+    Parameters
+    ----------
+    df:
+        Dataframe containing daily timeseries of
+        cloud cover fraction, tfmax, swe, and
+        shortwave radiation
+    sg:
+        Solar geometry dictionary, calculated with
+        `metsim.physics.solar_geom`.
+    pa:
+        Air pressure in Pascals
+    pva:
+        Vapor presure in Pascals
+    parray:
+        60 day rolling average of precipitation in cm
+    dtr:
+        Daily temperature range
+    params:
+        A dictionary of parameters from a MetSim object
+
+    Returns
+    -------
+    (tdew, svp):
+        A tuple of dewpoint temperature and saturation
+        vapor pressure
+    """
     tt_max0 = sg['tt_max0']
     potrad = sg['potrad']
     daylength = sg['daylength']
@@ -150,7 +253,7 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr, params):
 
     # Snowpack contribution
     sc = np.zeros_like(df['swe'])
-    if (cnst.MTCLIM_SWE_CORR):
+    if (params['mtclim_swe_corr']):
         inds = np.logical_and(df['swe'] > 0.,  daylength[yday] > 0.)
         sc[inds] = ((1.32 + 0.096 * df['swe'][inds]) *
                     1.0e6 / daylength[yday][inds])
@@ -168,7 +271,7 @@ def sw_hum_iter(df, sg, pa, pva, parray, dtr, params):
         df['tskc'] = np.sqrt((1. - df['tfmax']) / 0.65)
 
     # Compute PET using SW radiation estimate, and update Tdew, pva **
-    pet = calc_pet(df['swrad'], df['t_day'], pa, df['dayl'])
+    pet = calc_pet(df['swrad'], df['t_day'], df['dayl'], pa)
     # Calculate ratio (PET/effann_prcp) and correct the dewpoint
     ratio = pet / parray
     df['pet'] = pet * cnst.MM_PER_CM

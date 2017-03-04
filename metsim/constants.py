@@ -1,6 +1,22 @@
 """
-Stores default constants, parameters, and options.
+Stores default constants
 """
+# Meteorology Simulator
+# Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
+# and Environmental Engineering, University of Washington.
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 DEG_PER_REV = 360.0       # Number of degrees in full revolution
 SEC_PER_RAD = 13750.9871  # seconds per radian of hour angle
@@ -52,10 +68,3 @@ DIF_ALB = 0.6       # (dim) diffuse albedo for horizon correction
 SC_INT = 1.32       # (MJ/m2/day) snow correction intercept
 SC_SLOPE = 0.096    # (MJ/m2/day/cm) snow correction slope
 CHUNK_SIZE = 10
-SW_PREC_THRESH = 0.
-MTCLIM_SWE_CORR = False
-VP_ITER = 'VP_ITER_ALWAYS'
-LW_CLOUD = 'CLOUD_DEARDORFF'
-LW_TYPE = 'PRATA'
-TDEW_TOL = 1e-3
-TMAX_DAYLENGTH_FRACTION = 0.67
