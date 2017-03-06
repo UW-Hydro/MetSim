@@ -30,7 +30,6 @@ output specified.
 
 import os
 import struct
-import logging
 import itertools
 import time as tm
 from getpass import getuser
@@ -162,7 +161,7 @@ class MetSim(object):
                 data=np.full(shape, np.nan),
                 coords=coords, dims=dims,
                 name=varname, attrs=attrs.get(varname, {}),
-                encoding=None)
+                encoding={'dtype': 'f8', '_FillValue': cnst.FILL_VALUES['f8']})
 
         # Input preprocessing
         in_preprocess = {"ascii": self.vic_in_preprocess,

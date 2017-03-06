@@ -18,6 +18,23 @@ Stores default constants
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+try:
+    # prefer to just use the dictionary stored in netCDF
+    from netCDF4 import default_fillvals as FILL_VALUES
+except ImportError:
+    # but we can use these if we can't import netCDF4
+    FILL_VALUES = {'S1': '\x00',
+                   'f4': 9.969209968386869e+36,
+                   'f8': 9.969209968386869e+36,
+                   'i1': -127,
+                   'i2': -32767,
+                   'i4': -2147483647,
+                   'i8': -9223372036854775806,
+                   'u1': 255,
+                   'u2': 65535,
+                   'u4': 4294967295,
+                   'u8': 18446744073709551614}
+
 DEG_PER_REV = 360.0       # Number of degrees in full revolution
 SEC_PER_RAD = 13750.9871  # seconds per radian of hour angle
 RAD_PER_DAY = 0.017214    # radians of Earth orbit per julian day
