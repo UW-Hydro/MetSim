@@ -6,7 +6,7 @@ Installation
 Required dependencies
 ---------------------
 
-- Python 3.6
+- Python 3.5 or 3.6
 - `xarray <http://xarray.pydata.org/>`__ (0.9.1 or later)
 - `pandas <http://pandas.pydata.org/>`__ (0.19.0 or later)
 - `numba <http://numba.pydata.org/>`__ (0.31.0 or later)
