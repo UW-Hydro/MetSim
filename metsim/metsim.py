@@ -31,6 +31,7 @@ output specified.
 import os
 import sys
 import struct
+import logging
 import itertools
 import time as tm
 from getpass import getuser
