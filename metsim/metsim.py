@@ -96,6 +96,7 @@ class MetSim(object):
         "time_step": '',
         "out_format": '',
         "in_format": None,
+        "verbose": 0,
         "base_elev": 0,
         "t_max_lr": '',
         "t_min_lr": '',
@@ -118,8 +119,8 @@ class MetSim(object):
         # Record parameters
         MetSim.params.update(params)
         MetSim.params['dates'] = pd.date_range(params['start'], params['stop'])
-        logger.setLevel(params['verbose'])
-        ch.setLevel(params['verbose'])
+        logger.setLevel(MetSim.params['verbose'])
+        ch.setLevel(MetSim.params['verbose'])
         logger.addHandler(ch)
 
         self.output = None
