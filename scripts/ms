@@ -22,6 +22,7 @@ Command line tool for MetSim
 import os
 import sys
 import json
+import logging
 import argparse
 import pandas as pd
 import time
@@ -34,6 +35,7 @@ def parse(args):
     parser = argparse.ArgumentParser()
     parser.add_argument('config')
     parser.add_argument('-n', '--n-processes', default=1, type=int)
+    parser.add_argument('-v', '--verbose', action='store_true')
     return parser.parse_args()
 
 
@@ -81,7 +83,8 @@ def init(opts):
                  "method": method,
                  "out_dir": out_dir,
                  "domain": domain_file,
-                 "forcings": forcing_files})
+                 "forcings": forcing_files,
+                 "verbose": opts.verbose * logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['t_min_lr'] = float(conf['t_min_lr'])
     conf['t_max_lr'] = float(conf['t_max_lr'])
@@ -91,8 +94,6 @@ def init(opts):
 
 def main():
     """Runs MetSim"""
-    start = time.time()
-
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
@@ -102,8 +103,6 @@ def main():
     else:
         ms.run(ms.locations)
     ms.write()
-    end = time.time()
-    print('time elapsed: %s ' % (end - start))
 
 
 if __name__ == '__main__':
