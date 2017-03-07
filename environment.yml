@@ -2,7 +2,7 @@ name: metsim
 channels:
   - conda-forge
 dependencies:
-  - python>=3.5
+  - python=3.5
   - xarray
   - pandas
   - netcdf4
