@@ -25,7 +25,6 @@ import json
 import logging
 import argparse
 import pandas as pd
-import time
 from configparser import SafeConfigParser
 from collections import OrderedDict
 
