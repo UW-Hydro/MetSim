@@ -182,15 +182,18 @@ class MetSim(object):
         self.pool = Pool(processes=nprocs)
 
         # Split the input into chunks to run in parallel
-        locations = np.array_split(list(zip(self.i_idx, self.j_idx)),
-                                   nprocs * cnst.CHUNK_SIZE)
+        locations = np.array(list(zip(self.i_idx, self.j_idx)))
 
         # Do the forcing generation and disaggregation if required
         status = []
-        for loc_chunk in locations:
+
+        for loc in locations:
+            i, j = loc
+            locd = dict(lat=i, lon=j)
             stat = self.pool.apply_async(
                 wrap_run,
-                args=(self.method.run, loc_chunk, self.met_data, self.disagg),
+                args=(self.method.run, locd, self.met_data.isel(lat=i, lon=j),
+                      self.disagg),
                 callback=self._unpack_results)
             status.append(stat)
         self.pool.close()
@@ -199,14 +202,13 @@ class MetSim(object):
         [stat.get() for stat in status]
         self.pool.join()
 
-    def _unpack_results(self, results: list):
+    def _unpack_results(self, result: tuple):
         """Put results into the master dataset"""
-        for result in results:
-            locs, df = result
-            i = locs['lat']
-            j = locs['lon']
-            for varname in self.params['out_vars']:
-                self.output[varname].values[:, i, j] = df[varname].values
+        locs, df = result
+        i = locs['lat']
+        j = locs['lon']
+        for varname in self.params['out_vars']:
+            self.output[varname].values[:, i, j] = df[varname].values
 
     def run(self, locations: list):
         """
@@ -214,9 +216,9 @@ class MetSim(object):
         """
         results = []
         for i, j in locations:
-            print("Processing {} {}".format(i, j))
             locs = dict(lat=i, lon=j)
-            ds = self.met_data.isel(lat=i, lon=j)  # fix this indexing
+            print("Processing {}".format(locs))
+            ds = self.met_data.isel(lat=i, lon=j)
             lat = ds['lat'].values
             elev = ds['elev'].values
             df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
@@ -432,21 +434,21 @@ class MetSim(object):
         return ds.load()
 
 
-def wrap_run(func: callable, loc_chunk: list,
-             met_data: xr.Dataset, disagg: bool):
+def wrap_run(func: callable, loc: dict,
+             ds: xr.Dataset, disagg: bool):
     """
     Iterate over a chunk of the domain. This is wrapped
     so we can return a tuple of locs and df.
 
     Parameters
     ----------
-    func:
+    func: callable
         The function to call to do the work
-    loc_chunk:
+    loc: dict
         Some subset of the domain to do work on
-    met_data:
+    met_data: xr.Dataset
         Input forcings and domain
-    disagg:
+    disagg: bool
         Whether or not we should run a disagg routine
 
     Returns
@@ -454,14 +456,9 @@ def wrap_run(func: callable, loc_chunk: list,
     results
         A list of tuples arranged as (location, output)
     """
-    results = []
-    for i, j in loc_chunk:
-        print("Processing {} {}".format(i, j))
-        locs = dict(lat=i, lon=j)
-        ds = met_data.isel(lat=i, lon=j)  # fix this indexing
-        lat = ds['lat'].values
-        elev = ds['elev'].values
-        df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
-        df = func(df, MetSim.params, elev=elev, lat=lat, disagg=disagg)
-        results.append((locs, df))
-    return results
+    print("Processing {}".format(loc))
+    lat = ds['lat'].values
+    elev = ds['elev'].values
+    df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
+    df = func(df, MetSim.params, elev=elev, lat=lat, disagg=disagg)
+    return loc, df
