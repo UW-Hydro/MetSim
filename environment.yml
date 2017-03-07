@@ -3,13 +3,9 @@ channels:
   - conda-forge
 dependencies:
   - python=3.5
-  - xarray
-  - pandas
-  - netcdf4
+  - xarray=0.9.1
+  - pandas=0.19.1
+  - netcdf4=1.2.5
   - numba
-  - numpy
-  - scipy
-  - pytest
-  - pip:
-    - coveralls
-    - pytest-cov
+  - numpy=1.11.2
+  - scipy=0.18.1
