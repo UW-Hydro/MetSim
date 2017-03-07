@@ -95,6 +95,7 @@ def test_params(in_format, out_format, method):
     in_vars = in_vars_section[in_format]
     domain_vars = domain_section[in_format]
     out_dir = "./tmp"
+    out_prefix = "forcing"
     lr = 0.0065
     params = {'start': start,
               'stop': stop,
@@ -107,6 +108,7 @@ def test_params(in_format, out_format, method):
               't_max_lr': lr,
               't_min_lr': lr,
               'out_dir': out_dir,
+              'out_prefix': out_prefix,
               'in_vars': in_vars,
               'domain_vars': domain_vars}
     return params
