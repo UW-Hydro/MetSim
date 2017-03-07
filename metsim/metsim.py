@@ -31,7 +31,6 @@ output specified.
 import os
 import sys
 import struct
-import logging
 import itertools
 import time as tm
 from getpass import getuser
@@ -91,6 +90,7 @@ class MetSim(object):
         "method": '',
         "domain": '',
         "out_dir": '',
+        "out_prefix": 'forcing',
         "start": '',
         "stop": '',
         "time_step": '',
@@ -173,7 +173,7 @@ class MetSim(object):
                 data=np.full(shape, np.nan),
                 coords=coords, dims=dims,
                 name=varname, attrs=attrs.get(varname, {}),
-                encoding=None)
+                encoding={'dtype': 'f8', '_FillValue': cnst.FILL_VALUES['f8']})
 
         # Input preprocessing
         in_preprocess = {"ascii": self.vic_in_preprocess,
@@ -321,8 +321,8 @@ class MetSim(object):
     def netcdf_out_preprocess(self):
         """Initialize the output file"""
         logger.info("Initializing netcdf...")
-        self.output_filename = os.path.join(self.params['out_dir'],
-                                            "forcing.nc")
+        self.output_filename = os.path.join(
+            self.params['out_dir'], '{}.nc'.format(self.params['out_prefix']))
 
     def write(self):
         """
@@ -350,8 +350,9 @@ class MetSim(object):
             if self.output.mask[i, j] > 0:
                 lat = self.output.lat.values[i]
                 lon = self.output.lon.values[j]
-                fname = os.path.join(self.params['out_dir'],
-                                     "forcing_{}_{}.csv".format(lat, lon))
+                fname = os.path.join(
+                    self.params['out_dir'],
+                    "{}_{}_{}.csv".format(self.params['out_prefix'], lat, lon))
                 self.output.isel(lat=i, lon=j)[self.params[
                     'out_vars']].to_dataframe().to_csv(fname)
 
