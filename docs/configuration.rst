@@ -88,8 +88,47 @@ containing valid variables.  The list of valid variables is dependent on which
 simulation method is used, as well as whether disaggregation is used. Defaults 
 to ``['temp', 'prec', 'shortwave', 'longwave', 'vapor_pressure', 'red_humid']``.
 
+
 in_vars section
 ---------------
+The ``in_vars`` section is where you can specify which variables are in your 
+input data, and the corresponding symbols which MetSim will recognize. The 
+format of this section depends on the value given in the ``in_format`` entry in 
+the ``MetSim`` section of the configuration file.  See below for conventions for
+each input type.
+
+
+netcdf
+``````
+The ``in_vars`` section for NetCDF input acts as a mapping between the variable 
+names in the input dataset to the variable names expected by MetSim.  The format
+is given as ``netcdf_varname = metsim_varname``.  The minimum required variables 
+given have ``metsim_varname``'s corresponding to ``t_min``, ``t_max``, and 
+``prec``; these variable names correspond to minimum daily temperature (Celcius), 
+maximum daily temperature (Celcius), and precipitation (mm).
+
+ascii
+`````
+The ``in_vars`` section for ASCII input acts similarly to the NetCDF input 
+format, except for one key point.  Variables should be given as a tautology: the 
+format is given as ``metsim_varname = metsim_varname``.  The order that the 
+variables are given corresponds to the column numbers that they appear in the 
+input files.  The minimum required variables are ``t_min``, ``t_max``, and 
+``prec``; these variable names correspond to minimum daily temperature (Celcius), 
+maximum daily temperature (Celcius), and precipitation (mm).
+
+binary
+``````
+This section has an input style for binary files that mimics the VIC version 4 
+input style.  Each line is specified as ``varname = scale cdatatype``, where 
+``varname`` is the name that MetSim should use for the column, ``scale`` is a 
+floating point scaling factor that should be applied after conversion from 
+binary to floating point; the conversion applied by the ``scale`` is applied 
+after the value in the input is converted from binary to the ``cdatatype`` 
+specified for each variable.  Valid ``cdatatype``s are ``signed`` and 
+``unsigned``.  ``signed`` values are interpreted as values which can be positive
+or negative, whereas ``unsigned`` values are interpreted as values that can only
+be greater than or equal to zero.
 
 domain_vars section
 -------------------
