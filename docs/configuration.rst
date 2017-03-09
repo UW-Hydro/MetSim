@@ -103,7 +103,7 @@ netcdf
 The ``in_vars`` section for NetCDF input acts as a mapping between the variable 
 names in the input dataset to the variable names expected by MetSim.  The format
 is given as ``netcdf_varname = metsim_varname``.  The minimum required variables 
-given have ``metsim_varname``'s corresponding to ``t_min``, ``t_max``, and 
+given have ``metsim_varname``s corresponding to ``t_min``, ``t_max``, and 
 ``prec``; these variable names correspond to minimum daily temperature (Celcius), 
 maximum daily temperature (Celcius), and precipitation (mm).
 
@@ -132,4 +132,10 @@ be greater than or equal to zero.
 
 domain_vars section
 -------------------
-
+The ``domain_vars`` section is where information about the domain file is given.
+Since the domain file is given as a NetCDF file this section has a similar 
+format to that of the NetCDF input file format described above.  That is, 
+entries should be of the form ``netcdf_varname = metsim_varname``. The minimum 
+required variables have ``metsim_varname``s corresponding to ``lat``, ``lon``,
+``mask``, and ``elev``; these variable names correspond to latitude, longitude, 
+a mask of valid cells in the domain, and the elevation given in meters.
