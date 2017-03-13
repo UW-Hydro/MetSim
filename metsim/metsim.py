@@ -214,7 +214,6 @@ class MetSim(object):
         """
         Kicks off the disaggregation and queues up data for IO
         """
-        results = []
         for i, j in locations:
             locs = dict(lat=i, lon=j)
             print("Processing {}".format(locs))
@@ -224,8 +223,7 @@ class MetSim(object):
             df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
             df = self.method.run(df, MetSim.params, elev=elev,
                                  lat=lat, disagg=self.disagg)
-            results.append((locs, df))
-        self._unpack_results(results)
+            self._unpack_results((locs, df))
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
@@ -461,4 +459,4 @@ def wrap_run(func: callable, loc: dict,
     elev = ds['elev'].values
     df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
     df = func(df, MetSim.params, elev=elev, lat=lat, disagg=disagg)
-    return loc, df
+    return (loc, df)
