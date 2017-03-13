@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""
+Command line tool for MetSim
+"""
+# Meteorology Simulator
+# Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
+# and Environmental Engineering, University of Washington.
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import os
+import sys
+import json
+import logging
+import argparse
+import pandas as pd
+from configparser import SafeConfigParser
+from collections import OrderedDict
+
+
+def parse(args):
+    """Parse the command line arguments"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument('config')
+    parser.add_argument('-n', '--n-processes', default=1, type=int)
+    parser.add_argument('-v', '--verbose', action='store_true')
+    return parser.parse_args()
+
+
+def init(opts):
+    """Initialize some information based on the options & config"""
+    if not os.path.isfile(opts.config):
+        exit("Invalid configuration given.  Use `ms -h` for more information.")
+    config = SafeConfigParser()
+    config.optionxform = str
+    config.read(opts.config)
+    conf = OrderedDict(config['MetSim'])
+    conf['in_vars'] = OrderedDict(config['in_vars'])
+    conf['domain_vars'] = OrderedDict(config['domain_vars'])
+    out_dir = conf['out_dir']
+    method = conf['method']
+
+    # If the forcing variable is a directory, scan it for files
+    if os.path.isdir(conf['forcing']):
+        forcing_files = [os.path.join(conf['forcing'], fn) for fn in
+                         next(os.walk(conf['forcing']))[2]]
+    else:
+        forcing_files = conf['forcing']
+
+    # We assume there is only one domain file
+    domain_file = conf['domain']
+
+    # Generate the date range that will be put into the data frame
+    start_date, start_hour = conf['start'].split(':')
+    start_year, start_month, start_day = start_date.split('/')
+    end_year, end_month, end_day = conf['stop'].split('/')
+    start = pd.datetime(int(start_year),
+                        int(start_month),
+                        int(start_day),
+                        int(start_hour))
+    stop = pd.datetime(int(end_year),
+                       int(end_month),
+                       int(end_day))
+
+    def to_list(s):
+        return json.loads(s.replace("'", '"'))
+
+    conf.update({"stop": stop,
+                 "start": start,
+                 "nprocs": opts.n_processes,
+                 "method": method,
+                 "out_dir": out_dir,
+                 "domain": domain_file,
+                 "forcings": forcing_files,
+                 "verbose": opts.verbose * logging.INFO})
+    conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
+    conf['t_min_lr'] = float(conf['t_min_lr'])
+    conf['t_max_lr'] = float(conf['t_max_lr'])
+    conf = {k: v for k, v in conf.items() if v != []}
+    return conf
+
+
+def main():
+    """Runs MetSim"""
+    from metsim.metsim import MetSim
+    setup = init(parse(sys.argv[1:]))
+    ms = MetSim(setup)
+    ms.load(setup['forcings'])
+    if ms.params['nprocs'] > 1:
+        ms.launch(setup['forcings'])
+    else:
+        ms.run(ms.locations)
+    ms.write()
+
+
+if __name__ == '__main__':
+    main()
