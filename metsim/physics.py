@@ -99,9 +99,7 @@ def atm_pres(elev: float) -> float:
     '''
     Atmospheric pressure (Pa) as a function of elevation (m)
 
-    References
-    ----------
-    * Iribane, J.V., and W.L. Godson, 1981. Atmospheric
+    .. [1] Iribane, J.V., and W.L. Godson, 1981. Atmospheric
       Thermodynamics, 2nd Edition. D. Reidel Publishing
       Company, Dordrecht, The Netherlands (p. 168)
 
@@ -125,9 +123,7 @@ def svp(temp: pd.Series, a: float=0.61078, b: float=17.269, c: float=237.3):
     '''
     Compute the saturated vapor pressure.
 
-    References
-    ----------
-    * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+    .. [1] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
       1992 Equation 4.2.2.
 
     Parameters
@@ -158,9 +154,7 @@ def svp_slope(temp: pd.Series, a: float=0.61078,
     Compute the gradient of the saturated vapor pressure as a function of
     temperature.
 
-    References
-    ----------
-    * Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+    .. [1] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
       1992. Equation 4.2.3.
 
     Parameters

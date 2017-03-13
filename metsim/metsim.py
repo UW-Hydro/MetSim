@@ -29,7 +29,9 @@ output specified.
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import sys
 import struct
+import logging
 import itertools
 import time as tm
 from getpass import getuser
@@ -48,6 +50,12 @@ Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen, and D. P. Letten
 
 now = tm.ctime(tm.time())
 user = getuser()
+formatter = logging.Formatter(' - '.join(
+    ["%(asctime)s", "%(name)s", "%(levelname)s", "%(message)s"]))
+
+ch = logging.StreamHandler(sys.stdout)
+ch.setFormatter(formatter)
+logger = logging.getLogger("metsim")
 
 attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
                  'standard_name': 'water_potential_evaporation_flux'},
@@ -89,6 +97,7 @@ class MetSim(object):
         "time_step": '',
         "out_format": '',
         "in_format": None,
+        "verbose": 0,
         "base_elev": 0,
         "t_max_lr": '',
         "t_min_lr": '',
@@ -111,6 +120,9 @@ class MetSim(object):
         # Record parameters
         MetSim.params.update(params)
         MetSim.params['dates'] = pd.date_range(params['start'], params['stop'])
+        logger.setLevel(MetSim.params['verbose'])
+        ch.setLevel(MetSim.params['verbose'])
+        logger.addHandler(ch)
 
         self.output = None
         self.met_data = None
@@ -136,7 +148,7 @@ class MetSim(object):
         self.j_idx = jlist
 
         self.locations = list(zip(ilist, jlist))
-        print('found %d locations' % len(self.locations))
+        logger.info('found %d locations' % len(self.locations))
 
         out_dir = MetSim.params['out_dir']
         if not os.path.exists(out_dir):
@@ -216,8 +228,8 @@ class MetSim(object):
         """
         for i, j in locations:
             locs = dict(lat=i, lon=j)
-            print("Processing {}".format(locs))
-            ds = self.met_data.isel(lat=i, lon=j)
+            logger.info("Processing {}".format(locs))
+            ds = self.met_data.isel(**locs)
             lat = ds['lat'].values
             elev = ds['elev'].values
             df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
@@ -309,7 +321,7 @@ class MetSim(object):
 
     def netcdf_out_preprocess(self):
         """Initialize the output file"""
-        print("Initializing netcdf...")
+        logger.info("Initializing netcdf...")
         self.output_filename = os.path.join(
             self.params['out_dir'], '{}.nc'.format(self.params['out_prefix']))
 
@@ -325,14 +337,14 @@ class MetSim(object):
 
     def write_netcdf(self):
         """Write out as NetCDF to the output file"""
-        print("Writing netcdf...")
+        logger.info("Writing netcdf...")
         self.output.to_netcdf(self.output_filename,
                               unlimited_dims=['time'],
                               encoding={'time': {'dtype': 'f8'}})
 
     def write_ascii(self):
         """Write out as ASCII to the output file"""
-        print("Writing ascii...")
+        logger.info("Writing ascii...")
         shape = self.output.dims
         for i, j in itertools.product(range(shape['lat']),
                                       range(shape['lon'])):
@@ -454,7 +466,7 @@ def wrap_run(func: callable, loc: dict,
     results
         A list of tuples arranged as (location, output)
     """
-    print("Processing {}".format(loc))
+    logger.info("Processing {}".format(loc))
     lat = ds['lat'].values
     elev = ds['elev'].values
     df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
