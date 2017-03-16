@@ -50,7 +50,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg:
         A dataframe with sub-daily timeseries.
     """
-    stop = params['stop'] + pd.Timedelta('1 days')
+    stop = params['stop'] + pd.Timedelta('23 hours')
     dates_disagg = pd.date_range(params['start'], stop,
                                  freq='{}T'.format(params['time_step']))
     df_disagg = pd.DataFrame(index=dates_disagg)
@@ -379,4 +379,4 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
         dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
         rad_chunk = rad[np.array(tinystep).astype(np.int32)]
         disaggrad[dslice] = chunk_sum(rad_chunk) * tmp_rad[day]
-    return disaggrad
+    return disaggrad[:-1]

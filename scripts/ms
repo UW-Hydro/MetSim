@@ -35,6 +35,7 @@ def parse(args):
     parser.add_argument('config')
     parser.add_argument('-n', '--n-processes', default=1, type=int)
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-a', '--annual', action='store_true')
     return parser.parse_args()
 
 
@@ -96,7 +97,7 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    ms.load(setup['forcing'])
+    ms.load()
     if ms.params['nprocs'] > 1:
         ms.launch()
     else:

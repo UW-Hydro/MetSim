@@ -149,7 +149,7 @@ def test_mtclim(test_setup):
     # Load data and ensure the ready flag has been set
     test_setup.params['time_step'] = 1440
     test_setup.params['out_vars'] = daily_out_vars
-    test_setup.load(data_files)
+    test_setup.load()
     loc = test_setup.locations[0]
     assert test_setup.ready
     assert not test_setup.disagg
@@ -169,7 +169,7 @@ def test_mtclim(test_setup):
     # Now test the disaggregation as well as forcing generation
     test_setup.params['time_step'] = 60
     test_setup.params['out_vars'] = hourly_out_vars
-    test_setup.load(data_files)
+    test_setup.load()
     assert test_setup.ready
 
     # Check to see that the data is valid
@@ -177,7 +177,7 @@ def test_mtclim(test_setup):
 
     test_setup.run()
     hourly = test_setup.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()
-    assert len(hourly) == (n_days * const.HOURS_PER_DAY)+1
+    assert len(hourly) == (n_days * const.HOURS_PER_DAY)
     for var in test_setup.params['out_vars']:
         assert var in hourly
         l, h = data_ranges[var]
@@ -211,11 +211,11 @@ def test_disaggregation_values():
 
     # Set up the MetSim object
     ms = MetSim(params)
-    ms.load(params['forcing'])
+    ms.load()
 
     # Run MetSim and load in the validated data
     ms.run()
-    out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[:-1][out_vars]
+    out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
     good = pd.read_table('./tests/data/validated_48.3125_-120.5625',
                          names=out_vars)
     good.index = out.index

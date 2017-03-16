@@ -128,7 +128,7 @@ class MetSim(object):
         self.met_data = None
         self.ready = False
 
-    def load(self, job_list: list):
+    def load(self):
         """Load the necessary datasets into memory"""
         # Get the necessary information from the domain
         domain = self.params['domain']
@@ -158,7 +158,7 @@ class MetSim(object):
         self.output.attrs = attrs['_global']
         # Number of timesteps
         if self.disagg:
-            delta = pd.Timedelta('1 days')
+            delta = pd.Timedelta('23 hours')
         else:
             delta = pd.Timedelta('0 days')
         times = pd.date_range(MetSim.params['start'],
@@ -180,7 +180,7 @@ class MetSim(object):
         in_preprocess = {"ascii": self.vic_in_preprocess,
                          "binary": self.vic_in_preprocess,
                          "netcdf": self.netcdf_in_preprocess}
-        in_preprocess[MetSim.params['in_format']](job_list)
+        in_preprocess[MetSim.params['in_format']](self.params['forcing'])
 
         # Output preprocessing
         out_preprocess = {"ascii": self.ascii_out_preprocess,
