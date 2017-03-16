@@ -127,7 +127,7 @@ def test_setup(test_params, domain_file):
     else:
         data_files = loc
         assert data_files == './tests/data/test.nc'
-    test_params['forcings'] = data_files
+    test_params['forcing'] = data_files
 
     # Test construction - should not yet be ready to run
     ms = MetSim(test_params)
@@ -139,7 +139,7 @@ def test_setup(test_params, domain_file):
 def test_mtclim(test_setup):
     """Tests the ability to run successfully"""
     # Here we only test a single grid cell
-    data_files = test_setup.params['forcings']
+    data_files = test_setup.params['forcing']
     daily_out_vars = ['prec', 't_max', 't_min', 't_day',
                       'wind', 'dayl', 'swrad',
                       'tskc', 'pet', 'vapor_pressure']
@@ -152,13 +152,14 @@ def test_mtclim(test_setup):
     test_setup.load(data_files)
     loc = test_setup.locations[0]
     assert test_setup.ready
+    assert not test_setup.disagg
 
     # Check to see that the data is valid
     assert type(test_setup.met_data) is xr.Dataset
     n_days = len(test_setup.met_data.time)
 
     # Run the forcing generation, but not the disaggregation
-    test_setup.run([loc])
+    test_setup.run()
     daily = test_setup.output
     assert type(test_setup.output) is xr.Dataset
     assert len(daily.time) == n_days
@@ -174,7 +175,7 @@ def test_mtclim(test_setup):
     # Check to see that the data is valid
     assert type(test_setup.met_data) is xr.Dataset
 
-    test_setup.run([loc])
+    test_setup.run()
     hourly = test_setup.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()
     assert len(hourly) == (n_days * const.HOURS_PER_DAY)+1
     for var in test_setup.params['out_vars']:
@@ -195,7 +196,7 @@ def test_disaggregation_values():
               'in_format': 'binary',
               'out_format': 'ascii',
               'domain': './tests/data/stehekin.nc',
-              'forcings': data_files,
+              'forcing': data_files,
               'method': 'mtclim',
               'time_step': "60",
               't_max_lr': 0.00065,
@@ -210,10 +211,10 @@ def test_disaggregation_values():
 
     # Set up the MetSim object
     ms = MetSim(params)
-    ms.load(params['forcings'])
+    ms.load(params['forcing'])
 
     # Run MetSim and load in the validated data
-    ms.run([loc])
+    ms.run()
     out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[:-1][out_vars]
     good = pd.read_table('./tests/data/validated_48.3125_-120.5625',
                          names=out_vars)

@@ -140,7 +140,7 @@ class MetSim(object):
         self.elev = self.domain['elev']
         self.domain_shape = self.mask.shape
         self.domain_dims = self.mask.dims
-        self.disagg = int(MetSim.params['time_step']) < cnst.MIN_PER_DAY
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
         ilist, jlist = np.nonzero(np.nan_to_num(self.mask.values))
 
@@ -186,9 +186,10 @@ class MetSim(object):
         out_preprocess = {"ascii": self.ascii_out_preprocess,
                           "netcdf": self.netcdf_out_preprocess}
         out_preprocess[MetSim.params['out_format']]()
+        self._validate_setup()
         self.ready = True
 
-    def launch(self, job_list: list):
+    def launch(self):
         """Farm out the jobs to separate processes"""
         nprocs = MetSim.params['nprocs']
         self.pool = Pool(processes=nprocs)
@@ -222,11 +223,11 @@ class MetSim(object):
         for varname in self.params['out_vars']:
             self.output[varname].values[:, i, j] = df[varname].values
 
-    def run(self, locations: list):
+    def run(self):
         """
         Kicks off the disaggregation and queues up data for IO
         """
-        for i, j in locations:
+        for i, j in self.locations:
             locs = dict(lat=i, lon=j)
             logger.info("Processing {}".format(locs))
             ds = self.met_data.isel(**locs)
@@ -256,6 +257,11 @@ class MetSim(object):
         for each in non_empty:
             if self.params[each] is None or self.params[each] == '':
                 errs.append("Cannot have empty value for {}".format(each))
+
+        # Make sure time step divides evenly into a day
+        if cnst.MIN_PER_DAY % int(self.params['time_step']):
+            errs.append("Time step must divide 1440 evenly.  Got {}"
+                        .format(self.params['time_step']))
 
         # Check for required input variable specification
         required_in = ['t_min', 't_max', 'prec']
