@@ -7,7 +7,7 @@ Basics
 ------
 Provided in the source are several examples that can help you to 
 get started using using MetSim. They are located in the ``examples``
-directory.  We will look at the ``example_nc.conf`` file.  It's 
+directory.  We will look at the ``example_nc.conf`` file.  Its 
 contents are:
 
 .. code-block:: ini
@@ -89,7 +89,8 @@ Generating daily values
 -----------------------
 Daily values can be output by specifying a ``time_step`` of ``1440`` in the 
 configuration file, such as the one shown in the previous section. This will 
-prevent MetSim's disaggregation routines from being run.
+prevent MetSim's disaggregation routines from being run, and the results written
+out will be daily values.
 
 Translating formats of daily values
 -----------------------------------

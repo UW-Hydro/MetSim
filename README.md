@@ -8,19 +8,21 @@ METSIM: Meteorology Simulator
 | Current Release DOI    | [![DOI](https://zenodo.org/badge/69834400.svg)](https://zenodo.org/badge/latestdoi/69834400) |
 
 MetSim is a meteorological simulator and forcing disaggregator for
-hydrologic modeling and climate applications. Metsim is based on MtClim
-and the preprocessor from version 4 of the VIC hydrologic model.
+hydrologic modeling and climate applications. Metsim is based on 
+[MtClim](http://www.ntsg.umt.edu/project/mtclim)
+and the preprocessor from version 4 of the [VIC hydrologic 
+model](https://github.com/UW-Hydro/VIC).
 
 MetSim consists of 3 main modules that govern the operation of 3 major
 aspects of its operation:
 
-**Management of dataset preprocessing and IO**
+**1. Management of dataset preprocessing and IO**
 
 The MetSim object provides high level support for setting up jobs and
 infrastructure for running simulation/disaggregation steps. It is the
-main interface through with the other modules are accessed.
+main interface through which the other modules are accessed.
 
-**Simulation of meteorological forcings**
+**2. Simulation of meteorological forcings**
 
 The base implementation of the meteorological simulator is based off of
 the algorithms described in[^1]. This component has been designed to be
@@ -29,25 +31,22 @@ specified during the setup of the MetSim object. The default
 implementation allows for the daily simulation of:
 
 -   Mean daily temperature
--   SWE
+-   Snow Water Equivalent (SWE)
 -   Incoming shortwave radiation
 -   Cloud cover fraction
 -   Potential evapotranspiration
 -   Vapor pressure
 
-**Disaggregation of daily simulation values to sub-daily timesteps**
+**3. Disaggregation of daily simulation values to sub-daily timesteps**
 
 Daily data from given input or simulated via the forcings generation
-component of MetSim can be disaggregaed down to sub-daily values at
+component of MetSim can be disaggregated down to sub-daily values at
 intervals specified in minutes (provided they divide evenly into 24
 hours). The operation of these algorithms is also described in[^1].
 
 Depending on the setup of these various components MetSim can be used
 for different purposes. For examples on how you can use MetSim see the
-examples page.
-
-This documentation is a work in progress. If you don't find what you're
-looking for here, check out metsim's Github page.
+examples page in the [documentation](http://metsim.readthedocs.io/en/develop/).
 
 Getting Started
 ===============
@@ -82,11 +81,11 @@ you have all of the required dependencies:
 -   [scipy](http://scipy.org/)
 
 If you don't use conda, be sure you have the required dependencies
-(numba and xarray) installed first. Then, install metsim with pip:
+(numba and xarray) installed first. Then, install MetSim with pip:
 
     $ pip install metsim
 
-To run the test suite after installing metsim, install
+To run the test suite after installing MetSim, install
 [py.test](https://pytest.org) (`pip install pytest`) and run
 `py.test --verbose`.
 

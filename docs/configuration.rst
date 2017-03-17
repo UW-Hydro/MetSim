@@ -28,7 +28,7 @@ on __in_vars__ for more details.
 __domain_vars__ for more details.
 
 ``out_dir :: path``: The location to write output to.  If this path doesn't 
-exist it will be created.
+exist, it will be created.
 
 ``in_format :: str``: A string representing the type of input files specified in
 the ``forcing`` entry.  Can be one of the following: ``ascii``, ``binary``, 
@@ -66,7 +66,7 @@ Defaults to ``1``.
 account when simulating incoming shortwave radiation.  Defaults to ``0``.
 
 ``mtclim_swe_corr :: bool``: Whether to activate MTCLIM's SWE correction 
-algorithm. Default to ``0``.
+algorithm. Default to ``False``.
 
 ``lw_cloud :: str``: Type of cloud correction to longwave radiation to apply. 
 Can be either ``DEFAULT`` or ``CLOUD_DEARDORFF``.  Defaults to 
