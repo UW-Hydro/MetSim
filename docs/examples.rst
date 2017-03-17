@@ -6,7 +6,7 @@ Examples
 Basics
 ------
 Provided in the source are several examples that can help you to 
-get started using using MetSim. They are located in the ``examples``
+get started using MetSim. They are located in the ``examples``
 directory.  We will look at the ``example_nc.conf`` file.  Its 
 contents are:
 
