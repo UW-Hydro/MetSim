@@ -103,7 +103,8 @@ Basic Usage
 MetSim provides a simple command line interface which is primarily
 operated via configuration files. For more information about the options
 available to be set in the configuration files see the configuration
-page.
+page in the full [documentation](http://metsim.readthedocs.io/en/develop/).
+
 
 Once installed, MetSim can be used from the command line via:
 

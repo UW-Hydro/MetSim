@@ -12,7 +12,7 @@ MetSim Section
 **Required Variables**
 
 ``time_step :: int``: The timestep to disaggregate in minutes.  If given as 1440
-(number of minutes in a day), no disaggregation will occur. This value should be
+(number of minutes in a day), no disaggregation will occur. This value must
 divide 1440 evenly.
 
 ``start :: str``: The time to start simulation given in the format 
