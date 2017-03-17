@@ -50,14 +50,13 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg:
         A dataframe with sub-daily timeseries.
     """
-    stop = params['stop'] + pd.Timedelta('23 hours')
-    dates_disagg = pd.date_range(params['start'], stop,
+    stop = df_daily.index[-1] + pd.Timedelta('23 hours')
+    dates_disagg = pd.date_range(df_daily.index[0], stop,
                                  freq='{}T'.format(params['time_step']))
     df_disagg = pd.DataFrame(index=dates_disagg)
     n_days = len(df_daily)
     n_disagg = len(df_disagg)
     ts = float(params['time_step'])
-
     df_disagg['shortwave'] = shortwave(df_daily['swrad'],
                                        df_daily['dayl'],
                                        df_daily.index.dayofyear,
@@ -364,13 +363,11 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     inds = np.array(tinystep > (cnst.HOURS_PER_DAY * tiny_step_per_hour-1))
     tinystep[inds] -= (cnst.HOURS_PER_DAY * tiny_step_per_hour)
     tinystep = np.array(tinystep).astype(np.int32)
-
-    # Chunk sum takes in the distribution of radiation throughout the day
-    # and collapses it into chunks that correspond to the desired timestep
-
     chunk_size = int(int(params['time_step'])
                      * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
 
+    # Chunk sum takes in the distribution of radiation throughout the day
+    # and collapses it into chunks that correspond to the desired timestep
     def chunk_sum(x):
         return np.sum(x.reshape((int(len(x)/chunk_size), chunk_size)), axis=1)
 

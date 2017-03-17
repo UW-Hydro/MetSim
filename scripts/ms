@@ -82,6 +82,7 @@ def init(opts):
                  "nprocs": opts.n_processes,
                  "method": method,
                  "out_dir": out_dir,
+                 "annual": opts.annual,
                  "domain": domain_file,
                  "forcing": forcing_files,
                  "verbose": opts.verbose * logging.INFO})
@@ -102,7 +103,7 @@ def main():
         ms.launch()
     else:
         ms.run()
-    ms.write()
+        ms.write()
 
 
 if __name__ == '__main__':

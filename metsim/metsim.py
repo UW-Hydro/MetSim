@@ -35,6 +35,7 @@ import logging
 import itertools
 import time as tm
 from getpass import getuser
+from datetime import datetime
 from multiprocessing import Pool
 
 import numpy as np
@@ -154,66 +155,44 @@ class MetSim(object):
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
-        self.output = self.domain.copy(deep=True)
-        self.output.attrs = attrs['_global']
-        # Number of timesteps
-        if self.disagg:
-            delta = pd.Timedelta('23 hours')
-        else:
-            delta = pd.Timedelta('0 days')
-        times = pd.date_range(MetSim.params['start'],
-                              MetSim.params['stop'] + delta,
-                              freq="{}T".format(MetSim.params['time_step']))
-        n_ts = len(times)
-
-        shape = (n_ts, ) + self.domain_shape
-        dims = ('time', ) + self.domain_dims
-        coords = {'time': times, **self.domain.mask.coords}
-        for varname in MetSim.params['out_vars']:
-            self.output[varname] = xr.DataArray(
-                data=np.full(shape, np.nan),
-                coords=coords, dims=dims,
-                name=varname, attrs=attrs.get(varname, {}),
-                encoding={'dtype': 'f8', '_FillValue': cnst.FILL_VALUES['f8']})
-
         # Input preprocessing
         in_preprocess = {"ascii": self.vic_in_preprocess,
                          "binary": self.vic_in_preprocess,
                          "netcdf": self.netcdf_in_preprocess}
         in_preprocess[MetSim.params['in_format']](self.params['forcing'])
-
-        # Output preprocessing
-        out_preprocess = {"ascii": self.ascii_out_preprocess,
-                          "netcdf": self.netcdf_out_preprocess}
-        out_preprocess[MetSim.params['out_format']]()
         self._validate_setup()
         self.ready = True
 
     def launch(self):
         """Farm out the jobs to separate processes"""
         nprocs = MetSim.params['nprocs']
-        self.pool = Pool(processes=nprocs)
-
-        # Split the input into chunks to run in parallel
-        locations = np.array(list(zip(self.i_idx, self.j_idx)))
 
         # Do the forcing generation and disaggregation if required
-        status = []
+        if self.params['annual']:
+            groups = self.met_data.groupby('time.year')
+        else:
+            groups = ('total', self.met_data)
+        for label, data in groups:
+            self.pool = Pool(processes=nprocs)
+            logger.info("Beginning {}".format(label))
+            self.setup_output(data)
+            status = []
+            self.setup_output(data)
+            for loc in self.locations:
+                i, j = loc
+                locd = dict(lat=i, lon=j)
+                stat = self.pool.apply_async(
+                    wrap_run,
+                    args=(self.method.run, locd, self.params,
+                          data.isel(lat=i, lon=j), self.disagg),
+                    callback=self._unpack_results)
+                status.append(stat)
+            self.pool.close()
 
-        for loc in locations:
-            i, j = loc
-            locd = dict(lat=i, lon=j)
-            stat = self.pool.apply_async(
-                wrap_run,
-                args=(self.method.run, locd, self.met_data.isel(lat=i, lon=j),
-                      self.disagg),
-                callback=self._unpack_results)
-            status.append(stat)
-        self.pool.close()
-
-        # Check that everything worked
-        [stat.get() for stat in status]
-        self.pool.join()
+            # Check that everything worked
+            [stat.get() for stat in status]
+            self.pool.join()
+            self.write(label)
 
     def _unpack_results(self, result: tuple):
         """Put results into the master dataset"""
@@ -227,16 +206,51 @@ class MetSim(object):
         """
         Kicks off the disaggregation and queues up data for IO
         """
-        for i, j in self.locations:
-            locs = dict(lat=i, lon=j)
-            logger.info("Processing {}".format(locs))
-            ds = self.met_data.isel(**locs)
-            lat = ds['lat'].values
-            elev = ds['elev'].values
-            df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
-            df = self.method.run(df, MetSim.params, elev=elev,
-                                 lat=lat, disagg=self.disagg)
-            self._unpack_results((locs, df))
+        if self.params['annual']:
+            groups = self.met_data.groupby('time.year')
+        else:
+            groups = ('total', self.met_data)
+        for label, data in groups:
+            logger.info("Beginning {}".format(label))
+            self.setup_output(data)
+            for i, j in self.locations:
+                locs = dict(lat=i, lon=j)
+                logger.info("Processing {}".format(locs))
+                ds = data.isel(**locs)
+                lat = ds['lat'].values
+                elev = ds['elev'].values
+                df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
+                df = self.method.run(df, MetSim.params, elev=elev,
+                                     lat=lat, disagg=self.disagg)
+                self._unpack_results((locs, df))
+            self.write(label)
+
+    def setup_output(self, prototype: xr.Dataset=None):
+        if not prototype:
+            prototype = self.met_data
+        self.output = self.domain.copy(deep=True)
+        self.output.attrs = attrs['_global']
+        # Number of timesteps
+        if self.disagg:
+            delta = pd.Timedelta('23 hours')
+        else:
+            delta = pd.Timedelta('0 days')
+
+        start = pd.Timestamp(prototype.time.values[0]).to_datetime()
+        stop = pd.Timestamp(prototype.time.values[-1]).to_datetime()
+        times = pd.date_range(start, stop + delta,
+                              freq="{}T".format(MetSim.params['time_step']))
+        n_ts = len(times)
+
+        shape = (n_ts, ) + self.domain_shape
+        dims = ('time', ) + self.domain_dims
+        coords = {'time': times, **self.domain.mask.coords}
+        for varname in MetSim.params['out_vars']:
+            self.output[varname] = xr.DataArray(
+                data=np.full(shape, np.nan),
+                coords=coords, dims=dims,
+                name=varname, attrs=attrs.get(varname, {}),
+                encoding={'dtype': 'f8', '_FillValue': cnst.FILL_VALUES['f8']})
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
@@ -321,17 +335,7 @@ class MetSim(object):
             for var in MetSim.params['in_vars']:
                 self.met_data[var].values[:, i, j] = ds[var].values
 
-    def ascii_out_preprocess(self):
-        """Dummy function"""
-        pass
-
-    def netcdf_out_preprocess(self):
-        """Initialize the output file"""
-        logger.info("Initializing netcdf...")
-        self.output_filename = os.path.join(
-            self.params['out_dir'], '{}.nc'.format(self.params['out_prefix']))
-
-    def write(self):
+    def write(self, suffix=""):
         """
         Dispatch to the right function based on the configuration given
         """
@@ -339,16 +343,18 @@ class MetSim(object):
                 'netcdf': self.write_netcdf,
                 'ascii': self.write_ascii
                 }
-        dispatch[MetSim.params.get('out_format', 'netcdf').lower()]()
+        dispatch[MetSim.params.get('out_format', 'netcdf').lower()](suffix)
 
-    def write_netcdf(self):
+    def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
         logger.info("Writing netcdf...")
-        self.output.to_netcdf(self.output_filename,
+        fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
+        output_filename = os.path.join(self.params['out_dir'], fname)
+        self.output.to_netcdf(output_filename,
                               unlimited_dims=['time'],
                               encoding={'time': {'dtype': 'f8'}})
 
-    def write_ascii(self):
+    def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
         logger.info("Writing ascii...")
         shape = self.output.dims
@@ -357,11 +363,11 @@ class MetSim(object):
             if self.output.mask[i, j] > 0:
                 lat = self.output.lat.values[i]
                 lon = self.output.lon.values[j]
-                fname = os.path.join(
-                    self.params['out_dir'],
-                    "{}_{}_{}.csv".format(self.params['out_prefix'], lat, lon))
+                fname = "{}_{}_{}_{}.csv".format(
+                            self.params['out_prefix'], lat, lon, suffix)
+                fpath = os.path.join(self.params['out_dir'], fname)
                 self.output.isel(lat=i, lon=j)[self.params[
-                    'out_vars']].to_dataframe().to_csv(fname)
+                    'out_vars']].to_dataframe().to_csv(fpath)
 
     def read(self, fpath: str) -> xr.Dataset:
         """
@@ -450,7 +456,7 @@ class MetSim(object):
         return ds.load()
 
 
-def wrap_run(func: callable, loc: dict,
+def wrap_run(func: callable, loc: dict, params: dict,
              ds: xr.Dataset, disagg: bool):
     """
     Iterate over a chunk of the domain. This is wrapped
@@ -476,5 +482,5 @@ def wrap_run(func: callable, loc: dict,
     lat = ds['lat'].values
     elev = ds['elev'].values
     df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
-    df = func(df, MetSim.params, elev=elev, lat=lat, disagg=disagg)
+    df = func(df, params, elev=elev, lat=lat, disagg=disagg)
     return (loc, df)
