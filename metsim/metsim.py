@@ -171,7 +171,7 @@ class MetSim(object):
         if self.params['annual']:
             groups = self.met_data.groupby('time.year')
         else:
-            groups = ('total', self.met_data)
+            groups = [('total', self.met_data)]
         for label, data in groups:
             self.pool = Pool(processes=nprocs)
             logger.info("Beginning {}".format(label))
@@ -209,7 +209,7 @@ class MetSim(object):
         if self.params['annual']:
             groups = self.met_data.groupby('time.year')
         else:
-            groups = ('total', self.met_data)
+            groups = [('total', self.met_data)]
         for label, data in groups:
             logger.info("Beginning {}".format(label))
             self.setup_output(data)

@@ -358,11 +358,14 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
 
     # Tinystep represents a daily set of values - but is constant across days
     tinystep = np.arange(cnst.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
-    inds = np.array(tinystep < 0)
+    inds = np.asarray(tinystep < 0)
     tinystep[inds] += cnst.HOURS_PER_DAY * tiny_step_per_hour
-    inds = np.array(tinystep > (cnst.HOURS_PER_DAY * tiny_step_per_hour-1))
+    inds = np.asarray(tinystep > (cnst.HOURS_PER_DAY * tiny_step_per_hour-1))
     tinystep[inds] -= (cnst.HOURS_PER_DAY * tiny_step_per_hour)
-    tinystep = np.array(tinystep).astype(np.int32)
+    tinystep = np.asarray(tinystep, dtype=np.int32)
+
+    # Chunk sum takes in the distribution of radiation throughout the day
+    # and collapses it into chunks that correspond to the desired timestep
     chunk_size = int(int(params['time_step'])
                      * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
 
@@ -374,6 +377,6 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     for day in range(n_days):
         rad = tiny_rad_fract[day_of_year[day] - 1]
         dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
-        rad_chunk = rad[np.array(tinystep).astype(np.int32)]
+        rad_chunk = rad[np.asarray(tinystep, dtype=np.int32)]
         disaggrad[dslice] = chunk_sum(rad_chunk) * tmp_rad[day]
     return disaggrad[:-1]

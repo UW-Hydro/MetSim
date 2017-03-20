@@ -107,6 +107,7 @@ def test_params(in_format, out_format, method):
               'time_step': "60",
               't_max_lr': lr,
               't_min_lr': lr,
+              'annual': False,
               'out_dir': out_dir,
               'out_prefix': out_prefix,
               'in_vars': in_vars,
