@@ -82,7 +82,7 @@ def init(opts):
                  "method": method,
                  "out_dir": out_dir,
                  "domain": domain_file,
-                 "forcings": forcing_files,
+                 "forcing": forcing_files,
                  "verbose": opts.verbose * logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['t_min_lr'] = float(conf['t_min_lr'])
@@ -96,11 +96,11 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    ms.load(setup['forcings'])
+    ms.load(setup['forcing'])
     if ms.params['nprocs'] > 1:
-        ms.launch(setup['forcings'])
+        ms.launch()
     else:
-        ms.run(ms.locations)
+        ms.run()
     ms.write()
 
 
