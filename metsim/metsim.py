@@ -91,6 +91,7 @@ class MetSim(object):
     params = {
         "method": '',
         "domain": '',
+        "state": '',
         "out_dir": '',
         "out_prefix": 'forcing',
         "start": '',
@@ -124,7 +125,6 @@ class MetSim(object):
         logger.setLevel(MetSim.params['verbose'])
         ch.setLevel(MetSim.params['verbose'])
         logger.addHandler(ch)
-
         self.output = None
         self.met_data = None
         self.ready = False
@@ -132,9 +132,11 @@ class MetSim(object):
     def load(self):
         """Load the necessary datasets into memory"""
         # Get the necessary information from the domain
-        domain = self.params['domain']
-        self.domain = xr.open_dataset(domain).rename(
+        self.domain = xr.open_dataset(self.params['domain']).rename(
                 MetSim.params['domain_vars']).load()
+        self.state = xr.open_dataset(self.params['state']).rename(
+            MetSim.params.get('state_vars',
+                              {'seasonal_prec': 'seasonal_prec'})).load()
         self.lat = self.domain['lat']
         self.lon = self.domain['lon']
         self.mask = self.domain['mask']
@@ -160,6 +162,11 @@ class MetSim(object):
                          "binary": self.vic_in_preprocess,
                          "netcdf": self.netcdf_in_preprocess}
         in_preprocess[MetSim.params['in_format']](self.params['forcing'])
+        # Get data from the state file
+        self.met_data['swe'] = xr.Variable((lat, lon), self.state['swe'].values)
+        self._aggregate_precip()
+
+        # Double check that we are ready to do calculations
         self._validate_setup()
         self.ready = True
 
@@ -175,7 +182,6 @@ class MetSim(object):
         for label, data in groups:
             self.pool = Pool(processes=nprocs)
             logger.info("Beginning {}".format(label))
-            self.setup_output(data)
             status = []
             self.setup_output(data)
             for loc in self.locations:
@@ -206,6 +212,8 @@ class MetSim(object):
         """
         Kicks off the disaggregation and queues up data for IO
         """
+
+        #TODO write out state file here
         if self.params['annual']:
             groups = self.met_data.groupby('time.year')
         else:
@@ -219,9 +227,10 @@ class MetSim(object):
                 ds = data.isel(**locs)
                 lat = ds['lat'].values
                 elev = ds['elev'].values
-                df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
+                swe = ds['swe'].values
+                df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
                 df = self.method.run(df, MetSim.params, elev=elev,
-                                     lat=lat, disagg=self.disagg)
+                                     lat=lat, swe=swe, disagg=self.disagg)
                 self._unpack_results((locs, df))
             self.write(label)
 
@@ -256,6 +265,17 @@ class MetSim(object):
         """ Use the domain file to get the elevation """
         return self.elev.sel(lat=lat, lon=lon, method='nearest')
 
+    def _aggregate_precip(self):
+        trailing = self.state['seasonal_prec']
+        begin_record = self.params['start'] - pd.TimeDelta("90 days")
+        end_record = self.params['start'] - pd.TimeDelta("1 days")
+        record_dates = pd.date_range(begin_record, end_record)
+        trailing.coords = {"time": record_dates}
+        total_precip = xr.concat([trailing, self.met_data['prec']])
+        total_precip = total_precip.rolling(time=90).mean().drop(record_dates)
+        self.met_data['seasonal_prec'] = total_precip
+
+
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
         errs = [""]
@@ -265,8 +285,8 @@ class MetSim(object):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
-        non_empty = ['method', 'domain', 'out_dir',
-                     'start', 'stop', 'time_step', 'out_format',
+        non_empty = ['method', 'domain', 'state', 'out_dir',
+                     'start', 'stop', 'time_step', 'out_format'
                      'in_format', 't_max_lr', 't_min_lr']
         for each in non_empty:
             if self.params[each] is None or self.params[each] == '':
@@ -481,6 +501,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
     logger.info("Processing {}".format(loc))
     lat = ds['lat'].values
     elev = ds['elev'].values
-    df = ds.drop(['lat', 'lon', 'elev']).to_dataframe()
+    swe = ds['swe'].values
+    df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
     df = func(df, params, elev=elev, lat=lat, disagg=disagg)
     return (loc, df)
