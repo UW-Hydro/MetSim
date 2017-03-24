@@ -163,9 +163,7 @@ class MetSim(object):
                          "netcdf": self.netcdf_in_preprocess}
         in_preprocess[MetSim.params['in_format']](self.params['forcing'])
         # Get data from the state file
-        self.met_data['swe'] = xr.Variable((lat, lon), self.state['swe'].values)
-        self._aggregate_precip()
-
+        self._aggregate_state()
         # Double check that we are ready to do calculations
         self._validate_setup()
         self.ready = True
@@ -212,8 +210,6 @@ class MetSim(object):
         """
         Kicks off the disaggregation and queues up data for IO
         """
-
-        #TODO write out state file here
         if self.params['annual']:
             groups = self.met_data.groupby('time.year')
         else:
@@ -265,7 +261,9 @@ class MetSim(object):
         """ Use the domain file to get the elevation """
         return self.elev.sel(lat=lat, lon=lon, method='nearest')
 
-    def _aggregate_precip(self):
+    def _aggregate_state(self):
+        """Aggregate data out of the state file and load it into `met_data`"""
+        # Precipitation record
         trailing = self.state['seasonal_prec']
         begin_record = self.params['start'] - pd.TimeDelta("90 days")
         end_record = self.params['start'] - pd.TimeDelta("1 days")
@@ -275,6 +273,20 @@ class MetSim(object):
         total_precip = total_precip.rolling(time=90).mean().drop(record_dates)
         self.met_data['seasonal_prec'] = total_precip
 
+        # Smoothed daily temperature range
+        trailing = self.state['t_max'] - self.state['t_min']
+        begin_record = self.params['start'] - pd.TimeDelta("30 days")
+        end_record = self.params['start'] - pd.TimeDelta("1 days")
+        record_dates = pd.date_range(begin_record, end_record)
+        trailing.coords = {"time": record_dates}
+        dtr = self.met_data['t_max'] - self.met_data['t_min']
+        sm_dtr = xr.concat([trailing, dtr])
+        sm_dtr = total_precip.rolling(time=30).mean().drop(record_dates)
+        self.met_data['smoothed_dtr'] = sm_dtr
+
+        # Put in SWE data
+        self.met_data['swe'] = xr.Variable(('lat', 'lon'),
+                                           self.state['swe'].values)
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
@@ -503,5 +515,5 @@ def wrap_run(func: callable, loc: dict, params: dict,
     elev = ds['elev'].values
     swe = ds['swe'].values
     df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
-    df = func(df, params, elev=elev, lat=lat, disagg=disagg)
+    df = func(df, params, elev=elev, lat=lat, disagg=disagg, swe=swe)
     return (loc, df)

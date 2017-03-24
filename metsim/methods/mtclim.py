@@ -28,7 +28,7 @@ from metsim.physics import svp, calc_pet, atm_pres, solar_geom
 
 
 def run(forcing: pd.DataFrame, params: dict, elev: float, lat: float,
-        swe: float, disagg=True):
+        swe: float, disagg: bool=True):
     """
     Run all of the mtclim forcing generation
 
@@ -130,7 +130,7 @@ def calc_snowpack(df: pd.DataFrame, snowpack: float=0.0):
 
 
 def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
-                  params: dict, win_type: str='boxcar'):
+                  params: dict):
     """
     Calculate shortwave, humidity
 
@@ -143,9 +143,6 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     params:
         A dictionary of parameters from the
         MetSim object
-    win_type:
-        (Optional) The method used to calculate
-        the 60 day rolling average of precipitation
     """
     def _calc_tfmax(prec, dtr, sm_dtr):
         b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
@@ -157,13 +154,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     # Calculate the diurnal temperature range
     df['t_max'] = np.maximum(df['t_max'], df['t_min'])
     dtr = df['t_max'] - df['t_min']
-    sm_dtr = pd.Series(dtr).rolling(
-        window=30, win_type=win_type, axis=0).mean().fillna(method='bfill')
-    if params['n_days'] <= 30:
-        warn('Timeseries is shorter than rolling mean window, filling ')
-        warn('missing values with unsmoothed data')
-        sm_dtr.fillna(dtr, inplace=True)
-
+    sm_dtr = df['smoothed_dtr']
     df['tfmax'] = _calc_tfmax(df['prec'], dtr, sm_dtr)
     tdew = df.get('tdew', df['t_min'])
     pva = df.get('hum', svp(tdew))
@@ -241,7 +232,7 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
     # Compute PET using SW radiation estimate, and update Tdew, pva **
     pet = calc_pet(df['swrad'], df['t_day'], df['dayl'], pa)
     # Calculate ratio (PET/effann_prcp) and correct the dewpoint
-    ratio = pet / df['seasonal_precip']
+    ratio = pet / df['seasonal_prec']
     df['pet'] = pet * cnst.MM_PER_CM
     tmink = df['t_min'] + cnst.KELVIN
     tdew = tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio +
