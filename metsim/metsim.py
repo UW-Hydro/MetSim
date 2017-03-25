@@ -136,7 +136,7 @@ class MetSim(object):
                 MetSim.params['domain_vars']).load()
         self.state = xr.open_dataset(self.params['state']).rename(
             MetSim.params.get('state_vars',
-                              {'seasonal_prec': 'seasonal_prec'})).load()
+                              {'prec': 'prec'})).load()
         self.lat = self.domain['lat']
         self.lon = self.domain['lon']
         self.mask = self.domain['mask']
@@ -264,24 +264,25 @@ class MetSim(object):
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
-        trailing = self.state['seasonal_prec']
-        begin_record = self.params['start'] - pd.TimeDelta("90 days")
-        end_record = self.params['start'] - pd.TimeDelta("1 days")
+        trailing = self.state['prec']
+        begin_record = self.params['start'] - pd.Timedelta("90 days")
+        end_record = self.params['start'] - pd.Timedelta("1 days")
         record_dates = pd.date_range(begin_record, end_record)
-        trailing.coords = {"time": record_dates}
-        total_precip = xr.concat([trailing, self.met_data['prec']])
-        total_precip = total_precip.rolling(time=90).mean().drop(record_dates)
+        trailing['time'] = record_dates
+        total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
+        total_precip = total_precip.rolling(time=90).mean().drop(record_dates,
+                                                                 dim='time')
         self.met_data['seasonal_prec'] = total_precip
 
         # Smoothed daily temperature range
         trailing = self.state['t_max'] - self.state['t_min']
-        begin_record = self.params['start'] - pd.TimeDelta("30 days")
-        end_record = self.params['start'] - pd.TimeDelta("1 days")
+        begin_record = self.params['start'] - pd.Timedelta("90 days")
+        end_record = self.params['start'] - pd.Timedelta("1 days")
         record_dates = pd.date_range(begin_record, end_record)
-        trailing.coords = {"time": record_dates}
+        trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
-        sm_dtr = xr.concat([trailing, dtr])
-        sm_dtr = total_precip.rolling(time=30).mean().drop(record_dates)
+        sm_dtr = xr.concat([trailing, dtr], dim='time')
+        sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
@@ -298,7 +299,7 @@ class MetSim(object):
 
         # Parameters that can't be empty strings or None
         non_empty = ['method', 'domain', 'state', 'out_dir',
-                     'start', 'stop', 'time_step', 'out_format'
+                     'start', 'stop', 'time_step', 'out_format',
                      'in_format', 't_max_lr', 't_min_lr']
         for each in non_empty:
             if self.params[each] is None or self.params[each] == '':

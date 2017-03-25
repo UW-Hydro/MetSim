@@ -21,7 +21,7 @@ Disaggregates daily data down to finer grained data using some heuristics
 import numpy as np
 import pandas as pd
 import itertools
-import scipy
+import scipy.interpolate
 
 import metsim.constants as cnst
 from metsim.physics import svp
