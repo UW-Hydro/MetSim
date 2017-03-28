@@ -232,7 +232,8 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
     # Compute PET using SW radiation estimate, and update Tdew, pva **
     pet = calc_pet(df['swrad'], df['t_day'], df['dayl'], pa)
     # Calculate ratio (PET/effann_prcp) and correct the dewpoint
-    ratio = pet / df['seasonal_prec']
+    parray = df['seasonal_prec'] / cnst.MM_PER_CM
+    ratio = pet / parray.where(parray > 8.0, 8.0)
     df['pet'] = pet * cnst.MM_PER_CM
     tmink = df['t_min'] + cnst.KELVIN
     tdew = tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio +
