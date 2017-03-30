@@ -20,15 +20,13 @@ MTCLIM
 
 import numpy as np
 import pandas as pd
-from warnings import warn
 
 import metsim.constants as cnst
-from metsim.disaggregate import disaggregate
-from metsim.physics import svp, calc_pet, atm_pres, solar_geom
+from metsim.physics import svp, calc_pet, atm_pres
 
 
-def run(forcing: pd.DataFrame, params: dict, elev: float, lat: float,
-        swe: float, disagg: bool=True):
+def run(forcing: pd.DataFrame, params: dict, sg: dict,
+        elev: float, swe: float):
     """
     Run all of the mtclim forcing generation
 
@@ -44,25 +42,11 @@ def run(forcing: pd.DataFrame, params: dict, elev: float, lat: float,
     forcing:
         Dataframe of daily or subdaily forcings
     """
-
-    # solar_geom returns a tuple due to restrictions of numba
-    # for clarity we convert it to a dictionary here
-    sg = solar_geom(elev, lat)
-    sg = {'tiny_rad_fract': sg[0],
-          'daylength': sg[1],
-          'potrad': sg[2],
-          'tt_max0': sg[3]}
     params['n_days'] = len(forcing)
     calc_t_air(forcing, elev, params)
     calc_prec(forcing, params)
     calc_snowpack(forcing, swe)
     calc_srad_hum(forcing, sg, elev, params)
-
-    if disagg:
-        forcing = disaggregate(forcing, params, sg)
-    else:
-        # convert srad to daily average flux from daytime flux
-        forcing['swrad'] *= forcing['dayl'] / cnst.SEC_PER_DAY
 
     return forcing
 

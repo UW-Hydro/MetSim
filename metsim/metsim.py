@@ -35,7 +35,6 @@ import logging
 import itertools
 import time as tm
 from getpass import getuser
-from datetime import datetime
 from multiprocessing import Pool
 
 import numpy as np
@@ -43,6 +42,8 @@ import pandas as pd
 import xarray as xr
 
 from metsim.methods import mtclim
+from metsim.disaggregate import disaggregate
+from metsim.physics import solar_geom
 import metsim.constants as cnst
 
 references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm for estimating incident daily solar radiation from measurements of temperature, humidity, and precipitation. Agricultural and Forest Meteorology, 93:211-228.
@@ -181,6 +182,7 @@ class MetSim(object):
             self.pool = Pool(processes=nprocs)
             logger.info("Beginning {}".format(label))
             status = []
+
             self.setup_output(data)
             for loc in self.locations:
                 i, j = loc
@@ -188,7 +190,7 @@ class MetSim(object):
                 stat = self.pool.apply_async(
                     wrap_run,
                     args=(self.method.run, locd, self.params,
-                          data.isel(lat=i, lon=j), self.disagg),
+                          data.isel(lat=i, lon=j), self.state, self.disagg),
                     callback=self._unpack_results)
                 status.append(stat)
             self.pool.close()
@@ -200,7 +202,10 @@ class MetSim(object):
 
     def _unpack_results(self, result: tuple):
         """Put results into the master dataset"""
-        locs, df = result
+        if len(result) == 3:
+            locs, df, self.state = result
+        else:
+            locs, df = result
         i = locs['lat']
         j = locs['lon']
         for varname in self.params['out_vars']:
@@ -225,8 +230,22 @@ class MetSim(object):
                 elev = ds['elev'].values
                 swe = ds['swe'].values
                 df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
-                df = self.method.run(df, MetSim.params, elev=elev,
-                                     lat=lat, swe=swe, disagg=self.disagg)
+                # solar_geom returns a tuple due to restrictions of numba
+                # for clarity we convert it to a dictionary here
+                sg = solar_geom(elev, lat)
+                sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
+                      'potrad': sg[2], 'tt_max0': sg[3]}
+
+                df = self.method.run(df, self.params, sg,
+                                     elev=elev, swe=swe)
+                _unpack_state(self.state, df, locs)
+
+                if self.disagg:
+                    df = disaggregate(df, self.params, sg)
+                else:
+                    # convert srad to daily average flux from daytime flux
+                    df['swrad'] *= df['dayl'] / cnst.SEC_PER_DAY
+
                 self._unpack_results((locs, df))
             self.write(label)
 
@@ -376,6 +395,8 @@ class MetSim(object):
                 'netcdf': self.write_netcdf,
                 'ascii': self.write_ascii
                 }
+        self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
+                             encoding={'time': {'dtype': 'f8'}})
         dispatch[MetSim.params.get('out_format', 'netcdf').lower()](suffix)
 
     def write_netcdf(self, suffix: str):
@@ -490,7 +511,7 @@ class MetSim(object):
 
 
 def wrap_run(func: callable, loc: dict, params: dict,
-             ds: xr.Dataset, disagg: bool):
+             ds: xr.Dataset, state: xr.Dataset, disagg: bool):
     """
     Iterate over a chunk of the domain. This is wrapped
     so we can return a tuple of locs and df.
@@ -515,6 +536,39 @@ def wrap_run(func: callable, loc: dict, params: dict,
     lat = ds['lat'].values
     elev = ds['elev'].values
     swe = ds['swe'].values
+    # solar_geom returns a tuple due to restrictions of numba
+    # for clarity we convert it to a dictionary here
+    sg = solar_geom(elev, lat)
+    sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
+          'potrad': sg[2], 'tt_max0': sg[3]}
+
     df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
-    df = func(df, params, elev=elev, lat=lat, disagg=disagg, swe=swe)
-    return (loc, df)
+    df = func(df, params, sg, elev=elev, swe=swe)
+    _unpack_state(state, df, loc)
+    if disagg:
+        df = disaggregate(df, params, sg)
+    else:
+        # convert srad to daily average flux from daytime flux
+        df['swrad'] *= df['dayl'] / cnst.SEC_PER_DAY
+    return (loc, df, state)
+
+
+def _unpack_state(state: xr.Dataset, result: pd.DataFrame, locs: dict):
+    """Put restart values in the state dataset"""
+    i = locs['lat']
+    j = locs['lon']
+
+    # We concatenate with the old state values in case we don't
+    # have 90 new days to use
+    tmin = np.concatenate((state['t_min'].values[:, i, j],
+                           result['t_min'].values))
+    tmax = np.concatenate((state['t_max'].values[:, i, j],
+                           result['t_max'].values))
+    prec = np.concatenate((state['prec'].values[:, i, j],
+                           result['prec'].values))
+    state['t_min'].values[:, i, j] = tmin[-90:]
+    state['t_max'].values[:, i, j] = tmax[-90:]
+    state['prec'].values[:, i, j] = prec[-90:]
+    state['swe'].values[i, j] = result['swe'].values[-1]
+    state_start = result.index[-1] - pd.Timedelta('89 days')
+    state.time.values = pd.date_range(state_start, result.index[-1])
