@@ -203,13 +203,34 @@ class MetSim(object):
     def _unpack_results(self, result: tuple):
         """Put results into the master dataset"""
         if len(result) == 3:
-            locs, df, self.state = result
+            locs, df, state = result
+            self._unpack_state(state, locs)
         else:
             locs, df = result
         i = locs['lat']
         j = locs['lon']
         for varname in self.params['out_vars']:
             self.output[varname].values[:, i, j] = df[varname].values
+
+    def _unpack_state(self, result: pd.DataFrame, locs: dict):
+        """Put restart values in the state dataset"""
+        i = locs['lat']
+        j = locs['lon']
+
+        # We concatenate with the old state values in case we don't
+        # have 90 new days to use
+        tmin = np.concatenate((self.state['t_min'].values[:, i, j],
+                               result['t_min'].values))
+        tmax = np.concatenate((self.state['t_max'].values[:, i, j],
+                               result['t_max'].values))
+        prec = np.concatenate((self.state['prec'].values[:, i, j],
+                               result['prec'].values))
+        self.state['t_min'].values[:, i, j] = tmin[-90:]
+        self.state['t_max'].values[:, i, j] = tmax[-90:]
+        self.state['prec'].values[:, i, j] = prec[-90:]
+        self.state['swe'].values[i, j] = result['swe'].values[-1]
+        state_start = result.index[-1] - pd.Timedelta('89 days')
+        self.state.time.values = pd.date_range(state_start, result.index[-1])
 
     def run(self):
         """
@@ -238,7 +259,7 @@ class MetSim(object):
 
                 df = self.method.run(df, self.params, sg,
                                      elev=elev, swe=swe)
-                _unpack_state(self.state, df, locs)
+                self._unpack_state(df, locs)
 
                 if self.disagg:
                     df = disaggregate(df, self.params, sg)
@@ -543,32 +564,13 @@ def wrap_run(func: callable, loc: dict, params: dict,
           'potrad': sg[2], 'tt_max0': sg[3]}
 
     df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
-    df = func(df, params, sg, elev=elev, swe=swe)
-    _unpack_state(state, df, loc)
+    df_base = func(df, params, sg, elev=elev, swe=swe)
     if disagg:
-        df = disaggregate(df, params, sg)
+        df_complete = disaggregate(df, params, sg)
     else:
         # convert srad to daily average flux from daytime flux
         df['swrad'] *= df['dayl'] / cnst.SEC_PER_DAY
-    return (loc, df, state)
+        df_complete = df_base
+    return (loc, df_complete, df_base)
 
 
-def _unpack_state(state: xr.Dataset, result: pd.DataFrame, locs: dict):
-    """Put restart values in the state dataset"""
-    i = locs['lat']
-    j = locs['lon']
-
-    # We concatenate with the old state values in case we don't
-    # have 90 new days to use
-    tmin = np.concatenate((state['t_min'].values[:, i, j],
-                           result['t_min'].values))
-    tmax = np.concatenate((state['t_max'].values[:, i, j],
-                           result['t_max'].values))
-    prec = np.concatenate((state['prec'].values[:, i, j],
-                           result['prec'].values))
-    state['t_min'].values[:, i, j] = tmin[-90:]
-    state['t_max'].values[:, i, j] = tmax[-90:]
-    state['prec'].values[:, i, j] = prec[-90:]
-    state['swe'].values[i, j] = result['swe'].values[-1]
-    state_start = result.index[-1] - pd.Timedelta('89 days')
-    state.time.values = pd.date_range(state_start, result.index[-1])
