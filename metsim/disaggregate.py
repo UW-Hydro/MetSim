@@ -28,7 +28,8 @@ from metsim.physics import svp
 
 
 def disaggregate(df_daily: pd.DataFrame, params: dict,
-                 solar_geom: dict):
+                 solar_geom: dict, t_begin: list=None,
+                 t_end: list=None):
     """
     Take a daily timeseries and scale it down to a finer
     time scale.
@@ -66,7 +67,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'],
                                       n_days, ts, params)
 
-    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts)
+    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts,
+                             t_begin, t_end)
 
     df_disagg['vapor_pressure'] = vapor_pressure(df_daily['vapor_pressure'],
                                                  df_disagg['temp'],
@@ -122,7 +124,8 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
 
 
 def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
-         t_t_min: np.array, t_t_max: np.array, ts: float):
+         t_t_min: np.array, t_t_max: np.array, ts: float,
+         t_begin: list=None, t_end: list=None):
     """
     Disaggregate temperature using a Hermite polynomial
     interpolation scheme.
@@ -155,7 +158,11 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
     # Account for end points
     ts_ends = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
     time = np.append(np.insert(time, 0, time[0:2]-ts_ends), time[-2:]+ts_ends)
-    temp = np.append(np.insert(temp, 0, temp[0:2]), temp[-2:])
+    if t_begin is None:
+        t_begin = temp[0:2]
+    if t_end is None:
+        t_end = temp[-2:]
+    temp = np.append(np.insert(temp, 0, t_begin), t_end)
 
     # Interpolate the values
     interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
@@ -227,7 +234,7 @@ def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
 def vapor_pressure(vp_daily: pd.Series, temp: pd.Series,
                    t_t_min: np.array, n_out: int, ts: float):
     """
-    Calculate vapor pressure.  First a linear inerpolation
+    Calculate vapor pressure.  First a linear interpolation
     of the daily values is calculated.  Then this is compared
     to the saturated vapor pressure calculated using the
     disaggregated temperature. When the interpolated vapor

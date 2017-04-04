@@ -138,6 +138,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     # Calculate the diurnal temperature range
     df['t_max'] = np.maximum(df['t_max'], df['t_min'])
     dtr = df['t_max'] - df['t_min']
+    df['dtr'] = dtr
     sm_dtr = df['smoothed_dtr']
     df['tfmax'] = _calc_tfmax(df['prec'], dtr, sm_dtr)
     tdew = df.get('tdew', df['t_min'])
@@ -193,6 +194,8 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
 
     t_tmax = np.maximum(tt_max0[yday] + (cnst.ABASE * pva), 0.0001)
     t_final = t_tmax * df['tfmax']
+    df['pva'] = pva
+    df['tfinal'] = t_final
 
     # Snowpack contribution
     sc = np.zeros_like(df['swe'])

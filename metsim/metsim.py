@@ -110,7 +110,7 @@ class MetSim(object):
         "mtclim_swe_corr": False,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
-        "tdew_tol": 1e-3,
+        "tdew_tol": 1e-6,
         "tmax_daylength_fraction": 0.67,
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid']
@@ -190,7 +190,9 @@ class MetSim(object):
                 stat = self.pool.apply_async(
                     wrap_run,
                     args=(self.method.run, locd, self.params,
-                          data.isel(lat=i, lon=j), self.state, self.disagg),
+                          data.isel(lat=i, lon=j),
+                          self.state.isel(lat=i, lon=j),
+                          self.disagg),
                     callback=self._unpack_results)
                 status.append(stat)
             self.pool.close()
@@ -236,13 +238,19 @@ class MetSim(object):
         """
         Kicks off the disaggregation and queues up data for IO
         """
+        time_dim = pd.to_datetime(self.met_data.time.values)
         if self.params['annual']:
-            groups = self.met_data.groupby('time.year')
+            groups = time_dim.groupby(time_dim.year)
         else:
-            groups = [('total', self.met_data)]
-        for label, data in groups:
+            groups = {'total': time_dim}
+        for label, times in groups.items():
             logger.info("Beginning {}".format(label))
-            self.setup_output(data)
+            # Add in some end point data for continuity
+            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
+                                     times[-1] + pd.Timedelta("1 days")]
+                                    ).intersection(time_dim)
+            data = self.met_data.sel(time=times_ext)
+            self.setup_output(self.met_data.sel(time=times))
             for i, j in self.locations:
                 locs = dict(lat=i, lon=j)
                 logger.info("Processing {}".format(locs))
@@ -259,15 +267,37 @@ class MetSim(object):
 
                 df = self.method.run(df, self.params, sg,
                                      elev=elev, swe=swe)
-                self._unpack_state(df, locs)
 
                 if self.disagg:
-                    df = disaggregate(df, self.params, sg)
+                    try:
+                        prevday = data.time[0] - pd.Timedelta('1 days')
+                        t_begin = [self.met_data['t_min'].sel(
+                                       time=prevday).isel(lat=i, lon=j),
+                                   self.met_data['t_max'].sel(
+                                       time=prevday).isel(lat=i, lon=j)]
+                    except (KeyError, ValueError):
+                        t_begin = [self.state['t_min'].values[-1, i, j],
+                                   self.state['t_max'].values[-1, i, j]]
+                    try:
+                        nextday = pd.datetime(int(label)+1, 1, 1)
+                        t_end = [self.met_data['t_min'].sel(
+                                     time=nextday).isel(lat=i, lon=j),
+                                 self.met_data['t_max'].sel(
+                                     time=nextday).isel(lat=i, lon=j)]
+                    except (KeyError, ValueError):
+                        t_end = None
+
+                    self._unpack_state(df, locs)
+                    df = disaggregate(df, self.params, sg, t_begin, t_end)
+                    stop = times[-1] + pd.Timedelta('23 hours')
+                    new_times = pd.date_range(times[0], stop, freq='{}T'.format(
+                        self.params['time_step']))
                 else:
                     # convert srad to daily average flux from daytime flux
+                    self._unpack_state(df, locs)
                     df['swrad'] *= df['dayl'] / cnst.SEC_PER_DAY
-
-                self._unpack_results((locs, df))
+                    new_times = times
+                self._unpack_results((locs, df.loc[new_times[0]:new_times[-1]]))
             self.write(label)
 
     def setup_output(self, prototype: xr.Dataset=None):
@@ -566,11 +596,10 @@ def wrap_run(func: callable, loc: dict, params: dict,
     df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
     df_base = func(df, params, sg, elev=elev, swe=swe)
     if disagg:
-        df_complete = disaggregate(df, params, sg)
+        t_begin = [state['t_min'].values[-1], state['t_max'].values[-1]]
+        df_complete = disaggregate(df, params, sg, t_begin)
     else:
         # convert srad to daily average flux from daytime flux
         df['swrad'] *= df['dayl'] / cnst.SEC_PER_DAY
         df_complete = df_base
     return (loc, df_complete, df_base)
-
-
