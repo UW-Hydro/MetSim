@@ -174,16 +174,22 @@ class MetSim(object):
         nprocs = MetSim.params['nprocs']
 
         # Do the forcing generation and disaggregation if required
+        time_dim = pd.to_datetime(self.met_data.time.values)
         if self.params['annual']:
-            groups = self.met_data.groupby('time.year')
+            groups = time_dim.groupby(time_dim.year)
         else:
-            groups = [('total', self.met_data)]
-        for label, data in groups:
+            groups = {'total': time_dim}
+        for label, times in groups.items():
             self.pool = Pool(processes=nprocs)
             logger.info("Beginning {}".format(label))
             status = []
 
-            self.setup_output(data)
+            # Add in some end point data for coninuity in chunking
+            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
+                                     times[-1] + pd.Timedelta("1 days")]
+                                    ).intersection(time_dim)
+            data = self.met_data.sel(time=times_ext)
+            self.setup_output(self.met_data.sel(time=times))
             for loc in self.locations:
                 i, j = loc
                 locd = dict(lat=i, lon=j)
@@ -192,7 +198,7 @@ class MetSim(object):
                     args=(self.method.run, locd, self.params,
                           data.isel(lat=i, lon=j),
                           self.state.isel(lat=i, lon=j),
-                          self.disagg),
+                          self.disagg, times, label),
                     callback=self._unpack_results)
                 status.append(stat)
             self.pool.close()
@@ -289,8 +295,9 @@ class MetSim(object):
 
                     self._unpack_state(df, locs)
                     df = disaggregate(df, self.params, sg, t_begin, t_end)
+                    start = times[0]
                     stop = times[-1] + pd.Timedelta('23 hours')
-                    new_times = pd.date_range(times[0], stop, freq='{}T'.format(
+                    new_times = pd.date_range(start, stop, freq='{}T'.format(
                         self.params['time_step']))
                 else:
                     # convert srad to daily average flux from daytime flux
@@ -562,7 +569,8 @@ class MetSim(object):
 
 
 def wrap_run(func: callable, loc: dict, params: dict,
-             ds: xr.Dataset, state: xr.Dataset, disagg: bool):
+             ds: xr.Dataset, state: xr.Dataset, disagg: bool,
+             out_times: pd.DatetimeIndex, year: str):
     """
     Iterate over a chunk of the domain. This is wrapped
     so we can return a tuple of locs and df.
@@ -587,19 +595,40 @@ def wrap_run(func: callable, loc: dict, params: dict,
     lat = ds['lat'].values
     elev = ds['elev'].values
     swe = ds['swe'].values
+    df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
     sg = solar_geom(elev, lat)
     sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
           'potrad': sg[2], 'tt_max0': sg[3]}
 
-    df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
     df_base = func(df, params, sg, elev=elev, swe=swe)
+
     if disagg:
-        t_begin = [state['t_min'].values[-1], state['t_max'].values[-1]]
-        df_complete = disaggregate(df, params, sg, t_begin)
+        try:
+            prevday = out_times[0] - pd.Timedelta('1 days')
+            t_begin = [ds['t_min'].sel(time=prevday),
+                       ds['t_max'].sel(time=prevday)]
+        except (KeyError, ValueError):
+            t_begin = [state['t_min'].values[-1],
+                       state['t_max'].values[-1]]
+        try:
+            nextday = pd.datetime(int(year)+1, 1, 1)
+            t_end = [df['t_min'].sel(time=nextday),
+                     df['t_max'].sel(time=nextday)]
+        except (KeyError, ValueError):
+            t_end = None
+
+        df_complete = disaggregate(df, params, sg, t_begin, t_end)
+        start = out_times[0]
+        stop = out_times[-1] + pd.Timedelta('23 hours')
+        new_times = pd.date_range(start, stop, freq='{}T'.format(
+            params['time_step']))
     else:
         # convert srad to daily average flux from daytime flux
-        df['swrad'] *= df['dayl'] / cnst.SEC_PER_DAY
-        df_complete = df_base
+        df_base['swrad'] *= df_base['dayl'] / cnst.SEC_PER_DAY
+        new_times = out_times
+
+    df_complete = df_complete.loc[new_times[0]:new_times[-1]]
+    df_base = df_complete.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)
