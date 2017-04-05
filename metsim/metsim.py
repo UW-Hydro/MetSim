@@ -614,8 +614,8 @@ def wrap_run(func: callable, loc: dict, params: dict,
                        state['t_max'].values[-1]]
         try:
             nextday = pd.datetime(int(year)+1, 1, 1)
-            t_end = [df['t_min'].sel(time=nextday),
-                     df['t_max'].sel(time=nextday)]
+            t_end = [ds['t_min'].sel(time=nextday),
+                     ds['t_max'].sel(time=nextday)]
         except (KeyError, ValueError):
             t_end = None
 
@@ -630,5 +630,5 @@ def wrap_run(func: callable, loc: dict, params: dict,
         new_times = out_times
 
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
-    df_base = df_complete.loc[new_times[0]:new_times[-1]]
+    df_base = df_base.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)
