@@ -303,8 +303,14 @@ class MetSim(object):
                     # convert srad to daily average flux from daytime flux
                     self._unpack_state(df, locs)
                     df['swrad'] *= df['dayl'] / cnst.SEC_PER_DAY
+                    # If we're outputting daily values, we dont' need to
+                    # change the output dates - see inside of `if` condition
+                    # above for more explanation
                     new_times = times
+
+                # Cut the returned data down to the correct time index
                 self._unpack_results((locs, df.loc[new_times[0]:new_times[-1]]))
+
             self.write(label)
 
     def setup_output(self, prototype: xr.Dataset=None):
@@ -581,15 +587,27 @@ def wrap_run(func: callable, loc: dict, params: dict,
         The function to call to do the work
     loc: dict
         Some subset of the domain to do work on
-    met_data: xr.Dataset
+    params: dict
+        Parameters from a MetSim object
+    ds: xr.Dataset
         Input forcings and domain
+    state: xr.Dataset
+        State variables at the point of interest
     disagg: bool
         Whether or not we should run a disagg routine
+    out_times: pd.DatetimeIndex
+        Times to return (should be trimmed 1 day at
+        each end from the given index)
+    year: str
+        The year being run. This is used to add on
+        extra times to make output smooth at endpoints
+        if the run is chunked in time.
 
     Returns
     -------
     results
-        A list of tuples arranged as (location, output)
+        A list of tuples arranged as
+        (location, hourly_output, daily_output)
     """
     logger.info("Processing {}".format(loc))
     lat = ds['lat'].values
@@ -602,9 +620,18 @@ def wrap_run(func: callable, loc: dict, params: dict,
     sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
           'potrad': sg[2], 'tt_max0': sg[3]}
 
+    # Generate the daily values - these are saved
+    # so that we can use a subset of them to write
+    # out the state file later
     df_base = func(df, params, sg, elev=elev, swe=swe)
 
     if disagg:
+        # Get some values for padding the time list,
+        # so that when interpolating in the disaggregation
+        # functions we can match endpoints with adjoining
+        # chunks - if no data is available, just repeat some
+        # default values (this case is used at the very
+        # beginning and end of the record)
         try:
             prevday = out_times[0] - pd.Timedelta('1 days')
             t_begin = [ds['t_min'].sel(time=prevday),
@@ -619,7 +646,10 @@ def wrap_run(func: callable, loc: dict, params: dict,
         except (KeyError, ValueError):
             t_end = None
 
+        # Disaggregate to subdaily values
         df_complete = disaggregate(df, params, sg, t_begin, t_end)
+        # Calculate the times that we want to get out by chopping
+        # off the endpoints that were added on previously
         start = out_times[0]
         stop = out_times[-1] + pd.Timedelta('23 hours')
         new_times = pd.date_range(start, stop, freq='{}T'.format(
@@ -627,8 +657,12 @@ def wrap_run(func: callable, loc: dict, params: dict,
     else:
         # convert srad to daily average flux from daytime flux
         df_base['swrad'] *= df_base['dayl'] / cnst.SEC_PER_DAY
+        # If we're outputting daily values, we dont' need to
+        # change the output dates - see inside of `if` condition
+        # above for more explanation
         new_times = out_times
 
+    # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
     df_base = df_base.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)
