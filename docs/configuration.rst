@@ -65,7 +65,7 @@ Defaults to ``1``.
 ``sw_prec_thresh :: float``: Minimum precipitation threshold to take into 
 account when simulating incoming shortwave radiation.  Defaults to ``0``.
 
-``mtclim_swe_corr :: bool``: Whether to activate MTCLIM's SWE correction 
+``mtclim_swe_corr :: bool``: Whether to activate MtClim's SWE correction
 algorithm. Default to ``False``.
 
 ``lw_cloud :: str``: Type of cloud correction to longwave radiation to apply. 
@@ -78,7 +78,7 @@ one of the following: ``DEFAULT``, ``TVA``, ``ANDERSON``, ``BRUTSAERT``,
 does not matter.
 
 ``tdew_tol :: float``: Convergence criteria for the iterative calculation of 
-dewpoint temperature in MTCLIM.  Defaults to ``1e-3``.  
+dewpoint temperature in MtClim.  Defaults to ``1e-3``.
 
 ``tmax_daylength_fraction :: float`` : Weight for calculation of time of maximum
 daily temperature.  Must be between ``0`` and ``1``.  Defaults to ``0.67``.
@@ -87,7 +87,7 @@ daily temperature.  Must be between ``0`` and ``1``.  Defaults to ``0.67``.
 containing valid variables.  The list of valid variables is dependent on which 
 simulation method is used, as well as whether disaggregation is used. Defaults 
 to ``['temp', 'prec', 'shortwave', 'longwave', 'vapor_pressure', 'red_humid']``.
-
+For more information about input and output variables see the :ref:`data` page.
 
 in_vars section
 ---------------
