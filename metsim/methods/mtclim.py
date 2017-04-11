@@ -32,10 +32,16 @@ def run(forcing: pd.DataFrame, params: dict, sg: dict,
 
     Parameters
     ----------
-    forcing:
+    forcing: pd.DataFrame
         The daily forcings given from input
-    solar_geom:
+    params: dict
+        Dictionary of parameters from a MetSim object
+    solar_geom: dict
         Solar geometry of the site
+    elev: float
+        Elevation of the site being simulated
+    swe: float
+        Initial SWE for the site being simulated
 
     Returns
     -------

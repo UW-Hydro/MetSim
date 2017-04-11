@@ -36,15 +36,23 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
 
     Parameters
     ----------
-    df_daily:
+    df_daily: pd.DataFrame
         Dataframe containing daily timeseries.
         Should be the result of one of the methods
         provided in the `methods` directory.
-    params:
+    params: dict
         A dictionary containing the class parameters
         of the MetSim object.
-    solar_geom:
+    solar_geom: dict
         A dictionary of solar geometry variables
+    t_begin: list
+        List of t_min and t_max for day previous to the
+        start of `df_daily`. None indicates no extension
+        of the record.
+    t_end: list
+        List of t_min and t_max for day after the end
+        of `df_daily`. None indicates no extension of
+        the record.
 
     Returns
     -------
@@ -144,6 +152,14 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
         temperatures are reached.
     ts:
         Timestep for disaggregation
+    t_begin: list
+        List of t_min and t_max for day previous to the
+        start of `df_daily`. None indicates no extension
+        of the record.
+    t_end: list
+        List of t_min and t_max for day after the end
+        of `df_daily`. None indicates no extension of
+        the record.
 
     Returns
     -------

@@ -190,8 +190,7 @@ class MetSim(object):
                                     ).intersection(time_dim)
             data = self.met_data.sel(time=times_ext)
             self.setup_output(self.met_data.sel(time=times))
-            for loc in self.locations:
-                i, j = loc
+            for i, j in self.locations:
                 locd = dict(lat=i, lon=j)
                 stat = self.pool.apply_async(
                     wrap_run,
@@ -271,9 +270,18 @@ class MetSim(object):
                 sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
                       'potrad': sg[2], 'tt_max0': sg[3]}
 
+                # Generate the daily values - these are saved
+                # so that we can use a subset of them to write
+                # out the state file later
                 df = self.method.run(df, self.params, sg,
                                      elev=elev, swe=swe)
 
+                # Get some values for padding the time list,
+                # so that when interpolating in the disaggregation
+                # functions we can match endpoints with adjoining
+                # chunks - if no data is available, just repeat some
+                # default values (this case is used at the very
+                # beginning and end of the record)
                 if self.disagg:
                     try:
                         prevday = data.time[0] - pd.Timedelta('1 days')
@@ -291,6 +299,7 @@ class MetSim(object):
                                  self.met_data['t_max'].sel(
                                      time=nextday).isel(lat=i, lon=j)]
                     except (KeyError, ValueError):
+                        # None so that we don't extend the record
                         t_end = None
 
                     self._unpack_state(df, locs)
@@ -644,6 +653,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
             t_end = [ds['t_min'].sel(time=nextday),
                      ds['t_max'].sel(time=nextday)]
         except (KeyError, ValueError):
+            # None so that we don't extend the record
             t_end = None
 
         # Disaggregate to subdaily values
