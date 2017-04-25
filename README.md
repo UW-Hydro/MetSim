@@ -55,23 +55,7 @@ Installation
 ------------
 
 MetSim itself is a pure Python package, but its dependencies are not.
-The easiest way to get everything installed is to use
-[conda](http://conda.io/). To install MetSim with its recommended
-dependencies using the `conda` command line tool:
-
-    $ conda install metsim
-
-We recommend using the community maintained
-[conda-forge](https://conda-forge.github.io/) channel if you need
-difficult-to-build dependencies such as `numba`:
-
-    $ conda install -c conda-forge metsim
-
-New releases may also appear in conda-forge before being updated in the
-default channel.
-
-If you are not using `conda` to install MetSim you should ensure that
-you have all of the required dependencies:
+You should ensure that you have all of the required dependencies:
 
 -   Python 3.5 or 3.6
 -   [xarray](http://xarray.pydata.org/) (0.9.1 or later)
@@ -80,8 +64,7 @@ you have all of the required dependencies:
 -   [netCDF4](https://github.com/Unidata/netcdf4-python)
 -   [scipy](http://scipy.org/)
 
-If you don't use conda, be sure you have the required dependencies
-(numba and xarray) installed first. Then, install MetSim with pip:
+Then, install MetSim with pip:
 
     $ pip install metsim
 
