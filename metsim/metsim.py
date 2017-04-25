@@ -330,7 +330,8 @@ class MetSim(object):
         self.output.attrs = attrs['_global']
         # Number of timesteps
         if self.disagg:
-            delta = pd.Timedelta('23 hours')
+            delta = pd.Timedelta('1 days') - pd.Timedelta(
+                '{} minutes'.format(self.params['time_step']))
         else:
             delta = pd.Timedelta('0 days')
 

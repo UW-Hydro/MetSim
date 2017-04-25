@@ -1,5 +1,4 @@
-"""
-Disaggregates daily data down to finer grained data using some heuristics
+""" Disaggregates daily data down to finer grained data using some heuristics
 """
 # Meteorology Simulator
 # Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
@@ -60,7 +59,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         A dataframe with sub-daily timeseries.
     """
     stop = (df_daily.index[-1] + pd.Timedelta('1 days')
-            - pd.Timedelta(params['time_step']))
+            - pd.Timedelta("{} minutes".format(params['time_step'])))
     dates_disagg = pd.date_range(df_daily.index[0], stop,
                                  freq='{}T'.format(params['time_step']))
     df_disagg = pd.DataFrame(index=dates_disagg)

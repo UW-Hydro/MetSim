@@ -190,6 +190,13 @@ def test_mtclim(test_setup):
         l, h = data_ranges[var]
         assert hourly[var].between(l, h).all()
 
+    # Now test sub-hourly disaggregation
+    test_setup.params['time_step'] = 30
+    test_setup.load()
+    test_setup.run()
+    half_hourly = test_setup.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()
+    assert len(half_hourly) == (2 * n_days * const.HOURS_PER_DAY)
+
 
 def test_disaggregation_values():
     """Tests to make sure values are being generated correctly"""
