@@ -11,44 +11,45 @@ directory.  We will look at the ``example_nc.conf`` file.  Its
 contents are:
 
 .. code-block:: ini
-    
+
     # This is an example of an input file for MetSim
     [MetSim]
-    
+
     # Time step in minutes
     time_step = 60
-    
+
     # Forcings begin here (year/month/day:hour) (hour optional)
     start = 1950/1/1:0
-    
+
     # Forcings end at this date (year/month/day)
     stop = 1950/1/31
-    
+
     # Input and output directories
     forcing = ./tests/data/test.nc
     domain  = ./tests/data/domain.nc
+    state = ./tests/data/state_nc.nc
     out_dir = ./results
     out_prefix = forcing
     in_format = netcdf
     out_format = netcdf
-    
+
     # How to disaggregate
     method = mtclim
-    
+
     t_max_lr = 0.0065
     t_min_lr = 0.0065
-    
-    
+
     [in_vars]
     Prec = prec
     Tmax = t_max
     Tmin = t_min
-    
+
     [domain_vars]
     lat = lat
     lon = lon
     mask = mask
     elev = elev
+
 
 This is a minimal configuration file for MetSim, and contains 
 3 sections.  The first section, ``[MetSim]`` describes some

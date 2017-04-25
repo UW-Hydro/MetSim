@@ -27,6 +27,8 @@ on __in_vars__ for more details.
 ``domain :: path``: The path to the input domain file.  See the section on 
 __domain_vars__ for more details.
 
+``state :: path``: The path to the input state file.
+
 ``out_dir :: path``: The location to write output to.  If this path doesn't 
 exist, it will be created.
 
@@ -105,7 +107,7 @@ names in the input dataset to the variable names expected by MetSim.  The format
 is given as ``netcdf_varname = metsim_varname``.  The minimum required variables 
 given have ``metsim_varname``s corresponding to ``t_min``, ``t_max``, and 
 ``prec``; these variable names correspond to minimum daily temperature (Celcius), 
-maximum daily temperature (Celcius), and precipitation (mm).
+maximum daily temperature (Celcius), and precipitation (mm/day).
 
 ascii
 `````
@@ -115,7 +117,7 @@ format is given as ``metsim_varname = metsim_varname``.  The order that the
 variables are given corresponds to the column numbers that they appear in the 
 input files.  The minimum required variables are ``t_min``, ``t_max``, and 
 ``prec``; these variable names correspond to minimum daily temperature (Celcius), 
-maximum daily temperature (Celcius), and precipitation (mm).
+maximum daily temperature (Celcius), and precipitation (mm/day).
 
 binary
 ``````
