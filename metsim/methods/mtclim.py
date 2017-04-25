@@ -41,7 +41,8 @@ def run(forcing: pd.DataFrame, params: dict, sg: dict,
     elev: float
         Elevation of the site being simulated
     swe: float
-        Initial SWE for the site being simulated
+        Initial snow water equivalent (SWE) for
+        the site being simulated
 
     Returns
     -------

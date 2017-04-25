@@ -184,7 +184,7 @@ class MetSim(object):
             logger.info("Beginning {}".format(label))
             status = []
 
-            # Add in some end point data for coninuity in chunking
+            # Add in some end point data for continuity in chunking
             times_ext = times.union([times[0] - pd.Timedelta("1 days"),
                                      times[-1] + pd.Timedelta("1 days")]
                                     ).intersection(time_dim)
@@ -305,7 +305,8 @@ class MetSim(object):
                     self._unpack_state(df, locs)
                     df = disaggregate(df, self.params, sg, t_begin, t_end)
                     start = times[0]
-                    stop = times[-1] + pd.Timedelta('23 hours')
+                    stop = (times[-1] + pd.Timedelta('1 days')
+                            - pd.Timedelta(self.params['time_step']))
                     new_times = pd.date_range(start, stop, freq='{}T'.format(
                         self.params['time_step']))
                 else:

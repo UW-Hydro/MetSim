@@ -59,7 +59,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg:
         A dataframe with sub-daily timeseries.
     """
-    stop = df_daily.index[-1] + pd.Timedelta('23 hours')
+    stop = (df_daily.index[-1] + pd.Timedelta('1 days')
+            - pd.Timedelta(params['time_step']))
     dates_disagg = pd.date_range(df_daily.index[0], stop,
                                  freq='{}T'.format(params['time_step']))
     df_disagg = pd.DataFrame(index=dates_disagg)
@@ -174,6 +175,10 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
     # Account for end points
     ts_ends = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
     time = np.append(np.insert(time, 0, time[0:2]-ts_ends), time[-2:]+ts_ends)
+
+    # If no start or end data is provided to extend the record repeat values
+    # This provides space at the ends so that extrapolation doesn't continue
+    # in strange ways at the end points
     if t_begin is None:
         t_begin = temp[0:2]
     if t_end is None:
@@ -375,9 +380,9 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     n_days = len(tmp_rad)
     ts_per_day = (cnst.HOURS_PER_DAY *
                   cnst.MIN_PER_HOUR / int(params['time_step']))
-    disaggrad = np.zeros(int(n_days*ts_per_day) + 1)
-    tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0) /
-                    (cnst.HOURS_PER_DAY / cnst.DEG_PER_REV)))
+    disaggrad = np.zeros(int(n_days*ts_per_day))
+    tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0)
+                   / (cnst.HOURS_PER_DAY / cnst.DEG_PER_REV)))
 
     # Tinystep represents a daily set of values - but is constant across days
     tinystep = np.arange(cnst.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
@@ -402,4 +407,4 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
         dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
         rad_chunk = rad[np.asarray(tinystep, dtype=np.int32)]
         disaggrad[dslice] = chunk_sum(rad_chunk) * tmp_rad[day]
-    return disaggrad[:-1]
+    return disaggrad

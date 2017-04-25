@@ -236,5 +236,3 @@ def test_disaggregation_values():
         h = max([good[var].max(), out[var].max()])
         l = min([good[var].min(), out[var].min()])
         nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
-        print(var, nrmse)
-        #assert nrmse < 0.05
