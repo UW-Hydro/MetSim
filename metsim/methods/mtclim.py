@@ -20,49 +20,40 @@ MTCLIM
 
 import numpy as np
 import pandas as pd
-from warnings import warn
 
 import metsim.constants as cnst
-from metsim.disaggregate import disaggregate
-from metsim.physics import svp, calc_pet, atm_pres, solar_geom
+from metsim.physics import svp, calc_pet, atm_pres
 
 
-def run(forcing: pd.DataFrame, params: dict, elev: float, lat: float,
-        disagg=True):
+def run(forcing: pd.DataFrame, params: dict, sg: dict,
+        elev: float, swe: float):
     """
     Run all of the mtclim forcing generation
 
     Parameters
     ----------
-    forcing:
+    forcing: pd.DataFrame
         The daily forcings given from input
-    solar_geom:
+    params: dict
+        Dictionary of parameters from a MetSim object
+    solar_geom: dict
         Solar geometry of the site
+    elev: float
+        Elevation of the site being simulated
+    swe: float
+        Initial snow water equivalent (SWE) for
+        the site being simulated
 
     Returns
     -------
     forcing:
         Dataframe of daily or subdaily forcings
     """
-
-    # solar_geom returns a tuple due to restrictions of numba
-    # for clarity we convert it to a dictionary here
-    sg = solar_geom(elev, lat)
-    sg = {'tiny_rad_fract': sg[0],
-          'daylength': sg[1],
-          'potrad': sg[2],
-          'tt_max0': sg[3]}
     params['n_days'] = len(forcing)
     calc_t_air(forcing, elev, params)
     calc_prec(forcing, params)
-    calc_snowpack(forcing, params)
+    calc_snowpack(forcing, swe)
     calc_srad_hum(forcing, sg, elev, params)
-
-    if disagg:
-        forcing = disaggregate(forcing, params, sg)
-    else:
-        # convert srad to daily average flux from daytime flux
-        forcing['swrad'] *= forcing['dayl'] / cnst.SEC_PER_DAY
 
     return forcing
 
@@ -130,7 +121,7 @@ def calc_snowpack(df: pd.DataFrame, snowpack: float=0.0):
 
 
 def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
-                  params: dict, win_type: str='boxcar'):
+                  params: dict):
     """
     Calculate shortwave, humidity
 
@@ -143,9 +134,6 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     params:
         A dictionary of parameters from the
         MetSim object
-    win_type:
-        (Optional) The method used to calculate
-        the 60 day rolling average of precipitation
     """
     def _calc_tfmax(prec, dtr, sm_dtr):
         b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
@@ -157,42 +145,8 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     # Calculate the diurnal temperature range
     df['t_max'] = np.maximum(df['t_max'], df['t_min'])
     dtr = df['t_max'] - df['t_min']
-    sm_dtr = pd.Series(dtr).rolling(
-        window=30, win_type=win_type, axis=0).mean().fillna(method='bfill')
-    if params['n_days'] <= 30:
-        warn('Timeseries is shorter than rolling mean window, filling ')
-        warn('missing values with unsmoothed data')
-        sm_dtr.fillna(dtr, inplace=True)
-
-    # Effective annual prec
-    if params['n_days'] <= 90:
-        # Simple scaled method, minimum of 8 cm
-        sum_prec = df['prec'].values.sum()
-        eff_ann_prec = (sum_prec / params['n_days']) * cnst.DAYS_PER_YEAR
-        eff_ann_prec = np.maximum(eff_ann_prec, 8.0)
-        parray = pd.Series(eff_ann_prec, index=df.index)
-    else:
-        # Calculate effective annual prec using 3 month moving window
-        window = pd.Series(np.zeros(params['n_days'] + 90))
-        window[90:] = df['prec']
-
-        # If yeardays at end match with those at beginning we can use
-        # the end of the input to generate the beginning by looping around
-        # If not, just duplicate the first 90 days
-        start_day, end_day = df.index.dayofyear[0], df.index.dayofyear[-1]
-        if ((start_day % 365 == (end_day % 365) + 1) or
-                (start_day % 366 == (end_day % 366) + 1)):
-            window[:90] = df['prec'][-90:]
-        else:
-            window[:90] = df['prec'][:90]
-
-        parray = cnst.DAYS_PER_YEAR * window.rolling(
-            window=90, win_type=win_type, axis=0).mean()[90:]
-
-    # Convert to cm
-    parray = parray.where(parray > 80.0, 80.0) / cnst.MM_PER_CM
-    # Doing this way because parray.reindex_like(df) returns all nan
-    parray.index = df.index
+    df['dtr'] = dtr
+    sm_dtr = df['smoothed_dtr']
     df['tfmax'] = _calc_tfmax(df['prec'], dtr, sm_dtr)
     tdew = df.get('tdew', df['t_min'])
     pva = df.get('hum', svp(tdew))
@@ -203,15 +157,15 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     # Calculation of tdew and swrad. tdew is iterated on until
     # it converges sufficiently
     tdew_old = tdew
-    tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr, params)
+    tdew, pva = sw_hum_iter(df, sg, pa, pva, dtr, params)
     while(np.sqrt(np.mean((tdew-tdew_old)**2)) > params['tdew_tol']):
         tdew_old = np.copy(tdew)
-        tdew, pva = sw_hum_iter(df, sg, pa, pva, parray, dtr, params)
+        tdew, pva = sw_hum_iter(df, sg, pa, pva, dtr, params)
     df['vapor_pressure'] = pva
 
 
-def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series, parray:
-                pd.Series, dtr: pd.Series, params: dict):
+def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
+                dtr: pd.Series, params: dict):
     """
     Calculated updated values for dewpoint temperature
     and saturation vapor pressure.
@@ -229,8 +183,6 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series, parray:
         Air pressure in Pascals
     pva:
         Vapor presure in Pascals
-    parray:
-        60 day rolling average of precipitation in cm
     dtr:
         Daily temperature range
     params:
@@ -249,6 +201,8 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series, parray:
 
     t_tmax = np.maximum(tt_max0[yday] + (cnst.ABASE * pva), 0.0001)
     t_final = t_tmax * df['tfmax']
+    df['pva'] = pva
+    df['tfinal'] = t_final
 
     # Snowpack contribution
     sc = np.zeros_like(df['swe'])
@@ -272,7 +226,8 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series, parray:
     # Compute PET using SW radiation estimate, and update Tdew, pva **
     pet = calc_pet(df['swrad'], df['t_day'], df['dayl'], pa)
     # Calculate ratio (PET/effann_prcp) and correct the dewpoint
-    ratio = pet / parray
+    parray = df['seasonal_prec'] / cnst.MM_PER_CM
+    ratio = pet / parray.where(parray > 8.0, 8.0)
     df['pet'] = pet * cnst.MM_PER_CM
     tmink = df['t_min'] + cnst.KELVIN
     tdew = tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio +

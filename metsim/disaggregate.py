@@ -1,5 +1,4 @@
-"""
-Disaggregates daily data down to finer grained data using some heuristics
+""" Disaggregates daily data down to finer grained data using some heuristics
 """
 # Meteorology Simulator
 # Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
@@ -21,43 +20,52 @@ Disaggregates daily data down to finer grained data using some heuristics
 import numpy as np
 import pandas as pd
 import itertools
-import scipy
+import scipy.interpolate
 
 import metsim.constants as cnst
 from metsim.physics import svp
 
 
 def disaggregate(df_daily: pd.DataFrame, params: dict,
-                 solar_geom: dict):
+                 solar_geom: dict, t_begin: list=None,
+                 t_end: list=None):
     """
     Take a daily timeseries and scale it down to a finer
     time scale.
 
     Parameters
     ----------
-    df_daily:
+    df_daily: pd.DataFrame
         Dataframe containing daily timeseries.
         Should be the result of one of the methods
         provided in the `methods` directory.
-    params:
+    params: dict
         A dictionary containing the class parameters
         of the MetSim object.
-    solar_geom:
+    solar_geom: dict
         A dictionary of solar geometry variables
+    t_begin: list
+        List of t_min and t_max for day previous to the
+        start of `df_daily`. None indicates no extension
+        of the record.
+    t_end: list
+        List of t_min and t_max for day after the end
+        of `df_daily`. None indicates no extension of
+        the record.
 
     Returns
     -------
     df_disagg:
         A dataframe with sub-daily timeseries.
     """
-    stop = params['stop'] + pd.Timedelta('1 days')
-    dates_disagg = pd.date_range(params['start'], stop,
+    stop = (df_daily.index[-1] + pd.Timedelta('1 days')
+            - pd.Timedelta("{} minutes".format(params['time_step'])))
+    dates_disagg = pd.date_range(df_daily.index[0], stop,
                                  freq='{}T'.format(params['time_step']))
     df_disagg = pd.DataFrame(index=dates_disagg)
     n_days = len(df_daily)
     n_disagg = len(df_disagg)
     ts = float(params['time_step'])
-
     df_disagg['shortwave'] = shortwave(df_daily['swrad'],
                                        df_daily['dayl'],
                                        df_daily.index.dayofyear,
@@ -67,7 +75,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'],
                                       n_days, ts, params)
 
-    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts)
+    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts,
+                             t_begin, t_end)
 
     df_disagg['vapor_pressure'] = vapor_pressure(df_daily['vapor_pressure'],
                                                  df_disagg['temp'],
@@ -123,7 +132,8 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
 
 
 def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
-         t_t_min: np.array, t_t_max: np.array, ts: float):
+         t_t_min: np.array, t_t_max: np.array, ts: float,
+         t_begin: list=None, t_end: list=None):
     """
     Disaggregate temperature using a Hermite polynomial
     interpolation scheme.
@@ -142,6 +152,14 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
         temperatures are reached.
     ts:
         Timestep for disaggregation
+    t_begin: list
+        List of t_min and t_max for day previous to the
+        start of `df_daily`. None indicates no extension
+        of the record.
+    t_end: list
+        List of t_min and t_max for day after the end
+        of `df_daily`. None indicates no extension of
+        the record.
 
     Returns
     -------
@@ -156,7 +174,15 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
     # Account for end points
     ts_ends = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
     time = np.append(np.insert(time, 0, time[0:2]-ts_ends), time[-2:]+ts_ends)
-    temp = np.append(np.insert(temp, 0, temp[0:2]), temp[-2:])
+
+    # If no start or end data is provided to extend the record repeat values
+    # This provides space at the ends so that extrapolation doesn't continue
+    # in strange ways at the end points
+    if t_begin is None:
+        t_begin = temp[0:2]
+    if t_end is None:
+        t_end = temp[-2:]
+    temp = np.append(np.insert(temp, 0, t_begin), t_end)
 
     # Interpolate the values
     interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
@@ -228,7 +254,7 @@ def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
 def vapor_pressure(vp_daily: pd.Series, temp: pd.Series,
                    t_t_min: np.array, n_out: int, ts: float):
     """
-    Calculate vapor pressure.  First a linear inerpolation
+    Calculate vapor pressure.  First a linear interpolation
     of the daily values is calculated.  Then this is compared
     to the saturated vapor pressure calculated using the
     disaggregated temperature. When the interpolated vapor
@@ -353,9 +379,9 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     n_days = len(tmp_rad)
     ts_per_day = (cnst.HOURS_PER_DAY *
                   cnst.MIN_PER_HOUR / int(params['time_step']))
-    disaggrad = np.zeros(int(n_days*ts_per_day) + 1)
-    tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0) /
-                    (cnst.HOURS_PER_DAY / cnst.DEG_PER_REV)))
+    disaggrad = np.zeros(int(n_days*ts_per_day))
+    tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0)
+                   / (cnst.HOURS_PER_DAY / cnst.DEG_PER_REV)))
 
     # Tinystep represents a daily set of values - but is constant across days
     tinystep = np.arange(cnst.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
@@ -367,10 +393,11 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
 
     # Chunk sum takes in the distribution of radiation throughout the day
     # and collapses it into chunks that correspond to the desired timestep
-
     chunk_size = int(int(params['time_step'])
                      * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
 
+    # Chunk sum takes in the distribution of radiation throughout the day
+    # and collapses it into chunks that correspond to the desired timestep
     def chunk_sum(x):
         return np.sum(x.reshape((int(len(x)/chunk_size), chunk_size)), axis=1)
 

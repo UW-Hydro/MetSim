@@ -35,6 +35,7 @@ def parse(args):
     parser.add_argument('config')
     parser.add_argument('-n', '--n-processes', default=1, type=int)
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-a', '--annual', action='store_true')
     return parser.parse_args()
 
 
@@ -58,8 +59,9 @@ def init(opts):
     else:
         forcing_files = conf['forcing']
 
-    # We assume there is only one domain file
+    # We assume there is only one domain file and one state file
     domain_file = conf['domain']
+    state_file = conf['state']
 
     # Generate the date range that will be put into the data frame
     start_date, start_hour = conf['start'].split(':')
@@ -81,6 +83,8 @@ def init(opts):
                  "nprocs": opts.n_processes,
                  "method": method,
                  "out_dir": out_dir,
+                 "state": state_file,
+                 "annual": opts.annual,
                  "domain": domain_file,
                  "forcing": forcing_files,
                  "verbose": opts.verbose * logging.INFO})
@@ -96,12 +100,11 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    ms.load(setup['forcing'])
+    ms.load()
     if ms.params['nprocs'] > 1:
         ms.launch()
     else:
         ms.run()
-    ms.write()
 
 
 if __name__ == '__main__':
