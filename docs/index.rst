@@ -6,9 +6,9 @@
 METSIM: Meteorology Simulator
 ==================================
 
-Metsim is a next-generation meteorological simulator and forcing disaggregator
+Metsim is a meteorological simulator and forcing disaggregator
 for hydrologic modeling and climate applications.
-Metsim is mainly based on MtClim and the preprocessor from early versions of the
+Metsim is based on MtClim and the preprocessor from version 4 of the
 VIC hydrologic model.
 This documentation is a work in progress.
 If you don't find what you're looking for here, check out metsim's Github page.  
@@ -20,7 +20,6 @@ If you don't find what you're looking for here, check out metsim's Github page.
    faq
    examples
    installing
-   methods
    api
    whats-new
 

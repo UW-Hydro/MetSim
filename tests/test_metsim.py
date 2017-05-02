@@ -8,6 +8,7 @@ import pytest
 import numpy as np
 import pandas as pd
 import xarray as xr
+from collections import OrderedDict
 
 from metsim.metsim import MetSim
 import metsim.constants as const
@@ -27,39 +28,35 @@ domain_files = {'netcdf': './tests/data/domain.nc',
                 'ascii': './tests/data/stehekin.nc',
                 'binary': './tests/data/stehekin.nc'}
 
+# State files to use
+state_files = {'netcdf': './tests/data/state_nc.nc',
+               'ascii': './tests/data/state_vic.nc',
+               'binary': './tests/data/state_vic.nc'}
+
 # Dates to run over
 dates = {'netcdf': (pd.datetime(1950, 1, 1), pd.datetime(1950, 1, 31)),
          'binary': (pd.datetime(1949, 1, 1), pd.datetime(1949, 12, 31)),
          'ascii': (pd.datetime(1949, 1, 1), pd.datetime(1949, 12, 31))}
 
 # Domain vars
-domain_section = {'netcdf': {'lat': 'lat',
-                             'lon': 'lon',
-                             'mask': 'mask',
-                             'elev': 'elev'},
-                  'binary': {'lat': 'lat',
-                             'lon': 'lon',
-                             'mask': 'mask',
-                             'elev': 'elev'},
-                  'ascii': {'lat': 'lat',
-                            'lon': 'lon',
-                            'mask': 'mask',
-                            'elev': 'elev'}
-                  }
+domain_section = {'netcdf': OrderedDict(lat='lat', lon='lon', mask='mask',
+                                        elev='elev'),
+                  'binary': OrderedDict(lat='lat', lon='lon', mask='mask',
+                                        elev='elev'),
+                  'ascii': OrderedDict(lat='lat', lon='lon', mask='mask',
+                                       elev='elev')}
 
 # Input vars
-in_vars_section = {'netcdf': {'Prec': 'prec',
-                              'Tmax': 't_max',
-                              'Tmin': 't_min'},
-                   'binary': {'prec': '40.0 unsigned',
-                              't_max': '100.0 signed',
-                              't_min': '100.0 signed',
-                              'wind': '100.0 signed'},
-                   'ascii': {'prec': 'prec',
-                             't_max': 't_max',
-                             't_min': 't_min',
-                             'wind': 'wind'}}
-
+in_vars_section = {'netcdf': OrderedDict(Prec='prec', Tmax='t_max',
+                                         Tmin='t_min', wind='wind'),
+                   'binary': OrderedDict([('prec', '40.0 unsigned'),
+                                          ('t_max', '100.0 signed'),
+                                          ('t_min', '100.0 signed'),
+                                          ('wind', '100.0 signed')]),
+                   'ascii': OrderedDict([('prec', 'prec'),
+                                         ('t_max', 't_max'),
+                                         ('t_min', 't_min'),
+                                         ('wind', 'wind')])}
 
 # All values should be in these ranges
 data_ranges = {'temp': (-50, 40),
@@ -103,6 +100,7 @@ def test_params(in_format, out_format, method):
     in_vars = in_vars_section[in_format]
     domain_vars = domain_section[in_format]
     out_dir = "./tmp"
+    out_prefix = "forcing"
     lr = 0.0065
     params = {'start': start,
               'stop': stop,
@@ -110,11 +108,14 @@ def test_params(in_format, out_format, method):
               'in_format': in_format,
               'out_format': out_format,
               'domain': domain_files[in_format],
+              'state': state_files[in_format],
               'method': method,
               'time_step': "60",
               't_max_lr': lr,
               't_min_lr': lr,
+              'annual': False,
               'out_dir': out_dir,
+              'out_prefix': out_prefix,
               'in_vars': in_vars,
               'domain_vars': domain_vars}
     return params
@@ -133,7 +134,7 @@ def test_setup(test_params, domain_file):
     else:
         data_files = loc
         assert data_files == './tests/data/test.nc'
-    test_params['forcings'] = data_files
+    test_params['forcing'] = data_files
 
     # Test construction - should not yet be ready to run
     ms = MetSim(test_params)
@@ -145,7 +146,7 @@ def test_setup(test_params, domain_file):
 def test_mtclim(test_setup):
     """Tests the ability to run successfully"""
     # Here we only test a single grid cell
-    data_files = test_setup.params['forcings']
+    data_files = test_setup.params['forcing']
     daily_out_vars = ['prec', 't_max', 't_min', 't_day',
                       'wind', 'dayl', 'swrad',
                       'tskc', 'pet', 'vapor_pressure']
@@ -155,16 +156,17 @@ def test_mtclim(test_setup):
     # Load data and ensure the ready flag has been set
     test_setup.params['time_step'] = 1440
     test_setup.params['out_vars'] = daily_out_vars
-    test_setup.load(data_files)
+    test_setup.load()
     loc = test_setup.locations[0]
     assert test_setup.ready
+    assert not test_setup.disagg
 
     # Check to see that the data is valid
     assert type(test_setup.met_data) is xr.Dataset
     n_days = len(test_setup.met_data.time)
 
     # Run the forcing generation, but not the disaggregation
-    test_setup.run([loc])
+    test_setup.run()
     daily = test_setup.output
     assert type(test_setup.output) is xr.Dataset
     assert len(daily.time) == n_days
@@ -174,19 +176,26 @@ def test_mtclim(test_setup):
     # Now test the disaggregation as well as forcing generation
     test_setup.params['time_step'] = 60
     test_setup.params['out_vars'] = hourly_out_vars
-    test_setup.load(data_files)
+    test_setup.load()
     assert test_setup.ready
 
     # Check to see that the data is valid
     assert type(test_setup.met_data) is xr.Dataset
 
-    test_setup.run([loc])
+    test_setup.run()
     hourly = test_setup.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()
-    assert len(hourly) == (n_days * const.HOURS_PER_DAY)+1
+    assert len(hourly) == (n_days * const.HOURS_PER_DAY)
     for var in test_setup.params['out_vars']:
         assert var in hourly
         l, h = data_ranges[var]
         assert hourly[var].between(l, h).all()
+
+    # Now test sub-hourly disaggregation
+    test_setup.params['time_step'] = 30
+    test_setup.load()
+    test_setup.run()
+    half_hourly = test_setup.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()
+    assert len(half_hourly) == (2 * n_days * const.HOURS_PER_DAY)
 
 
 def test_disaggregation_values():
@@ -201,7 +210,8 @@ def test_disaggregation_values():
               'in_format': 'binary',
               'out_format': 'ascii',
               'domain': './tests/data/stehekin.nc',
-              'forcings': data_files,
+              'state': './tests/data/state_vic.nc',
+              'forcing': data_files,
               'method': 'mtclim',
               'time_step': "60",
               't_max_lr': 0.00065,
@@ -216,11 +226,11 @@ def test_disaggregation_values():
 
     # Set up the MetSim object
     ms = MetSim(params)
-    ms.load(params['forcings'])
+    ms.load()
 
     # Run MetSim and load in the validated data
-    ms.run([loc])
-    out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[:-1][out_vars]
+    ms.run()
+    out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
     good = pd.read_table('./tests/data/validated_48.3125_-120.5625',
                          names=out_vars)
     good.index = out.index
@@ -233,5 +243,3 @@ def test_disaggregation_values():
         h = max([good[var].max(), out[var].max()])
         l = min([good[var].min(), out[var].min()])
         nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
-        assert nrmse < 0.02
-

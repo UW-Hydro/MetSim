@@ -1,16 +1,32 @@
 #!/usr/bin/env python3
-
 """
 Command line tool for MetSim
 """
+# Meteorology Simulator
+# Copyright (C) 2017  The Computational Hydrology Group, Department of Civil
+# and Environmental Engineering, University of Washington.
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
 import sys
 import json
+import logging
 import argparse
 import pandas as pd
-import time
 from configparser import SafeConfigParser
+from collections import OrderedDict
 
 
 def parse(args):
@@ -18,6 +34,8 @@ def parse(args):
     parser = argparse.ArgumentParser()
     parser.add_argument('config')
     parser.add_argument('-n', '--n-processes', default=1, type=int)
+    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-a', '--annual', action='store_true')
     return parser.parse_args()
 
 
@@ -28,9 +46,9 @@ def init(opts):
     config = SafeConfigParser()
     config.optionxform = str
     config.read(opts.config)
-    conf = dict(config['MetSim'])
-    conf['in_vars'] = dict(config['in_vars'])
-    conf['domain_vars'] = dict(config['domain_vars'])
+    conf = OrderedDict(config['MetSim'])
+    conf['in_vars'] = OrderedDict(config['in_vars'])
+    conf['domain_vars'] = OrderedDict(config['domain_vars'])
     out_dir = conf['out_dir']
     method = conf['method']
 
@@ -41,8 +59,9 @@ def init(opts):
     else:
         forcing_files = conf['forcing']
 
-    # We assume there is only one domain file
+    # We assume there is only one domain file and one state file
     domain_file = conf['domain']
+    state_file = conf['state']
 
     # Generate the date range that will be put into the data frame
     start_date, start_hour = conf['start'].split(':')
@@ -64,8 +83,11 @@ def init(opts):
                  "nprocs": opts.n_processes,
                  "method": method,
                  "out_dir": out_dir,
+                 "state": state_file,
+                 "annual": opts.annual,
                  "domain": domain_file,
-                 "forcings": forcing_files})
+                 "forcing": forcing_files,
+                 "verbose": opts.verbose * logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['t_min_lr'] = float(conf['t_min_lr'])
     conf['t_max_lr'] = float(conf['t_max_lr'])
@@ -75,19 +97,14 @@ def init(opts):
 
 def main():
     """Runs MetSim"""
-    start = time.time()
-
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    ms.load(setup['forcings'])
+    ms.load()
     if ms.params['nprocs'] > 1:
-        ms.launch(setup['forcings'])
+        ms.launch()
     else:
-        ms.run(ms.locations)
-    ms.write()
-    end = time.time()
-    print('time elapsed: %s ' % (end - start))
+        ms.run()
 
 
 if __name__ == '__main__':
