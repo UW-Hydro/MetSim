@@ -108,6 +108,7 @@ class MetSim(object):
         "base_isoh": 1,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
+        "annual": False,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
@@ -128,25 +129,22 @@ class MetSim(object):
         logger.addHandler(ch)
         self.output = None
         self.met_data = None
+        self.state = None
         self.ready = False
 
     def load(self):
         """Load the necessary datasets into memory"""
         # Get the necessary information from the domain
-        self.domain = xr.open_dataset(self.params['domain']).rename(
+        if self.domain is None:
+            self.domain = xr.open_dataset(self.params['domain']).rename(
                 MetSim.params['domain_vars']).load()
-        self.state = xr.open_dataset(self.params['state']).rename(
-            MetSim.params.get('state_vars',
-                              {'prec': 'prec'})).load()
-        self.lat = self.domain['lat']
-        self.lon = self.domain['lon']
-        self.mask = self.domain['mask']
-        self.elev = self.domain['elev']
-        self.domain_shape = self.mask.shape
-        self.domain_dims = self.mask.dims
+        if self.state is None:
+            self.state = xr.open_dataset(self.params['state']).rename(
+                MetSim.params.get('state_vars',
+                                  {'prec': 'prec'})).load()
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
-        ilist, jlist = np.nonzero(np.nan_to_num(self.mask.values))
+        ilist, jlist = np.nonzero(np.nan_to_num(self.domain['mask'].values))
 
         self.i_idx = ilist
         self.j_idx = jlist
@@ -244,6 +242,13 @@ class MetSim(object):
         Kicks off the disaggregation and queues up data for IO
         """
         time_dim = pd.to_datetime(self.met_data.time.values)
+        ilist, jlist = np.nonzero(np.nan_to_num(self.domain['mask'].values))
+
+        self.i_idx = ilist
+        self.j_idx = jlist
+
+        self.locations = list(zip(ilist, jlist))
+        self.met_data['elev'] = self.domain['elev']
         if self.params['annual']:
             groups = time_dim.groupby(time_dim.year)
         else:
@@ -256,6 +261,7 @@ class MetSim(object):
                                     ).intersection(time_dim)
             data = self.met_data.sel(time=times_ext)
             self.setup_output(self.met_data.sel(time=times))
+
             for i, j in self.locations:
                 locs = dict(lat=i, lon=j)
                 logger.info("Processing {}".format(locs))
@@ -341,8 +347,8 @@ class MetSim(object):
                               freq="{}T".format(MetSim.params['time_step']))
         n_ts = len(times)
 
-        shape = (n_ts, ) + self.domain_shape
-        dims = ('time', ) + self.domain_dims
+        shape = (n_ts, ) + self.domain['mask'].shape
+        dims = ('time', ) + self.domain['mask'].dims
         coords = {'time': times, **self.domain.mask.coords}
         for varname in MetSim.params['out_vars']:
             self.output[varname] = xr.DataArray(
@@ -353,7 +359,7 @@ class MetSim(object):
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
-        return self.elev.sel(lat=lat, lon=lon, method='nearest')
+        return self.domain['elev'].sel(lat=lat, lon=lon, method='nearest')
 
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
@@ -441,13 +447,16 @@ class MetSim(object):
         # Creates the master dataset which will be used to parallelize
         self.met_data = xr.Dataset(
             coords={'time': MetSim.params['dates'],
-                    'lon': self.lon,
-                    'lat': self.lat},
+                    'lon': self.domain['lon'],
+                    'lat': self.domain['lat']},
             attrs={'n_days': len(MetSim.params['dates'])})
-        shape = (len(MetSim.params['dates']), len(self.lat), len(self.lon))
+        shape = (len(MetSim.params['dates']),
+                 len(self.domain['lat']),
+                 len(self.domain['lon']))
 
         self.met_data['elev'] = xr.Variable(
-            ('lat', 'lon'), np.full((len(self.lat), len(self.lon)), np.nan))
+            ('lat', 'lon'), np.full((len(self.domain['lat']),
+                                     len(self.domain['lon'])), np.nan))
         for var in MetSim.params['in_vars']:
             self.met_data[var] = xr.Variable(
                 ('time', 'lat', 'lon'), np.full(shape, np.nan))
@@ -455,12 +464,18 @@ class MetSim(object):
         # Fill in the data
         for job in job_list:
             _, lat, lon = os.path.basename(job).split("_")
-            i = np.unique(self.i_idx)[list(self.lat.values).index(float(lat))]
-            j = np.unique(self.j_idx)[list(self.lon.values).index(float(lon))]
+            i = np.unique(self.i_idx)[
+                list(self.domain['lat'].values).index(float(lat))]
+            j = np.unique(self.j_idx)[
+                list(self.domain['lon'].values).index(float(lon))]
             ds = self.read(job)
-            self.met_data['elev'].values[i, j] = self.elev.values[i, j]
+            self.met_data['elev'].values[i, j] = (
+                self.domain['elev'].values[i, j])
             for var in MetSim.params['in_vars']:
                 self.met_data[var].values[:, i, j] = ds[var].values
+
+    def data_in_preprocess(self, ds: xr.Dataset):
+        self.met_data = ds
 
     def write(self, suffix=""):
         """
@@ -577,7 +592,7 @@ class MetSim(object):
             time=slice(MetSim.params['start'], MetSim.params['stop']))
         dates = ds.indexes['time']
         # Add elevation and day of year data
-        ds['elev'] = self.elev
+        ds['elev'] = self.domain['elev']
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
         # Update the configuration
