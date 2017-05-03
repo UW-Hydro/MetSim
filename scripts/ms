@@ -47,7 +47,7 @@ def init(opts):
     config.optionxform = str
     config.read(opts.config)
     conf = OrderedDict(config['MetSim'])
-    conf['in_vars'] = OrderedDict(config['in_vars'])
+    conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
     conf['domain_vars'] = OrderedDict(config['domain_vars'])
     out_dir = conf['out_dir']
     method = conf['method']
