@@ -100,7 +100,6 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    ms.load()
     if ms.params['nprocs'] > 1:
         ms.launch()
     else:

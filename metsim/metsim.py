@@ -129,8 +129,6 @@ class MetSim(object):
         self.domain = io.read_domain(self.params)
         self.met_data = io.read_met_data(self.params, self.domain)
         self.state = io.read_state(self.params)
-        #TODO: Now need to make sure that we aggregate state and
-        #      capture all of the information from the domain
         self._aggregate_state()
         self.met_data['elev'] = self.domain['elev']
 
@@ -416,6 +414,8 @@ class MetSim(object):
                 'ascii': self.write_ascii,
                 'data': self.write_data
                 }
+        if not os.path.exists(self.params['out_dir']):
+            os.mkdir(self.params['out_dir'])
         self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
                              encoding={'time': {'dtype': 'f8'}})
         dispatch[MetSim.params.get('out_format', 'netcdf').lower()](suffix)

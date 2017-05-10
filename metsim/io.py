@@ -86,6 +86,7 @@ def process_vic(params, domain):
             job, params['start'], params['stop'], params['forcing_vars'])
         for var in params['forcing_vars'].keys():
             met_data[var].values[:, i, j] = ds[var].values
+    return met_data
 
 
 def read_domain(params):
@@ -108,7 +109,8 @@ def read_state(params):
         params['state'], start, stop, params.get('state_vars', None))
 
 
-def read_ascii(data_handle, start, stop, var_dict) -> xr.Dataset:
+def read_ascii(data_handle, start=None,
+               stop=None, var_dict=None) -> xr.Dataset:
     """Read in an ascii forcing file"""
     dates = pd.date_range(start, stop)
     names = var_dict.keys()
@@ -118,14 +120,18 @@ def read_ascii(data_handle, start, stop, var_dict) -> xr.Dataset:
     return ds
 
 
-def read_netcdf(data_handle, start, stop, var_dict) -> xr.Dataset:
+def read_netcdf(data_handle, start=None,
+                stop=None, var_dict=None) -> xr.Dataset:
     """
     Read in a NetCDF file and add elevation information
     """
     ds = xr.open_dataset(data_handle)
+
+    varlist = list(ds.keys())
     if var_dict is not None:
         ds.rename(var_dict, inplace=True)
         varlist = list(var_dict.values())
+        ds = ds[varlist]
 
     if start is not None and stop is not None:
         ds = ds[varlist].sel(time=slice(start, stop))
@@ -135,7 +141,8 @@ def read_netcdf(data_handle, start, stop, var_dict) -> xr.Dataset:
     return ds.load()
 
 
-def read_data(data_handle, start, stop, var_dict):
+def read_data(data_handle, start=None,
+              stop=None, var_dict=None) -> xr.Dataset:
     varlist = list(data_handle.keys())
     if var_dict is not None:
         data_handle.rename(var_dict, inplace=True)
@@ -149,7 +156,8 @@ def read_data(data_handle, start, stop, var_dict):
     return data_handle.load()
 
 
-def read_binary(data_handle, start, stop, var_dict) -> xr.Dataset:
+def read_binary(data_handle, start=None,
+                stop=None, var_dict=None) -> xr.Dataset:
     """ Reads a binary forcing file (VIC 4 format) """
     dates = pd.date_range(start, stop)
     n_days = len(dates)
@@ -186,7 +194,7 @@ def read_binary(data_handle, start, stop, var_dict) -> xr.Dataset:
 
     # Assemble the dataset
     data_dict = {c[0]: (['time'], c[1]) for c in zip(var_names, data_list)}
-    data_dict['elev'] = (['lon', 'lat'], params['elev'])
+    #data_dict['elev'] = (['lon', 'lat'], params['elev'])
     data_dict['day_of_year'] = (['time'], dates.dayofyear)
     df = xr.Dataset(data_dict,
                     coords={'lon': [params['lon']],
