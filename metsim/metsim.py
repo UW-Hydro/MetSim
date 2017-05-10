@@ -288,6 +288,9 @@ class MetSim(object):
     def netcdf_in_preprocess(self, filename: str):
         """Get the extent and load the data"""
         self.met_data = self.read(filename)
+        # Subset geographically to match domain
+        if len(self.lat) > 0 and len(self.lon) > 0:
+            self.met_data = self.met_data.sel(lat=slice(self.lat[0], self.lat[-1]), lon=slice(self.lon[0], self.lon[-1]))
 
     def vic_in_preprocess(self, job_list: list):
         """Process all files to find spatial extent"""
