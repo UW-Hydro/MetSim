@@ -194,7 +194,6 @@ def read_binary(data_handle, start=None,
 
     # Assemble the dataset
     data_dict = {c[0]: (['time'], c[1]) for c in zip(var_names, data_list)}
-    #data_dict['elev'] = (['lon', 'lat'], params['elev'])
     data_dict['day_of_year'] = (['time'], dates.dayofyear)
     df = xr.Dataset(data_dict,
                     coords={'lon': [params['lon']],

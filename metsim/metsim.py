@@ -134,15 +134,24 @@ class MetSim(object):
 
     def launch(self):
         """Farm out the jobs to separate processes"""
-        nprocs = MetSim.params['nprocs']
+        nprocs = self.params['nprocs']
 
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         # Do the forcing generation and disaggregation if required
         time_dim = pd.to_datetime(self.met_data.time.values)
+        ilist, jlist = np.nonzero(np.nan_to_num(self.domain['mask'].values))
+
+        self.i_idx = ilist
+        self.j_idx = jlist
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
+        self.locations = list(zip(ilist, jlist))
+        self.method = MetSim.methods[self.params['method']]
+
         if self.params['annual']:
             groups = time_dim.groupby(time_dim.year)
         else:
             groups = {'total': time_dim}
+
         for label, times in groups.items():
             self.pool = Pool(processes=nprocs)
             logger.info("Beginning {}".format(label))
