@@ -44,7 +44,30 @@ def read_met_data(params, domain):
     return process_funcs[params['forcing_fmt']](params, domain)
 
 
+def read_domain(params):
+    """Load in a domain file"""
+    read_funcs = {
+        "netcdf": read_netcdf,
+        "data": read_data
+    }
+    return read_funcs[params['domain_fmt']](
+        params['domain'], None, None, params.get('domain_vars', None))
+
+
+def read_state(params):
+    """Load in a state file"""
+    read_funcs = {
+        "netcdf": read_netcdf,
+        "data": read_data
+    }
+    start = params['start'] - pd.Timedelta('90 days')
+    stop = params['start'] - pd.Timedelta('1 days')
+    return read_funcs[params['state_fmt']](
+        params['state'], start, stop, params.get('state_vars', None))
+
+
 def process_nc(params, domain):
+    """Process NetCDF-like Data"""
     read_funcs = {
         "netcdf": read_netcdf,
         "data": read_data
@@ -55,7 +78,7 @@ def process_nc(params, domain):
 
 
 def process_vic(params, domain):
-    """Process all files to find spatial extent"""
+    """Process VIC-like data"""
     read_funcs = {
         "binary": read_binary,
         "ascii": read_ascii,
@@ -89,26 +112,6 @@ def process_vic(params, domain):
     return met_data
 
 
-def read_domain(params):
-    read_funcs = {
-        "netcdf": read_netcdf,
-        "data": read_data
-    }
-    return read_funcs[params['domain_fmt']](
-        params['domain'], None, None, params.get('domain_vars', None))
-
-
-def read_state(params):
-    read_funcs = {
-        "netcdf": read_netcdf,
-        "data": read_data
-    }
-    start = params['start'] - pd.Timedelta('90 days')
-    stop = params['start'] - pd.Timedelta('1 days')
-    return read_funcs[params['state_fmt']](
-        params['state'], start, stop, params.get('state_vars', None))
-
-
 def read_ascii(data_handle, start=None,
                stop=None, var_dict=None) -> xr.Dataset:
     """Read in an ascii forcing file"""
@@ -122,9 +125,7 @@ def read_ascii(data_handle, start=None,
 
 def read_netcdf(data_handle, start=None,
                 stop=None, var_dict=None) -> xr.Dataset:
-    """
-    Read in a NetCDF file and add elevation information
-    """
+    """Read in a NetCDF file"""
     ds = xr.open_dataset(data_handle)
 
     varlist = list(ds.keys())
@@ -143,6 +144,7 @@ def read_netcdf(data_handle, start=None,
 
 def read_data(data_handle, start=None,
               stop=None, var_dict=None) -> xr.Dataset:
+    """Read data directly from an xarray dataset"""
     varlist = list(data_handle.keys())
     if var_dict is not None:
         data_handle.rename(var_dict, inplace=True)
@@ -158,7 +160,7 @@ def read_data(data_handle, start=None,
 
 def read_binary(data_handle, start=None,
                 stop=None, var_dict=None) -> xr.Dataset:
-    """ Reads a binary forcing file (VIC 4 format) """
+    """Reads a binary forcing file (VIC 4 format)"""
     dates = pd.date_range(start, stop)
     n_days = len(dates)
     type_lookup = {'signed': 'h', 'unsigned': 'H'}
