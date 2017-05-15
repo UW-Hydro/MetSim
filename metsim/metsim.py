@@ -133,8 +133,11 @@ class MetSim(object):
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
         self.site_generator = itertools.product(*iter_list)
-        self._aggregate_state()
+        # Subset geographically to match domain
+        self.met_data = self.met_data.sel(
+            **{d: self.domain[d]for d in self.params['iter_dims']})
         self.met_data['elev'] = self.domain['elev']
+        self._aggregate_state()
         self._validate_setup()
 
     def launch(self):
