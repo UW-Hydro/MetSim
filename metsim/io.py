@@ -131,11 +131,9 @@ def read_netcdf(data_handle, start=None,
     varlist = list(ds.keys())
     if var_dict is not None:
         ds.rename(var_dict, inplace=True)
-        varlist = list(var_dict.values())
-        ds = ds[varlist]
 
     if start is not None and stop is not None:
-        ds = ds[varlist].sel(time=slice(start, stop))
+        ds = ds.sel(time=slice(start, stop))
         dates = ds.indexes['time']
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 

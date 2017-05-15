@@ -112,6 +112,7 @@ class MetSim(object):
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
         "tmax_daylength_fraction": 0.67,
+        "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid']
     }
@@ -129,22 +130,20 @@ class MetSim(object):
         self.domain = io.read_domain(self.params)
         self.met_data = io.read_met_data(self.params, self.domain)
         self.state = io.read_state(self.params)
+        iter_list = [self.met_data[dim].values
+                     for dim in self.params['iter_dims']]
+        self.site_generator = itertools.product(*iter_list)
         self._aggregate_state()
         self.met_data['elev'] = self.domain['elev']
+        self._validate_setup()
 
     def launch(self):
         """Farm out the jobs to separate processes"""
-        nprocs = self.params['nprocs']
 
-        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         # Do the forcing generation and disaggregation if required
+        nprocs = self.params['nprocs']
         time_dim = pd.to_datetime(self.met_data.time.values)
-        ilist, jlist = np.nonzero(np.nan_to_num(self.domain['mask'].values))
-
-        self.i_idx = ilist
-        self.j_idx = jlist
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        self.locations = list(zip(ilist, jlist))
         self.method = MetSim.methods[self.params['method']]
 
         if self.params['annual']:
@@ -163,13 +162,16 @@ class MetSim(object):
                                     ).intersection(time_dim)
             data = self.met_data.sel(time=times_ext)
             self.setup_output(self.met_data.sel(time=times))
-            for i, j in self.locations:
-                locd = dict(lat=i, lon=j)
+            for site in self.site_generator:
+                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+                # Don't run masked cells
+                if not self.domain['mask'].sel(**locs).values > 0:
+                    continue
                 stat = self.pool.apply_async(
                     wrap_run,
-                    args=(self.method.run, locd, self.params,
-                          data.isel(lat=i, lon=j),
-                          self.state.isel(lat=i, lon=j),
+                    args=(self.method.run, locs, self.params,
+                          data.sel(**locs),
+                          self.state.sel(**locs),
                           self.disagg, times, label),
                     callback=self._unpack_results)
                 status.append(stat)
@@ -187,28 +189,23 @@ class MetSim(object):
             self._unpack_state(state, locs)
         else:
             locs, df = result
-        i = locs['lat']
-        j = locs['lon']
         for varname in self.params['out_vars']:
-            self.output[varname].values[:, i, j] = df[varname].values
+            self.output[varname].sel(**locs).values[:] = df[varname].values
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""
-        i = locs['lat']
-        j = locs['lon']
-
         # We concatenate with the old state values in case we don't
         # have 90 new days to use
-        tmin = np.concatenate((self.state['t_min'].values[:, i, j],
+        tmin = np.concatenate((self.state['t_min'].sel(**locs).values[:],
                                result['t_min'].values))
-        tmax = np.concatenate((self.state['t_max'].values[:, i, j],
+        tmax = np.concatenate((self.state['t_max'].sel(**locs).values[:],
                                result['t_max'].values))
-        prec = np.concatenate((self.state['prec'].values[:, i, j],
+        prec = np.concatenate((self.state['prec'].sel(**locs).values[:],
                                result['prec'].values))
-        self.state['t_min'].values[:, i, j] = tmin[-90:]
-        self.state['t_max'].values[:, i, j] = tmax[-90:]
-        self.state['prec'].values[:, i, j] = prec[-90:]
-        self.state['swe'].values[i, j] = result['swe'].values[-1]
+        self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
+        self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
+        self.state['prec'].sel(**locs).values[:] = prec[-90:]
+        self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
         self.state.time.values = pd.date_range(state_start, result.index[-1])
 
@@ -217,12 +214,8 @@ class MetSim(object):
         Kicks off the disaggregation and queues up data for IO
         """
         time_dim = pd.to_datetime(self.met_data.time.values)
-        ilist, jlist = np.nonzero(np.nan_to_num(self.domain['mask'].values))
 
-        self.i_idx = ilist
-        self.j_idx = jlist
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        self.locations = list(zip(ilist, jlist))
         self.method = MetSim.methods[self.params['method']]
         if self.params['annual']:
             groups = time_dim.groupby(time_dim.year)
@@ -237,14 +230,18 @@ class MetSim(object):
             data = self.met_data.sel(time=times_ext)
             self.setup_output(self.met_data.sel(time=times))
 
-            for i, j in self.locations:
-                locs = dict(lat=i, lon=j)
+            for site in self.site_generator:
+                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+                # Don't run masked cells
+                if not self.domain['mask'].sel(**locs).values > 0:
+                    continue
                 logger.info("Processing {}".format(locs))
-                ds = data.isel(**locs)
+                ds = data.sel(**locs)
                 lat = ds['lat'].values
                 elev = ds['elev'].values
                 swe = ds['swe'].values
-                df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
+                df = ds.drop(self.params['iter_dims']
+                             + ['elev', 'swe']).to_dataframe()
                 # solar_geom returns a tuple due to restrictions of numba
                 # for clarity we convert it to a dictionary here
                 sg = solar_geom(elev, lat)
@@ -267,18 +264,18 @@ class MetSim(object):
                     try:
                         prevday = data.time[0] - pd.Timedelta('1 days')
                         t_begin = [self.met_data['t_min'].sel(
-                                       time=prevday).isel(lat=i, lon=j),
+                                       time=prevday).sel(**locs),
                                    self.met_data['t_max'].sel(
-                                       time=prevday).isel(lat=i, lon=j)]
+                                       time=prevday).sel(**locs)]
                     except (KeyError, ValueError):
-                        t_begin = [self.state['t_min'].values[-1, i, j],
-                                   self.state['t_max'].values[-1, i, j]]
+                        t_begin = [self.state['t_min'].sel(**locs).values[-1],
+                                   self.state['t_max'].sel(**locs).values[-1]]
                     try:
                         nextday = pd.datetime(int(label)+1, 1, 1)
                         t_end = [self.met_data['t_min'].sel(
-                                     time=nextday).isel(lat=i, lon=j),
+                                     time=nextday).sel(**locs),
                                  self.met_data['t_max'].sel(
-                                     time=nextday).isel(lat=i, lon=j)]
+                                     time=nextday).sel(**locs)]
                     except (KeyError, ValueError):
                         # None so that we don't extend the record
                         t_end = None
@@ -307,8 +304,6 @@ class MetSim(object):
     def setup_output(self, prototype: xr.Dataset=None):
         if not prototype:
             prototype = self.met_data
-        self.output = self.domain.copy(deep=True)
-        self.output.attrs = attrs['_global']
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         # Number of timesteps
         if self.disagg:
@@ -326,25 +321,22 @@ class MetSim(object):
         shape = (n_ts, ) + self.domain['mask'].shape
         dims = ('time', ) + self.domain['mask'].dims
         coords = {'time': times, **self.domain.mask.coords}
-        for varname in MetSim.params['out_vars']:
+        self.output = xr.Dataset(coords=coords)
+        self.output.attrs = attrs['_global']
+        for varname in self.params['out_vars']:
             self.output[varname] = xr.DataArray(
                 data=np.full(shape, np.nan),
                 coords=coords, dims=dims,
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding={'dtype': 'f8', '_FillValue': cnst.FILL_VALUES['f8']})
 
-    def find_elevation(self, lat: float, lon: float) -> float:
-        """ Use the domain file to get the elevation """
-        return self.domain['elev'].sel(lat=lat, lon=lon, method='nearest')
-
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
-        trailing = self.state['prec']
         begin_record = self.params['start'] - pd.Timedelta("90 days")
         end_record = self.params['start'] - pd.Timedelta("1 days")
         record_dates = pd.date_range(begin_record, end_record)
-        trailing['time'] = record_dates
+        trailing = self.state['prec'].sel(time=record_dates)
         total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
         total_precip = total_precip.rolling(time=90).mean().drop(record_dates,
                                                                  dim='time')
@@ -362,8 +354,7 @@ class MetSim(object):
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
-        self.met_data['swe'] = xr.Variable(('lat', 'lon'),
-                                           self.state['swe'].values)
+        self.met_data['swe'] = self.state.swe.copy()
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
@@ -376,7 +367,8 @@ class MetSim(object):
         # Parameters that can't be empty strings or None
         non_empty = ['method', 'domain', 'state', 'out_dir',
                      'start', 'stop', 'time_step', 'out_format',
-                     'in_format', 't_max_lr', 't_min_lr']
+                     'forcing_fmt', 'domain_fmt', 'state_fmt',
+                     't_max_lr', 't_min_lr']
         for each in non_empty:
             if self.params[each] is None or self.params[each] == '':
                 errs.append("Cannot have empty value for {}".format(each))
@@ -496,7 +488,8 @@ def wrap_run(func: callable, loc: dict, params: dict,
     lat = ds['lat'].values
     elev = ds['elev'].values
     swe = ds['swe'].values
-    df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
+    df = ds.drop(params['iter_dims']
+                 + ['elev', 'swe']).to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
     sg = solar_geom(elev, lat)
