@@ -137,6 +137,7 @@ class MetSim(object):
         self.met_data = self.met_data.sel(
             **{d: self.domain[d]for d in self.params['iter_dims']})
         self.met_data['elev'] = self.domain['elev']
+        self.met_data['lat'] = self.domain['lat']
         self._aggregate_state()
         self._validate_setup()
 
