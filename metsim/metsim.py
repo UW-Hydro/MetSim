@@ -130,23 +130,22 @@ class MetSim(object):
         self.domain = io.read_domain(self.params)
         self.met_data = io.read_met_data(self.params, self.domain)
         self.state = io.read_state(self.params)
-        iter_list = [self.met_data[dim].values
-                     for dim in self.params['iter_dims']]
-        self.site_generator = itertools.product(*iter_list)
         # Subset geographically to match domain
         self.met_data = self.met_data.sel(
             **{d: self.domain[d]for d in self.params['iter_dims']})
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
         self._aggregate_state()
-        self._validate_setup()
+        #self._validate_setup()
 
     def launch(self):
         """Farm out the jobs to separate processes"""
-
         # Do the forcing generation and disaggregation if required
         nprocs = self.params['nprocs']
         time_dim = pd.to_datetime(self.met_data.time.values)
+        iter_list = [self.met_data[dim].values
+                     for dim in self.params['iter_dims']]
+        self.site_generator = itertools.product(*iter_list)
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
@@ -218,6 +217,9 @@ class MetSim(object):
         Kicks off the disaggregation and queues up data for IO
         """
         time_dim = pd.to_datetime(self.met_data.time.values)
+        iter_list = [self.met_data[dim].values
+                     for dim in self.params['iter_dims']]
+        self.site_generator = itertools.product(*iter_list)
 
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
@@ -419,15 +421,15 @@ class MetSim(object):
                 'ascii': self.write_ascii,
                 'data': self.write_data
                 }
-        if not os.path.exists(self.params['out_dir']):
-            os.mkdir(self.params['out_dir'])
-        self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
-                             encoding={'time': {'dtype': 'f8'}})
         dispatch[MetSim.params.get('out_format', 'netcdf').lower()](suffix)
 
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
         logger.info("Writing netcdf...")
+        if not os.path.exists(self.params['out_dir']):
+            os.mkdir(self.params['out_dir'])
+        self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
+                             encoding={'time': {'dtype': 'f8'}})
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
         self.output.to_netcdf(output_filename,
@@ -437,17 +439,24 @@ class MetSim(object):
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
         logger.info("Writing ascii...")
-        shape = self.output.dims
-        for i, j in itertools.product(range(shape['lat']),
-                                      range(shape['lon'])):
-            if self.output.mask[i, j] > 0:
-                lat = self.output.lat.values[i]
-                lon = self.output.lon.values[j]
-                fname = "{}_{}_{}_{}.csv".format(
-                            self.params['out_prefix'], lat, lon, suffix)
-                fpath = os.path.join(self.params['out_dir'], fname)
-                self.output.isel(lat=i, lon=j)[self.params[
-                    'out_vars']].to_dataframe().to_csv(fpath)
+        if not os.path.exists(self.params['out_dir']):
+            os.mkdir(self.params['out_dir'])
+        self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
+                             encoding={'time': {'dtype': 'f8'}})
+        # Need to create new generator to loop over
+        iter_list = [self.met_data[dim].values
+                     for dim in self.params['iter_dims']]
+        site_generator = itertools.product(*iter_list)
+
+        for site in site_generator:
+            locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+            if not self.domain['mask'].sel(**locs).values > 0:
+                continue
+            fname = ("{}_" * (len(iter_list)+1) + "{}.csv").format(
+                self.params['out_prefix'], *site, suffix)
+            fpath = os.path.join(self.params['out_dir'], fname)
+            self.output.sel(**locs)[self.params[
+                   'out_vars']].to_dataframe().to_csv(fpath)
 
     def write_data(self, suffix):
         pass
