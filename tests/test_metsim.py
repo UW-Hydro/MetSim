@@ -112,6 +112,7 @@ def test_params(in_format, out_format, method):
               'domain': domain_files[in_format],
               'state': state_files[in_format],
               'method': method,
+              'calender': 'standard',
               'time_step': "60",
               't_max_lr': lr,
               't_min_lr': lr,

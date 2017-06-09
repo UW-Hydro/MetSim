@@ -45,6 +45,7 @@ from metsim.methods import mtclim
 from metsim.disaggregate import disaggregate
 from metsim.physics import solar_geom
 import metsim.constants as cnst
+from metsim.datetime import date_range
 
 references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm for estimating incident daily solar radiation from measurements of temperature, humidity, and precipitation. Agricultural and Forest Meteorology, 93:211-228.
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
@@ -97,6 +98,7 @@ class MetSim(object):
         "start": '',
         "stop": '',
         "time_step": '',
+        "calendar": 'standard',
         "out_format": '',
         "in_format": None,
         "verbose": 0,
@@ -122,7 +124,8 @@ class MetSim(object):
         """
         # Record parameters
         MetSim.params.update(params)
-        MetSim.params['dates'] = pd.date_range(params['start'], params['stop'])
+        MetSim.params['dates'] = date_range(params['start'], params['stop'],
+                                            calendar=self.params['calendar'])
         logger.setLevel(MetSim.params['verbose'])
         ch.setLevel(MetSim.params['verbose'])
         logger.addHandler(ch)
@@ -210,7 +213,8 @@ class MetSim(object):
         self.state['prec'].values[:, i, j] = prec[-90:]
         self.state['swe'].values[i, j] = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
-        self.state.time.values = pd.date_range(state_start, result.index[-1])
+        self.state.time.values = date_range(state_start, result.index[-1],
+                                            calendar=self.params['calendar'])
 
     def run(self):
         """
@@ -288,8 +292,10 @@ class MetSim(object):
                     start = times[0]
                     stop = (times[-1] + pd.Timedelta('1 days')
                             - pd.Timedelta(self.params['time_step']))
-                    new_times = pd.date_range(start, stop, freq='{}T'.format(
-                        self.params['time_step']))
+                    new_times = date_range(
+                        start, stop,
+                        freq='{}T'.format(self.params['time_step']),
+                        calendar=self.params['calendar'])
                 else:
                     # convert srad to daily average flux from daytime flux
                     self._unpack_state(df, locs)
@@ -319,8 +325,9 @@ class MetSim(object):
 
         start = pd.Timestamp(prototype.time.values[0]).to_datetime()
         stop = pd.Timestamp(prototype.time.values[-1]).to_datetime()
-        times = pd.date_range(start, stop + delta,
-                              freq="{}T".format(MetSim.params['time_step']))
+        times = date_range(start, stop + delta,
+                           freq="{}T".format(MetSim.params['time_step']),
+                           calendar=self.params['calendar'])
         n_ts = len(times)
 
         shape = (n_ts, ) + self.domain['mask'].shape
@@ -343,7 +350,8 @@ class MetSim(object):
         trailing = self.state['prec']
         begin_record = self.params['start'] - pd.Timedelta("90 days")
         end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = pd.date_range(begin_record, end_record)
+        record_dates = date_range(begin_record, end_record,
+                                  calendar=self.params['calendar'])
         trailing['time'] = record_dates
         total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
         total_precip = total_precip.rolling(time=90).mean().drop(record_dates,
@@ -354,7 +362,8 @@ class MetSim(object):
         trailing = self.state['t_max'] - self.state['t_min']
         begin_record = self.params['start'] - pd.Timedelta("90 days")
         end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = pd.date_range(begin_record, end_record)
+        record_dates = date_range(begin_record, end_record,
+                                  calendar=self.params['calendar'])
         trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         sm_dtr = xr.concat([trailing, dtr], dim='time')
@@ -536,8 +545,9 @@ def wrap_run(func: callable, loc: dict, params: dict,
         # off the endpoints that were added on previously
         start = out_times[0]
         stop = out_times[-1] + pd.Timedelta('23 hours')
-        new_times = pd.date_range(start, stop, freq='{}T'.format(
-            params['time_step']))
+        new_times = date_range(
+            start, stop, freq='{}T'.format(params['time_step']),
+            calendar=params['calendar'])
     else:
         # convert srad to daily average flux from daytime flux
         df_base['swrad'] *= df_base['dayl'] / cnst.SEC_PER_DAY
