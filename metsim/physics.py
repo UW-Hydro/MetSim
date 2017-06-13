@@ -123,7 +123,7 @@ def svp(temp: pd.Series, a: float=0.61078, b: float=17.269, c: float=237.3):
     '''
     Compute the saturated vapor pressure.
 
-    .. [1] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+    .. [2] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
       1992 Equation 4.2.2.
 
     Parameters
@@ -154,7 +154,7 @@ def svp_slope(temp: pd.Series, a: float=0.61078,
     Compute the gradient of the saturated vapor pressure as a function of
     temperature.
 
-    .. [1] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+    .. [3] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
       1992. Equation 4.2.3.
 
     Parameters
