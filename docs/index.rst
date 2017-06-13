@@ -139,8 +139,7 @@ Sitemap
 =======
 .. toctree::
     :maxdepth: 3
- 
-    index
+
     examples
     data
     configuration
