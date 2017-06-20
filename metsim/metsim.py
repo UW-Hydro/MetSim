@@ -145,8 +145,7 @@ class MetSim(object):
         """Farm out the jobs to separate processes"""
         # Do the forcing generation and disaggregation if required
         nprocs = self.params['nprocs']
-        time_dim = pd.to_pydatetime(self.met_data.time.values)
-        time_dim = pd.to_datetime(self.met_data.time.values)
+        time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
         self.site_generator = itertools.product(*iter_list)
@@ -221,7 +220,7 @@ class MetSim(object):
         """
         Kicks off the disaggregation and queues up data for IO
         """
-        time_dim = pd.to_datetime(self.met_data.time.values)
+        time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
         self.site_generator = itertools.product(*iter_list)
@@ -349,7 +348,7 @@ class MetSim(object):
         # Precipitation record
         begin_record = self.params['start'] - pd.Timedelta("90 days")
         end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = date_range(begin_record, end_record, calender=self.params['calender'])
+        record_dates = date_range(begin_record, end_record, calendar=self.params['calendar'])
         trailing = self.state['prec'].sel(time=record_dates)
         total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
         total_precip = total_precip.rolling(time=90).mean().drop(record_dates,
