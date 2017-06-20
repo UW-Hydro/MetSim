@@ -177,7 +177,7 @@ class MetSim(object):
         nprocs = MetSim.params['nprocs']
 
         # Do the forcing generation and disaggregation if required
-        time_dim = pd.to_datetime(self.met_data.time.values)
+        time_dim = pd.to_pydatetime(self.met_data.time.values)
         if self.params['annual']:
             groups = time_dim.groupby(time_dim.year)
         else:
@@ -341,8 +341,8 @@ class MetSim(object):
         else:
             delta = pd.Timedelta('0 days')
 
-        start = pd.Timestamp(prototype.time.values[0]).to_datetime()
-        stop = pd.Timestamp(prototype.time.values[-1]).to_datetime()
+        start = pd.Timestamp(prototype.time.values[0]).to_pydatetime()
+        stop = pd.Timestamp(prototype.time.values[-1]).to_pydatetime()
         times = date_range(start, stop + delta,
                            freq="{}T".format(MetSim.params['time_step']),
                            calendar=self.params['calendar'])

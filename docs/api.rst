@@ -1,4 +1,5 @@
 .. currentmodule:: metsim
+.. _api:
 
 #############
 API reference
