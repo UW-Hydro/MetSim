@@ -24,8 +24,8 @@ from numba import jit
 import metsim.constants as cnst
 
 
-def calc_pet(rad: pd.Series, ta: pd.Series, dayl: pd.Series,
-             pa: float, dt: float=0.2) -> pd.Series:
+def calc_pet(rad: np.array, ta: np.array, dayl: np.array,
+             pa: float, dt: float=0.2) -> np.array:
     '''
     Calculates the potential evapotranspiration for aridity corrections in
     `calc_vpd()`, according to Kimball et al., 1997
@@ -118,8 +118,8 @@ def atm_pres(elev: float) -> float:
     return cnst.P_STD * np.power(t1, t2)
 
 
-@jit
-def svp(temp: pd.Series, a: float=0.61078, b: float=17.269, c: float=237.3):
+@jit(nopython=True)
+def svp(temp: np.array, a: float=0.61078, b: float=17.269, c: float=237.3):
     '''
     Compute the saturated vapor pressure.
 

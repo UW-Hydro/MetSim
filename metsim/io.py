@@ -142,7 +142,7 @@ def read_netcdf(data_handle, start=None, stop=None,
         dates = ds.indexes['time']
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
-    return ds.load()
+    return ds
 
 
 def read_data(data_handle, start=None, stop=None,
@@ -158,7 +158,7 @@ def read_data(data_handle, start=None, stop=None,
         dates = data_handle.indexes['time']
         data_handle['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
-    return data_handle.load()
+    return data_handle
 
 
 def read_binary(data_handle, start=None, stop=None,

@@ -43,7 +43,7 @@ import xarray as xr
 from metsim import io
 from metsim.methods import mtclim
 from metsim.disaggregate import disaggregate
-from metsim.physics import solar_geom
+from metsim.physics import solar_geom, svp
 import metsim.constants as cnst
 from metsim.datetime import date_range
 
@@ -64,8 +64,8 @@ attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
                  'standard_name': 'water_potential_evaporation_flux'},
          'prec': {'units': 'mm d-1', 'long_name': 'precipitation',
                   'standard_name': 'precipitation_flux'},
-         'swrad': {'units': 'W m-2', 'long_name': 'shortwave radiation',
-                   'standard_name': 'surface_downwelling_shortwave_flux'},
+         'shortwave': {'units': 'W m-2', 'long_name': 'shortwave radiation',
+                       'standard_name': 'surface_downwelling_shortwave_flux'},
          'lwrad': {'units': 'W m-2', 'long_name': 'longwave radiation',
                    'standard_name': 'surface_downwelling_longwave_flux'},
          't_max': {'units': 'C', 'long_name': 'maximum daily air temperature',
@@ -102,11 +102,6 @@ class MetSim(object):
         "out_format": '',
         "in_format": None,
         "verbose": 0,
-        "base_elev": 0,
-        "t_max_lr": '',
-        "t_min_lr": '',
-        "site_isoh": 1,
-        "base_isoh": 1,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
         "annual": False,
@@ -124,11 +119,11 @@ class MetSim(object):
         Constructor
         """
         # Record parameters
-        MetSim.params.update(params)
-        MetSim.params['dates'] = date_range(params['start'], params['stop'],
-                                            calendar=self.params['calendar'])
-        logger.setLevel(MetSim.params['verbose'])
-        ch.setLevel(MetSim.params['verbose'])
+        self.params.update(params)
+        self.params['dates'] = date_range(params['start'], params['stop'],
+                                          calendar=self.params['calendar'])
+        logger.setLevel(self.params['verbose'])
+        ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
         self.domain = io.read_domain(self.params)
         self.met_data = io.read_met_data(self.params, self.domain)
@@ -139,11 +134,11 @@ class MetSim(object):
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
         self._aggregate_state()
-        #self._validate_setup()
 
     def launch(self):
         """Farm out the jobs to separate processes"""
         # Do the forcing generation and disaggregation if required
+        self._validate_setup()
         nprocs = self.params['nprocs']
         time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
@@ -220,6 +215,7 @@ class MetSim(object):
         """
         Kicks off the disaggregation and queues up data for IO
         """
+        self._validate_setup()
         time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
@@ -246,12 +242,10 @@ class MetSim(object):
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
                 logger.info("Processing {}".format(locs))
-                ds = data.sel(**locs)
-                lat = ds['lat'].values
-                elev = ds['elev'].values
-                swe = ds['swe'].values
-                df = ds.drop(self.params['iter_dims']
-                             + ['elev', 'swe']).to_dataframe()
+                df = data.sel(**locs).to_dataframe()
+                lat = df['lat'].values[0]
+                elev = df['elev'].values[0]
+                swe = df['swe'].values[0]
                 # solar_geom returns a tuple due to restrictions of numba
                 # for clarity we convert it to a dictionary here
                 sg = solar_geom(elev, lat)
@@ -302,7 +296,7 @@ class MetSim(object):
                 else:
                     # convert srad to daily average flux from daytime flux
                     self._unpack_state(df, locs)
-                    df['swrad'] *= df['dayl'] / cnst.SEC_PER_DAY
+                    df['shortwave'] *= df['dayl'] / cnst.SEC_PER_DAY
                     # If we're outputting daily values, we dont' need to
                     # change the output dates - see inside of `if` condition
                     # above for more explanation
@@ -327,7 +321,7 @@ class MetSim(object):
         start = pd.Timestamp(prototype.time.values[0]).to_pydatetime()
         stop = pd.Timestamp(prototype.time.values[-1]).to_pydatetime()
         times = date_range(start, stop + delta,
-                           freq="{}T".format(MetSim.params['time_step']),
+                           freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
         n_ts = len(times)
 
@@ -348,7 +342,8 @@ class MetSim(object):
         # Precipitation record
         begin_record = self.params['start'] - pd.Timedelta("90 days")
         end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = date_range(begin_record, end_record, calendar=self.params['calendar'])
+        record_dates = date_range(begin_record, end_record,
+                                  calendar=self.params['calendar'])
         trailing = self.state['prec'].sel(time=record_dates)
         total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
         total_precip = total_precip.rolling(time=90).mean().drop(record_dates,
@@ -379,10 +374,9 @@ class MetSim(object):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
-        non_empty = ['method', 'domain', 'state', 'out_dir',
-                     'start', 'stop', 'time_step', 'out_format',
-                     'forcing_fmt', 'domain_fmt', 'state_fmt',
-                     't_max_lr', 't_min_lr']
+        non_empty = ['method', 'out_dir', 'start',
+                     'stop', 'time_step', 'out_format',
+                     'forcing_fmt', 'domain_fmt', 'state_fmt']
         for each in non_empty:
             if self.params[each] is None or self.params[each] == '':
                 errs.append("Cannot have empty value for {}".format(each))
@@ -398,10 +392,6 @@ class MetSim(object):
             if each not in self.met_data.variables:
                 errs.append("Input requires {}".format(each))
 
-        # Convert data types as necessary
-        self.params['t_max_lr'] = float(self.params['t_max_lr'])
-        self.params['t_min_lr'] = float(self.params['t_min_lr'])
-
         # Make sure that we are going to write out some data
         if not len(self.params['out_vars']):
             errs.append("Output variable list must not be empty")
@@ -413,7 +403,7 @@ class MetSim(object):
                             'brutsaert', 'satterlund',
                             'idso', 'prata']}
         for k, v in opts.items():
-            if not MetSim.params[k] in v:
+            if not self.params[k] in v:
                 errs.append("Invalid option given for {}".format(k))
 
         # If any errors, raise and give a summary
@@ -429,7 +419,7 @@ class MetSim(object):
                 'ascii': self.write_ascii,
                 'data': self.write_data
                 }
-        dispatch[MetSim.params.get('out_format', 'netcdf').lower()](suffix)
+        dispatch[self.params.get('out_format', 'netcdf').lower()](suffix)
 
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
@@ -509,8 +499,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
     lat = ds['lat'].values
     elev = ds['elev'].values
     swe = ds['swe'].values
-    df = ds.drop(params['iter_dims']
-                 + ['elev', 'swe']).to_dataframe()
+    df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
     sg = solar_geom(elev, lat)
@@ -555,13 +544,13 @@ def wrap_run(func: callable, loc: dict, params: dict,
             calendar=params['calendar'])
     else:
         # convert srad to daily average flux from daytime flux
-        df_base['swrad'] *= df_base['dayl'] / cnst.SEC_PER_DAY
+        df_base['shortwave'] *= df_base['dayl'] / cnst.SEC_PER_DAY
         # If we're outputting daily values, we dont' need to
         # change the output dates - see inside of `if` condition
         # above for more explanation
         new_times = out_times
+        df_complete = df_base
 
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
-    df_base = df_base.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)

@@ -51,7 +51,6 @@ def run(forcing: pd.DataFrame, params: dict, sg: dict,
     """
     params['n_days'] = len(forcing)
     calc_t_air(forcing, elev, params)
-    calc_prec(forcing, params)
     calc_snowpack(forcing, swe)
     calc_srad_hum(forcing, sg, elev, params)
 
@@ -74,30 +73,8 @@ def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
         MetSim object. Lapse rates are used in this
         calculation.
     """
-    dZ = (elev - params['base_elev'])/cnst.M_PER_KM
-    lapse_rates = [params['t_min_lr'], params['t_max_lr']]
-    t_max = df['t_max'] + dZ * lapse_rates[1]
-    t_min = df['t_min'].where(df['t_min'] + dZ * lapse_rates[0] < t_max-0.5,
-                              t_max - 0.5)
-    t_mean = (t_min + t_max) / 2
-    df['t_day'] = ((t_max - t_mean) * cnst.TDAY_COEF) + t_mean
-
-
-def calc_prec(df: pd.DataFrame, params: dict):
-    """
-    Adjust precitation according to ratio of
-    isohyet ratio of the given site to some base
-    value.
-
-    Parameters
-    ----------
-    df:
-        Dataframe containing daily precipitation
-        timeseries.
-    params:
-        Dictionary containing isohyet values
-    """
-    df['prec'] *= (params['site_isoh'] / params['base_isoh'])
+    t_mean = (df['t_min'] + df['t_max']) / 2
+    df['t_day'] = ((df['t_max'] - t_mean) * cnst.TDAY_COEF) + t_mean
 
 
 def calc_snowpack(df: pd.DataFrame, snowpack: float=0.0):
@@ -149,12 +126,12 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     sm_dtr = df['smoothed_dtr']
     df['tfmax'] = _calc_tfmax(df['prec'], dtr, sm_dtr)
     tdew = df.get('tdew', df['t_min'])
-    pva = df.get('hum', svp(tdew))
+    pva = df.get('hum', svp(tdew.values))
     pa = atm_pres(elev)
     yday = df.index.dayofyear - 1
     df['dayl'] = sg['daylength'][yday]
 
-    # Calculation of tdew and swrad. tdew is iterated on until
+    # Calculation of tdew and shortwave. tdew is iterated on until
     # it converges sufficiently
     tdew_old = tdew
     tdew, pva = sw_hum_iter(df, sg, pa, pva, dtr, params)
@@ -215,7 +192,7 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
     # Calculation of shortwave is split into 2 components:
     # 1. Radiation from incident light
     # 2. Influence of snowpack - optionally set by MTCLIM_SWE_CORR
-    df['swrad'] = potrad[yday] * t_final + sc
+    df['shortwave'] = potrad[yday] * t_final + sc
 
     # Calculate cloud effect
     if (params['lw_cloud'].upper() == 'CLOUD_DEARDORFF'):
@@ -224,7 +201,8 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
         df['tskc'] = np.sqrt((1. - df['tfmax']) / 0.65)
 
     # Compute PET using SW radiation estimate, and update Tdew, pva **
-    pet = calc_pet(df['swrad'], df['t_day'], df['dayl'], pa)
+    pet = calc_pet(df['shortwave'].values, df['t_day'].values,
+                   df['dayl'].values, pa)
     # Calculate ratio (PET/effann_prcp) and correct the dewpoint
     parray = df['seasonal_prec'] / cnst.MM_PER_CM
     ratio = pet / parray.where(parray > 8.0, 8.0)
@@ -233,4 +211,4 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
     tdew = tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio +
                     12.312 * np.power(ratio, 2) -
                     32.766 * np.power(ratio, 3)) + 0.0006 * dtr) - cnst.KELVIN
-    return tdew, svp(tdew)
+    return tdew, svp(tdew.values)

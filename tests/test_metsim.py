@@ -148,8 +148,7 @@ def test_mtclim(test_setup):
     """Tests the ability to run successfully"""
     # Here we only test a single grid cell
     data_files = test_setup.params['forcing']
-    daily_out_vars = ['prec', 't_max', 't_min', 't_day',
-                      'wind', 'dayl', 'swrad',
+    daily_out_vars = ['prec', 't_max', 't_min', 'wind', 'shortwave',
                       'tskc', 'pet', 'vapor_pressure']
     hourly_out_vars = ['prec', 'temp', 'shortwave', 'longwave',
                        'vapor_pressure', 'rel_humid']

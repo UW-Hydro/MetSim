@@ -66,7 +66,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     n_days = len(df_daily)
     n_disagg = len(df_disagg)
     ts = float(params['time_step'])
-    df_disagg['shortwave'] = shortwave(df_daily['swrad'],
+    df_disagg['shortwave'] = shortwave(df_daily['shortwave'],
                                        df_daily['dayl'],
                                        df_daily.index.dayofyear,
                                        solar_geom['tiny_rad_fract'],
@@ -247,7 +247,8 @@ def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
     rh:
         A sub-daily timeseries of relative humidity
     """
-    rh = cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure / svp(temp))
+    rh = (cnst.MAX_PERCENT * cnst.MBAR_PER_BAR
+          * (vapor_pressure / svp(temp.values)))
     return rh.where(rh < cnst.MAX_PERCENT, cnst.MAX_PERCENT)
 
 
@@ -287,7 +288,7 @@ def vapor_pressure(vp_daily: pd.Series, temp: pd.Series,
 
     # Account for situations where vapor pressure is higher than
     # saturation point
-    vp_sat = svp(temp) / cnst.MBAR_PER_BAR
+    vp_sat = svp(temp.values) / cnst.MBAR_PER_BAR
     vp_disagg = np.where(vp_sat < vp_disagg, vp_sat, vp_disagg)
     return vp_disagg
 
