@@ -57,7 +57,7 @@ def read_domain(params):
         var_dict=params.get('domain_vars', None))
 
 
-def read_state(params):
+def read_state(params, domain):
     """Load in a state file"""
     read_funcs = {
         "netcdf": read_netcdf,
@@ -66,8 +66,9 @@ def read_state(params):
     start = params['start'] - pd.Timedelta('90 days')
     stop = params['start'] - pd.Timedelta('1 days')
     return read_funcs[params['state_fmt']](
-        params['state'], start=start, stop=stop,
-        calendar=params['calendar'], var_dict=params.get('state_vars', None))
+        params['state'], domain=domain, iter_dims=params['iter_dims'],
+        start=start, stop=stop, calendar=params['calendar'],
+        var_dict=params.get('state_vars', None))
 
 
 def process_nc(params, domain):
@@ -77,8 +78,9 @@ def process_nc(params, domain):
         "data": read_data
     }
     return read_funcs[params['forcing_fmt']](
-        params['forcing'], start=params['start'], stop=params['stop'],
-        calendar=params['calendar'], var_dict=params.get('forcing_vars', None))
+        params['forcing'], domain=domain, iter_dims=params['iter_dims'],
+        start=params['start'], stop=params['stop'], calendar=params['calendar'],
+        var_dict=params.get('forcing_vars', None))
 
 
 def process_vic(params, domain):
@@ -87,6 +89,12 @@ def process_vic(params, domain):
         "binary": read_binary,
         "ascii": read_ascii,
     }
+
+    if 'lon' not in params['iter_dims'] and 'lat' not in params['iter_dims']:
+        raise ValueError(
+            'Using VIC type input requires lat and lon to be'
+            ' specified via `iter_dims` in configuration.')
+
     # Creates the master dataset which will be used to parallelize
     met_data = xr.Dataset(
         coords={'time': params['dates'],
@@ -117,8 +125,8 @@ def process_vic(params, domain):
     return met_data
 
 
-def read_ascii(data_handle, start=None, stop=None,
-               calendar='standard', var_dict=None) -> xr.Dataset:
+def read_ascii(data_handle, domain=None, iter_dims=['lat', 'lon'],
+        start=None, stop=None, calendar='standard', var_dict=None) -> xr.Dataset:
     """Read in an ascii forcing file"""
     dates = date_range(start, stop, calendar=calendar)
     names = var_dict.keys()
@@ -128,8 +136,8 @@ def read_ascii(data_handle, start=None, stop=None,
     return ds
 
 
-def read_netcdf(data_handle, start=None, stop=None,
-                calendar='standard', var_dict=None) -> xr.Dataset:
+def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
+        start=None, stop=None, calendar='standard', var_dict=None) -> xr.Dataset:
     """Read in a NetCDF file"""
     ds = xr.open_dataset(data_handle)
 
@@ -141,14 +149,16 @@ def read_netcdf(data_handle, start=None, stop=None,
         ds = ds.sel(time=slice(start, stop))
         dates = ds.indexes['time']
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
-    
+
+    if domain is not None:
+        ds.sel(**{d: domain[d] for d in iter_dims})
     out = ds.load()
     ds.close()
     return out
 
 
-def read_data(data_handle, start=None, stop=None,
-              calendar='standard', var_dict=None) -> xr.Dataset:
+def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
+        start=None, stop=None, calendar='standard', var_dict=None) -> xr.Dataset:
     """Read data directly from an xarray dataset"""
     varlist = list(data_handle.keys())
     if var_dict is not None:
@@ -160,11 +170,15 @@ def read_data(data_handle, start=None, stop=None,
         dates = data_handle.indexes['time']
         data_handle['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
-    return data_handle
+    if domain is not None:
+        data_handle.sel(**{d: domain[d] for d in iter_dims})
+    out = data_handle.load()
+    data_handle.close()
+    return out
 
 
-def read_binary(data_handle, start=None, stop=None,
-                calendar='standard', var_dict=None) -> xr.Dataset:
+def read_binary(data_handle, domain=None, iter_dims=['lat', 'lon'],
+        start=None, stop=None, calendar='standard', var_dict=None) -> xr.Dataset:
     """Reads a binary forcing file (VIC 4 format)"""
     dates = date_range(start, stop, calendar=calendar)
     n_days = len(dates)

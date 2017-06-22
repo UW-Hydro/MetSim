@@ -127,10 +127,7 @@ class MetSim(object):
         logger.addHandler(ch)
         self.domain = io.read_domain(self.params)
         self.met_data = io.read_met_data(self.params, self.domain)
-        self.state = io.read_state(self.params)
-        # Subset geographically to match domain
-        self.met_data = self.met_data.sel(
-            **{d: self.domain[d] for d in self.params['iter_dims']})
+        self.state = io.read_state(self.params, self.domain)
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
         self._aggregate_state()
