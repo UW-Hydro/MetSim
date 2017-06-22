@@ -141,8 +141,10 @@ def read_netcdf(data_handle, start=None, stop=None,
         ds = ds.sel(time=slice(start, stop))
         dates = ds.indexes['time']
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
-
-    return ds
+    
+    out = ds.load()
+    ds.close()
+    return out
 
 
 def read_data(data_handle, start=None, stop=None,

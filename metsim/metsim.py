@@ -99,7 +99,7 @@ class MetSim(object):
         "stop": '',
         "time_step": '',
         "calendar": 'standard',
-        "out_format": '',
+        "out_fmt": '',
         "in_format": None,
         "verbose": 0,
         "sw_prec_thresh": 0.0,
@@ -130,7 +130,7 @@ class MetSim(object):
         self.state = io.read_state(self.params)
         # Subset geographically to match domain
         self.met_data = self.met_data.sel(
-            **{d: self.domain[d]for d in self.params['iter_dims']})
+            **{d: self.domain[d] for d in self.params['iter_dims']})
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
         self._aggregate_state()
@@ -177,7 +177,6 @@ class MetSim(object):
                     callback=self._unpack_results)
                 status.append(stat)
             self.pool.close()
-
             # Check that everything worked
             [stat.get() for stat in status]
             self.pool.join()
@@ -191,7 +190,7 @@ class MetSim(object):
         else:
             locs, df = result
         for varname in self.params['out_vars']:
-            self.output[varname].sel(**locs).values[:] = df[varname].values
+            self.output[varname].loc[locs] = df[varname]
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""
@@ -375,7 +374,7 @@ class MetSim(object):
 
         # Parameters that can't be empty strings or None
         non_empty = ['method', 'out_dir', 'start',
-                     'stop', 'time_step', 'out_format',
+                     'stop', 'time_step', 'out_fmt',
                      'forcing_fmt', 'domain_fmt', 'state_fmt']
         for each in non_empty:
             if self.params[each] is None or self.params[each] == '':
@@ -419,7 +418,7 @@ class MetSim(object):
                 'ascii': self.write_ascii,
                 'data': self.write_data
                 }
-        dispatch[self.params.get('out_format', 'netcdf').lower()](suffix)
+        dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
 
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
