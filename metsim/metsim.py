@@ -140,7 +140,6 @@ class MetSim(object):
         time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
-        self.site_generator = itertools.product(*iter_list)
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
@@ -151,6 +150,7 @@ class MetSim(object):
 
         for label, times in groups.items():
             self.pool = Pool(processes=nprocs)
+            self.site_generator = itertools.product(*iter_list)
             logger.info("Beginning {}".format(label))
             status = []
 
@@ -177,6 +177,46 @@ class MetSim(object):
             # Check that everything worked
             [stat.get() for stat in status]
             self.pool.join()
+            self.write(label)
+
+    def run(self):
+        """
+        Kicks off the disaggregation and queues up data for IO
+        """
+        self._validate_setup()
+        time_dim = pd.DatetimeIndex(self.met_data.time.values)
+        iter_list = [self.met_data[dim].values
+                     for dim in self.params['iter_dims']]
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
+        self.method = MetSim.methods[self.params['method']]
+
+        if self.params['annual']:
+            groups = time_dim.groupby(time_dim.year)
+        else:
+            groups = {'total': time_dim}
+
+        for label, times in groups.items():
+            logger.info("Beginning {}".format(label))
+            self.site_generator = itertools.product(*iter_list)
+            # Add in some end point data for continuity
+            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
+                                     times[-1] + pd.Timedelta("1 days")]
+                                    ).intersection(time_dim)
+            data = self.met_data.sel(time=times_ext)
+            self.setup_output(self.met_data.sel(time=times))
+
+            for site in self.site_generator:
+                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+                # Don't run masked cells
+                if not self.domain['mask'].sel(**locs).values > 0:
+                    continue
+                wrap_results = wrap_run(self.method.run, locs, self.params,
+                          data.sel(**locs), self.state.sel(**locs),
+                          self.disagg, times, label)
+
+                # Cut the returned data down to the correct time index
+                self._unpack_results(wrap_results)
+
             self.write(label)
 
     def _unpack_results(self, result: tuple):
@@ -206,45 +246,6 @@ class MetSim(object):
         state_start = result.index[-1] - pd.Timedelta('89 days')
         self.state.time.values = date_range(state_start, result.index[-1],
                                             calendar=self.params['calendar'])
-
-    def run(self):
-        """
-        Kicks off the disaggregation and queues up data for IO
-        """
-        self._validate_setup()
-        time_dim = pd.DatetimeIndex(self.met_data.time.values)
-        iter_list = [self.met_data[dim].values
-                     for dim in self.params['iter_dims']]
-        self.site_generator = itertools.product(*iter_list)
-
-        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        self.method = MetSim.methods[self.params['method']]
-        if self.params['annual']:
-            groups = time_dim.groupby(time_dim.year)
-        else:
-            groups = {'total': time_dim}
-        for label, times in groups.items():
-            logger.info("Beginning {}".format(label))
-            # Add in some end point data for continuity
-            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
-                                     times[-1] + pd.Timedelta("1 days")]
-                                    ).intersection(time_dim)
-            data = self.met_data.sel(time=times_ext)
-            self.setup_output(self.met_data.sel(time=times))
-
-            for site in self.site_generator:
-                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
-                # Don't run masked cells
-                if not self.domain['mask'].sel(**locs).values > 0:
-                    continue
-                wrap_results = wrap_run(self.method.run, locs, self.params,
-                          data.sel(**locs), self.state.sel(**locs),
-                          self.disagg, times, label)
-
-                # Cut the returned data down to the correct time index
-                self._unpack_results(wrap_results)
-
-            self.write(label)
 
     def setup_output(self, prototype: xr.Dataset=None):
         if not prototype:
@@ -477,7 +478,8 @@ def wrap_run(func: callable, loc: dict, params: dict,
         # Calculate the times that we want to get out by chopping
         # off the endpoints that were added on previously
         start = out_times[0]
-        stop = out_times[-1] + pd.Timedelta('23 hours')
+        stop = (out_times[-1] + pd.Timedelta('1 days')
+                - pd.Timedelta("{} minutes".format(params['time_step'])))
         new_times = date_range(
             start, stop, freq='{}T'.format(params['time_step']),
             calendar=params['calendar'])

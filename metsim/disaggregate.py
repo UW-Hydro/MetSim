@@ -24,7 +24,7 @@ import scipy.interpolate
 
 import metsim.constants as cnst
 from metsim.physics import svp
-
+from metsim.datetime import date_range
 
 def disaggregate(df_daily: pd.DataFrame, params: dict,
                  solar_geom: dict, t_begin: list=None,
@@ -60,8 +60,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     """
     stop = (df_daily.index[-1] + pd.Timedelta('1 days')
             - pd.Timedelta("{} minutes".format(params['time_step'])))
-    dates_disagg = pd.date_range(df_daily.index[0], stop,
-                                 freq='{}T'.format(params['time_step']))
+    dates_disagg = date_range(df_daily.index[0], stop,
+                              freq='{}T'.format(params['time_step']))
     df_disagg = pd.DataFrame(index=dates_disagg)
     n_days = len(df_daily)
     n_disagg = len(df_disagg)

@@ -101,21 +101,18 @@ def test_params(in_format, out_format, method):
     domain_vars = domain_section[in_format]
     out_dir = "./tmp"
     out_prefix = "forcing"
-    lr = 0.0065
     params = {'start': start,
               'stop': stop,
               'in_vars': in_vars,
               'forcing_fmt': in_format,
               'domain_fmt': 'netcdf',
               'state_fmt': 'netcdf',
-              'out_format': out_format,
+              'out_fmt': out_format,
               'domain': domain_files[in_format],
               'state': state_files[in_format],
               'method': method,
               'calender': 'standard',
               'time_step': "60",
-              't_max_lr': lr,
-              't_min_lr': lr,
               'annual': False,
               'out_dir': out_dir,
               'out_prefix': out_prefix,
