@@ -28,7 +28,7 @@ import xarray as xr
 from metsim.datetime import date_range
 
 
-def read_met_data(params, domain):
+def read_met_data(params: dict, domain: xr.Dataset) -> xr.Dataset:
     """
     Read input meteorological forcings for MetSim.
     This method supports ascii, binary, netcdf, and
@@ -46,7 +46,7 @@ def read_met_data(params, domain):
     return process_funcs[params['forcing_fmt']](params, domain)
 
 
-def read_domain(params):
+def read_domain(params: dict) -> xr.Dataset:
     """Load in a domain file"""
     read_funcs = {
         "netcdf": read_netcdf,
@@ -57,7 +57,7 @@ def read_domain(params):
         var_dict=params.get('domain_vars', None))
 
 
-def read_state(params, domain):
+def read_state(params: dict, domain: xr.Dataset) -> xr.Dataset:
     """Load in a state file"""
     read_funcs = {
         "netcdf": read_netcdf,
@@ -71,7 +71,7 @@ def read_state(params, domain):
         var_dict=params.get('state_vars', None))
 
 
-def process_nc(params, domain):
+def process_nc(params: dict, domain: xr.Dataset) -> xr.Dataset:
     """Process NetCDF-like Data"""
     read_funcs = {
         "netcdf": read_netcdf,
@@ -83,45 +83,42 @@ def process_nc(params, domain):
         var_dict=params.get('forcing_vars', None))
 
 
-def process_vic(params, domain):
+def process_vic(params: dict, domain: xr.Dataset) -> xr.Dataset:
     """Process VIC-like data"""
     read_funcs = {
         "binary": read_binary,
         "ascii": read_ascii,
     }
 
-    if 'lon' not in params['iter_dims'] and 'lat' not in params['iter_dims']:
+    if 'lon' not in params['iter_dims'] or 'lat' not in params['iter_dims']:
         raise ValueError(
             'Using VIC type input requires lat and lon to be'
             ' specified via `iter_dims` in configuration.')
 
     # Creates the master dataset which will be used to parallelize
-    met_data = xr.Dataset(
-        coords={'time': params['dates'],
-                'lon': domain['lon'],
-                'lat': domain['lat']},
-        attrs={'n_days': len(params['dates'])})
-    shape = (len(params['dates']),
-             len(domain['lat']),
-             len(domain['lon']))
+    coords = {'time': params['dates'], 'lon': domain['lon'], 'lat': domain['lat']}
+    shape = (len(params['dates']), len(domain['lat']), len(domain['lon']))
+    dims = ('time', 'lat', 'lon', )
 
+    met_data = xr.Dataset(coords=coords, attrs={'n_days': len(params['dates'])})
     for var in params['forcing_vars']:
-        met_data[var] = xr.Variable(
-            ('time', 'lat', 'lon'), np.full(shape, np.nan))
+        met_data[var] = xr.DataArray(data=np.full(shape, np.nan),
+                coords=coords, dims=dims, name=var)
 
     # Fill in the data
-    ilist, jlist = np.nonzero(np.nan_to_num(domain['mask'].values))
     for job in params['forcing']:
-        _, lat, lon = os.path.basename(job).split("_")
-        i = np.unique(ilist)[
-            list(domain['lat'].values).index(float(lat))]
-        j = np.unique(jlist)[
-            list(domain['lon'].values).index(float(lon))]
-        ds = read_funcs[params['forcing_fmt']](
-            job, start=params['start'], stop=params['stop'],
-            calendar=params['calendar'], var_dict=params['forcing_vars'])
-        for var in params['forcing_vars'].keys():
-            met_data[var].values[:, i, j] = ds[var].values
+        try:
+            _, lat, lon = os.path.basename(job).split("_")[-3:]
+            lat, lon = float(lat), float(lon)
+            if not domain['mask'].sel(lat=lat, lon=lon).values > 0:
+                continue
+            ds = read_funcs[params['forcing_fmt']](
+                job, start=params['start'], stop=params['stop'],
+                calendar=params['calendar'], var_dict=params['forcing_vars'])
+            for var in params['forcing_vars'].keys():
+                met_data[var].loc[{'lat': lat, 'lon': lon}] = ds[var]
+        except (ValueError, KeyError):
+            continue
     return met_data
 
 
@@ -207,7 +204,7 @@ def read_binary(data_handle, domain=None, iter_dims=['lat', 'lon'],
                 break
 
     # Binary forcing files have naming format $NAME_$LAT_$LON
-    param_list = os.path.basename(data_handle).split("_")
+    param_list = os.path.basename(data_handle).split("_")[-3:]
     params = {"name": param_list[0],
               "lat": float(param_list[1]),
               "lon": float(param_list[2]),

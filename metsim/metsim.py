@@ -237,69 +237,12 @@ class MetSim(object):
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
-                logger.info("Processing {}".format(locs))
-                df = data.sel(**locs).to_dataframe()
-                lat = df['lat'].values[0]
-                elev = df['elev'].values[0]
-                swe = df['swe'].values[0]
-                # solar_geom returns a tuple due to restrictions of numba
-                # for clarity we convert it to a dictionary here
-                sg = solar_geom(elev, lat)
-                sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
-                      'potrad': sg[2], 'tt_max0': sg[3]}
-
-                # Generate the daily values - these are saved
-                # so that we can use a subset of them to write
-                # out the state file later
-                df = self.method.run(df, self.params, sg,
-                                     elev=elev, swe=swe)
-
-                # Get some values for padding the time list,
-                # so that when interpolating in the disaggregation
-                # functions we can match endpoints with adjoining
-                # chunks - if no data is available, just repeat some
-                # default values (this case is used at the very
-                # beginning and end of the record)
-                if self.disagg:
-                    try:
-                        prevday = data.time[0] - pd.Timedelta('1 days')
-                        t_begin = [self.met_data['t_min'].sel(
-                                       time=prevday).sel(**locs),
-                                   self.met_data['t_max'].sel(
-                                       time=prevday).sel(**locs)]
-                    except (KeyError, ValueError):
-                        t_begin = [self.state['t_min'].sel(**locs).values[-1],
-                                   self.state['t_max'].sel(**locs).values[-1]]
-                    try:
-                        nextday = pd.datetime(int(label)+1, 1, 1)
-                        t_end = [self.met_data['t_min'].sel(
-                                     time=nextday).sel(**locs),
-                                 self.met_data['t_max'].sel(
-                                     time=nextday).sel(**locs)]
-                    except (KeyError, ValueError):
-                        # None so that we don't extend the record
-                        t_end = None
-
-                    self._unpack_state(df, locs)
-                    df = disaggregate(df, self.params, sg, t_begin, t_end)
-                    start = times[0]
-                    stop = (times[-1] + pd.Timedelta('1 days')
-                            - pd.Timedelta(self.params['time_step']))
-                    new_times = date_range(
-                        start, stop,
-                        freq='{}T'.format(self.params['time_step']),
-                        calendar=self.params['calendar'])
-                else:
-                    # convert srad to daily average flux from daytime flux
-                    self._unpack_state(df, locs)
-                    df['shortwave'] *= df['dayl'] / cnst.SEC_PER_DAY
-                    # If we're outputting daily values, we dont' need to
-                    # change the output dates - see inside of `if` condition
-                    # above for more explanation
-                    new_times = times
+                wrap_results = wrap_run(self.method.run, locs, self.params,
+                          data.sel(**locs), self.state.sel(**locs),
+                          self.disagg, times, label)
 
                 # Cut the returned data down to the correct time index
-                self._unpack_results((locs, df.loc[new_times[0]:new_times[-1]]))
+                self._unpack_results(wrap_results)
 
             self.write(label)
 
