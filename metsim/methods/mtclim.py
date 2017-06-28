@@ -51,7 +51,7 @@ def run(forcing: pd.DataFrame, params: dict, sg: dict,
     """
     params['n_days'] = len(forcing)
     calc_t_air(forcing, elev, params)
-    calc_snowpack(forcing, swe)
+    calc_snowpack(forcing, params, swe)
     calc_srad_hum(forcing, sg, elev, params)
 
     return forcing
@@ -74,10 +74,10 @@ def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
         calculation.
     """
     t_mean = (df['t_min'] + df['t_max']) / 2
-    df['t_day'] = ((df['t_max'] - t_mean) * cnst.TDAY_COEF) + t_mean
+    df['t_day'] = ((df['t_max'] - t_mean) * params['tday_coef']) + t_mean
 
 
-def calc_snowpack(df: pd.DataFrame, snowpack: float=0.0):
+def calc_snowpack(df: pd.DataFrame, params: dict, snowpack: float=0.0):
     """
     Estimate snowpack as swe.
 
@@ -90,10 +90,11 @@ def calc_snowpack(df: pd.DataFrame, snowpack: float=0.0):
         (Optional - defaults to 0) Initial snowpack
     """
     swe = pd.Series(snowpack, index=df.index)
-    accum = (df['t_min'] <= cnst.SNOW_TCRIT)
-    melt = (df['t_min'] > cnst.SNOW_TCRIT)
+    accum = (df['t_min'] <= params['snow_crit_temp'])
+    melt = (df['t_min'] > params['snow_crit_temp'])
     swe[accum] += df['prec'][accum]
-    swe[melt] -= cnst.SNOW_TRATE * (df['t_min'][melt] - cnst.SNOW_TCRIT)
+    swe[melt] -= (params['snow_crit_temp']
+                  * (df['t_min'][melt] - params['snow_crit_temp']))
     df['swe'] = np.maximum(np.cumsum(swe), 0.0)
 
 
@@ -116,7 +117,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
         b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
         t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
         inds = np.array(prec > params['sw_prec_thresh'])
-        t_fmax[inds] *= cnst.RAIN_SCALAR
+        t_fmax[inds] *= params['rain_scalar']
         return t_fmax
 
     # Calculate the diurnal temperature range
@@ -127,7 +128,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     df['tfmax'] = _calc_tfmax(df['prec'], dtr, sm_dtr)
     tdew = df.get('tdew', df['t_min'])
     pva = df.get('hum', svp(tdew.values))
-    pa = atm_pres(elev)
+    pa = atm_pres(elev, params['lapse_rate'])
     yday = df.index.dayofyear - 1
     df['dayl'] = sg['daylength'][yday]
 

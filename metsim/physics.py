@@ -95,7 +95,7 @@ def calc_pet(rad: np.array, ta: np.array, dayl: np.array,
     return (pet / 10.)
 
 
-def atm_pres(elev: float) -> float:
+def atm_pres(elev: float, lr: float) -> float:
     '''
     Atmospheric pressure (Pa) as a function of elevation (m)
 
@@ -113,8 +113,8 @@ def atm_pres(elev: float) -> float:
     pressure:
         Atmospheric pressure (Pa)
     '''
-    t1 = 1.0 - (cnst.LR_STD * elev) / cnst.T_STD
-    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R/cnst.MA))
+    t1 = 1.0 - (lr * elev) / cnst.T_STD
+    t2 = cnst.G_STD / (lr * (cnst.R/cnst.MA))
     return cnst.P_STD * np.power(t1, t2)
 
 
@@ -171,7 +171,7 @@ def svp_slope(temp: pd.Series, a: float=0.61078,
 
 
 @jit(nopython=True)
-def solar_geom(elev: float, lat: float) -> tuple:
+def solar_geom(elev: float, lat: float, lr: float) -> tuple:
     """
     Flat earth assumption
 
@@ -197,8 +197,8 @@ def solar_geom(elev: float, lat: float) -> tuple:
     flat_potrad = np.zeros(dayperyear)
 
     # Calculate pressure ratio as a function of elevation
-    t1 = 1.0 - (cnst.LR_STD * elev)/cnst.T_STD
-    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R / cnst.MA))
+    t1 = 1.0 - (lr * elev)/cnst.T_STD
+    t2 = cnst.G_STD / (lr * (cnst.R / cnst.MA))
     trans = np.power(cnst.TBASE, np.power(t1, t2))
 
     # Translate lat to rad

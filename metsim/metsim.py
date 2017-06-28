@@ -109,6 +109,11 @@ class MetSim(object):
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
         "tmax_daylength_fraction": 0.67,
+        "snow_crit_temp": -6.0,
+        "snow_melt_rate": 0.042,
+        "rain_scalar": 0.75,
+        "tday_coef": 0.45,
+        "lapse_rate": 0.0065,
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid']
@@ -442,7 +447,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
     df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
-    sg = solar_geom(elev, lat)
+    sg = solar_geom(elev, lat, params['lapse_rate'])
     sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
           'potrad': sg[2], 'tt_max0': sg[3]}
 
