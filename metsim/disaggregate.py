@@ -26,6 +26,7 @@ import metsim.constants as cnst
 from metsim.physics import svp
 from metsim.datetime import date_range
 
+
 def disaggregate(df_daily: pd.DataFrame, params: dict,
                  solar_geom: dict, t_begin: list=None,
                  t_end: list=None):

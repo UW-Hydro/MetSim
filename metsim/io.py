@@ -79,8 +79,8 @@ def process_nc(params: dict, domain: xr.Dataset) -> xr.Dataset:
     }
     return read_funcs[params['forcing_fmt']](
         params['forcing'], domain=domain, iter_dims=params['iter_dims'],
-        start=params['start'], stop=params['stop'], calendar=params['calendar'],
-        var_dict=params.get('forcing_vars', None))
+        start=params['start'], stop=params['stop'],
+        calendar=params['calendar'], var_dict=params.get('forcing_vars', None))
 
 
 def process_vic(params: dict, domain: xr.Dataset) -> xr.Dataset:
@@ -96,14 +96,17 @@ def process_vic(params: dict, domain: xr.Dataset) -> xr.Dataset:
             ' specified via `iter_dims` in configuration.')
 
     # Creates the master dataset which will be used to parallelize
-    coords = {'time': params['dates'], 'lon': domain['lon'], 'lat': domain['lat']}
+    coords = {'time': params['dates'],
+              'lon': domain['lon'],
+              'lat': domain['lat']}
     shape = (len(params['dates']), len(domain['lat']), len(domain['lon']))
     dims = ('time', 'lat', 'lon', )
 
-    met_data = xr.Dataset(coords=coords, attrs={'n_days': len(params['dates'])})
+    met_data = xr.Dataset(
+        coords=coords, attrs={'n_days': len(params['dates'])})
     for var in params['forcing_vars']:
         met_data[var] = xr.DataArray(data=np.full(shape, np.nan),
-                coords=coords, dims=dims, name=var)
+                                     coords=coords, dims=dims, name=var)
 
     # Fill in the data
     for job in params['forcing']:
@@ -123,7 +126,8 @@ def process_vic(params: dict, domain: xr.Dataset) -> xr.Dataset:
 
 
 def read_ascii(data_handle, domain=None, iter_dims=['lat', 'lon'],
-        start=None, stop=None, calendar='standard', var_dict=None) -> xr.Dataset:
+               start=None, stop=None, calendar='standard',
+               var_dict=None) -> xr.Dataset:
     """Read in an ascii forcing file"""
     dates = date_range(start, stop, calendar=calendar)
     names = var_dict.keys()
@@ -134,11 +138,11 @@ def read_ascii(data_handle, domain=None, iter_dims=['lat', 'lon'],
 
 
 def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
-        start=None, stop=None, calendar='standard', var_dict=None) -> xr.Dataset:
+                start=None, stop=None, calendar='standard',
+                var_dict=None) -> xr.Dataset:
     """Read in a NetCDF file"""
     ds = xr.open_dataset(data_handle)
 
-    varlist = list(ds.keys())
     if var_dict is not None:
         ds.rename(var_dict, inplace=True)
 
@@ -155,7 +159,8 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
 
 
 def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
-        start=None, stop=None, calendar='standard', var_dict=None) -> xr.Dataset:
+              start=None, stop=None, calendar='standard',
+              var_dict=None) -> xr.Dataset:
     """Read data directly from an xarray dataset"""
     varlist = list(data_handle.keys())
     if var_dict is not None:
@@ -175,7 +180,8 @@ def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
 
 
 def read_binary(data_handle, domain=None, iter_dims=['lat', 'lon'],
-        start=None, stop=None, calendar='standard', var_dict=None) -> xr.Dataset:
+                start=None, stop=None, calendar='standard',
+                var_dict=None) -> xr.Dataset:
     """Reads a binary forcing file (VIC 4 format)"""
     dates = date_range(start, stop, calendar=calendar)
     n_days = len(dates)

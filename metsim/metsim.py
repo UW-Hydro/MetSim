@@ -215,9 +215,9 @@ class MetSim(object):
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
-                wrap_results = wrap_run(self.method.run, locs, self.params,
-                          data.sel(**locs), self.state.sel(**locs),
-                          self.disagg, times, label)
+                wrap_results = wrap_run(
+                    self.method.run, locs, self.params, data.sel(**locs),
+                    self.state.sel(**locs), self.disagg, times, label)
 
                 # Cut the returned data down to the correct time index
                 self._unpack_results(wrap_results)
