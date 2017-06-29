@@ -105,18 +105,21 @@ def test_params(in_format, out_format, method):
     params = {'start': start,
               'stop': stop,
               'in_vars': in_vars,
-              'in_format': in_format,
+              'forcing_fmt': in_format,
+              'domain_fmt': 'netcdf',
+              'state_fmt': 'netcdf',
               'out_format': out_format,
               'domain': domain_files[in_format],
               'state': state_files[in_format],
               'method': method,
+              'calender': 'standard',
               'time_step': "60",
               't_max_lr': lr,
               't_min_lr': lr,
               'annual': False,
               'out_dir': out_dir,
               'out_prefix': out_prefix,
-              'in_vars': in_vars,
+              'forcing_vars': in_vars,
               'domain_vars': domain_vars}
     return params
 
@@ -124,7 +127,7 @@ def test_params(in_format, out_format, method):
 @pytest.fixture()
 def test_setup(test_params, domain_file):
     """Tests the setup of the MetSim object"""
-    in_fmt = test_params['in_format']
+    in_fmt = test_params['forcing_fmt']
     loc = data_locations[in_fmt]
 
     # Get the files and make sure the right amount exist
@@ -136,10 +139,8 @@ def test_setup(test_params, domain_file):
         assert data_files == './tests/data/test.nc'
     test_params['forcing'] = data_files
 
-    # Test construction - should not yet be ready to run
+    # Test construction
     ms = MetSim(test_params)
-    assert not ms.ready
-
     return ms
 
 
@@ -156,10 +157,6 @@ def test_mtclim(test_setup):
     # Load data and ensure the ready flag has been set
     test_setup.params['time_step'] = 1440
     test_setup.params['out_vars'] = daily_out_vars
-    test_setup.load()
-    loc = test_setup.locations[0]
-    assert test_setup.ready
-    assert not test_setup.disagg
 
     # Check to see that the data is valid
     assert type(test_setup.met_data) is xr.Dataset
@@ -176,14 +173,12 @@ def test_mtclim(test_setup):
     # Now test the disaggregation as well as forcing generation
     test_setup.params['time_step'] = 60
     test_setup.params['out_vars'] = hourly_out_vars
-    test_setup.load()
-    assert test_setup.ready
 
     # Check to see that the data is valid
     assert type(test_setup.met_data) is xr.Dataset
 
     test_setup.run()
-    hourly = test_setup.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()
+    hourly = test_setup.output.isel(lat=2, lon=2).to_dataframe()
     assert len(hourly) == (n_days * const.HOURS_PER_DAY)
     for var in test_setup.params['out_vars']:
         assert var in hourly
@@ -192,9 +187,8 @@ def test_mtclim(test_setup):
 
     # Now test sub-hourly disaggregation
     test_setup.params['time_step'] = 30
-    test_setup.load()
     test_setup.run()
-    half_hourly = test_setup.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()
+    half_hourly = test_setup.output.isel(lat=2, lon=2).to_dataframe()
     assert len(half_hourly) == (2 * n_days * const.HOURS_PER_DAY)
 
 
@@ -207,7 +201,9 @@ def test_disaggregation_values():
                 'vapor_pressure', 'wind', 'rel_humid']
     params = {'start': dates['binary'][0],
               'stop': dates['binary'][1],
-              'in_format': 'binary',
+              'forcing_fmt': 'binary',
+              'domain_fmt': 'netcdf',
+              'state_fmt': 'netcdf',
               'out_format': 'ascii',
               'domain': './tests/data/stehekin.nc',
               'state': './tests/data/state_vic.nc',
@@ -218,7 +214,7 @@ def test_disaggregation_values():
               't_min_lr': 0.00065,
               'out_dir': "./tmp",
               'out_vars': out_vars,
-              'in_vars': in_vars_section['binary'],
+              'forcing_vars': in_vars_section['binary'],
               'domain_vars': domain_section['binary']
               }
     # The location we will test against
@@ -226,7 +222,6 @@ def test_disaggregation_values():
 
     # Set up the MetSim object
     ms = MetSim(params)
-    ms.load()
 
     # Run MetSim and load in the validated data
     ms.run()

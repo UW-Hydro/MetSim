@@ -30,7 +30,6 @@ output specified.
 
 import os
 import sys
-import struct
 import logging
 import itertools
 import time as tm
@@ -41,6 +40,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from metsim import io
 from metsim.methods import mtclim
 from metsim.disaggregate import disaggregate
 from metsim.physics import solar_geom
@@ -88,7 +88,6 @@ class MetSim(object):
     """
 
     # Class variables
-    process_handles = []
     methods = {'mtclim': mtclim}
     params = {
         "method": '',
@@ -110,6 +109,7 @@ class MetSim(object):
         "base_isoh": 1,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
+        "annual": False,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
@@ -129,59 +129,32 @@ class MetSim(object):
         logger.setLevel(MetSim.params['verbose'])
         ch.setLevel(MetSim.params['verbose'])
         logger.addHandler(ch)
-        self.output = None
-        self.met_data = None
-        self.ready = False
-
-    def load(self):
-        """Load the necessary datasets into memory"""
-        # Get the necessary information from the domain
-        self.domain = xr.open_dataset(self.params['domain']).rename(
-                MetSim.params['domain_vars']).load()
-        self.state = xr.open_dataset(self.params['state']).rename(
-            MetSim.params.get('state_vars',
-                              {'prec': 'prec'})).load()
-        self.lat = self.domain['lat']
-        self.lon = self.domain['lon']
-        self.mask = self.domain['mask']
-        self.elev = self.domain['elev']
-        self.domain_shape = self.mask.shape
-        self.domain_dims = self.mask.dims
-        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        self.method = MetSim.methods[self.params['method']]
-        ilist, jlist = np.nonzero(np.nan_to_num(self.mask.values))
-
-        self.i_idx = ilist
-        self.j_idx = jlist
-
-        self.locations = list(zip(ilist, jlist))
-        logger.info('found %d locations' % len(self.locations))
-
-        out_dir = MetSim.params['out_dir']
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-
-        # Input preprocessing
-        in_preprocess = {"ascii": self.vic_in_preprocess,
-                         "binary": self.vic_in_preprocess,
-                         "netcdf": self.netcdf_in_preprocess}
-        in_preprocess[MetSim.params['in_format']](self.params['forcing'])
-        # Get data from the state file
+        self.domain = io.read_domain(self.params)
+        self.met_data = io.read_met_data(self.params, self.domain)
+        self.state = io.read_state(self.params)
         self._aggregate_state()
-        # Double check that we are ready to do calculations
-        self._validate_setup()
-        self.ready = True
+        self.met_data['elev'] = self.domain['elev']
 
     def launch(self):
         """Farm out the jobs to separate processes"""
-        nprocs = MetSim.params['nprocs']
+        nprocs = self.params['nprocs']
 
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         # Do the forcing generation and disaggregation if required
         time_dim = pd.to_pydatetime(self.met_data.time.values)
+        ilist, jlist = np.nonzero(np.nan_to_num(self.domain['mask'].values))
+
+        self.i_idx = ilist
+        self.j_idx = jlist
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
+        self.locations = list(zip(ilist, jlist))
+        self.method = MetSim.methods[self.params['method']]
+
         if self.params['annual']:
             groups = time_dim.groupby(time_dim.year)
         else:
             groups = {'total': time_dim}
+
         for label, times in groups.items():
             self.pool = Pool(processes=nprocs)
             logger.info("Beginning {}".format(label))
@@ -248,6 +221,13 @@ class MetSim(object):
         Kicks off the disaggregation and queues up data for IO
         """
         time_dim = pd.to_datetime(self.met_data.time.values)
+        ilist, jlist = np.nonzero(np.nan_to_num(self.domain['mask'].values))
+
+        self.i_idx = ilist
+        self.j_idx = jlist
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
+        self.locations = list(zip(ilist, jlist))
+        self.method = MetSim.methods[self.params['method']]
         if self.params['annual']:
             groups = time_dim.groupby(time_dim.year)
         else:
@@ -260,6 +240,7 @@ class MetSim(object):
                                     ).intersection(time_dim)
             data = self.met_data.sel(time=times_ext)
             self.setup_output(self.met_data.sel(time=times))
+
             for i, j in self.locations:
                 locs = dict(lat=i, lon=j)
                 logger.info("Processing {}".format(locs))
@@ -334,6 +315,7 @@ class MetSim(object):
             prototype = self.met_data
         self.output = self.domain.copy(deep=True)
         self.output.attrs = attrs['_global']
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         # Number of timesteps
         if self.disagg:
             delta = pd.Timedelta('1 days') - pd.Timedelta(
@@ -348,8 +330,8 @@ class MetSim(object):
                            calendar=self.params['calendar'])
         n_ts = len(times)
 
-        shape = (n_ts, ) + self.domain_shape
-        dims = ('time', ) + self.domain_dims
+        shape = (n_ts, ) + self.domain['mask'].shape
+        dims = ('time', ) + self.domain['mask'].dims
         coords = {'time': times, **self.domain.mask.coords}
         for varname in MetSim.params['out_vars']:
             self.output[varname] = xr.DataArray(
@@ -360,7 +342,7 @@ class MetSim(object):
 
     def find_elevation(self, lat: float, lon: float) -> float:
         """ Use the domain file to get the elevation """
-        return self.elev.sel(lat=lat, lon=lon, method='nearest')
+        return self.domain['elev'].sel(lat=lat, lon=lon, method='nearest')
 
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
@@ -441,44 +423,17 @@ class MetSim(object):
         if len(errs) > 1:
             raise Exception("\n  ".join(errs))
 
-    def netcdf_in_preprocess(self, filename: str):
-        """Get the extent and load the data"""
-        self.met_data = self.read(filename)
-
-    def vic_in_preprocess(self, job_list: list):
-        """Process all files to find spatial extent"""
-        # Creates the master dataset which will be used to parallelize
-        self.met_data = xr.Dataset(
-            coords={'time': MetSim.params['dates'],
-                    'lon': self.lon,
-                    'lat': self.lat},
-            attrs={'n_days': len(MetSim.params['dates'])})
-        shape = (len(MetSim.params['dates']), len(self.lat), len(self.lon))
-
-        self.met_data['elev'] = xr.Variable(
-            ('lat', 'lon'), np.full((len(self.lat), len(self.lon)), np.nan))
-        for var in MetSim.params['in_vars']:
-            self.met_data[var] = xr.Variable(
-                ('time', 'lat', 'lon'), np.full(shape, np.nan))
-
-        # Fill in the data
-        for job in job_list:
-            _, lat, lon = os.path.basename(job).split("_")
-            i = np.unique(self.i_idx)[list(self.lat.values).index(float(lat))]
-            j = np.unique(self.j_idx)[list(self.lon.values).index(float(lon))]
-            ds = self.read(job)
-            self.met_data['elev'].values[i, j] = self.elev.values[i, j]
-            for var in MetSim.params['in_vars']:
-                self.met_data[var].values[:, i, j] = ds[var].values
-
     def write(self, suffix=""):
         """
         Dispatch to the right function based on the configuration given
         """
         dispatch = {
                 'netcdf': self.write_netcdf,
-                'ascii': self.write_ascii
+                'ascii': self.write_ascii,
+                'data': self.write_data
                 }
+        if not os.path.exists(self.params['out_dir']):
+            os.mkdir(self.params['out_dir'])
         self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
                              encoding={'time': {'dtype': 'f8'}})
         dispatch[MetSim.params.get('out_format', 'netcdf').lower()](suffix)
@@ -507,93 +462,8 @@ class MetSim(object):
                 self.output.isel(lat=i, lon=j)[self.params[
                     'out_vars']].to_dataframe().to_csv(fpath)
 
-    def read(self, fpath: str) -> xr.Dataset:
-        """
-        Dispatch to the right function based on the file extension
-        """
-        dispatch = {
-                'binary': self.read_binary,
-                'netcdf': self.read_netcdf,
-                'ascii': self.read_ascii
-                }
-        return dispatch[MetSim.params['in_format']](fpath)
-
-    def read_binary(self, fpath: str) -> xr.Dataset:
-        """ Reads a binary forcing file (VIC 4 format) """
-        dates = date_range(MetSim.params['start'], MetSim.params['stop'],
-                           calendar=self.params['calendar'])
-        n_days = len(dates)
-        type_lookup = {'signed': 'h', 'unsigned': 'H'}
-        # Pack these for nicer syntax in the loop
-        var_names = MetSim.params['in_vars'].keys()
-        data_list = [[] for var in MetSim.params['in_vars'].keys()]
-        n_vars = len(var_names)
-        params = [p for p in MetSim.params['in_vars'].values()]
-        scales = [float(s.split()[0]) for s in params]
-        datatypes = [type_lookup[s.split()[-1]] for s in params]
-        with open(fpath, 'rb') as f:
-            i = 0
-            points_read = 0
-            points_needed = 4*n_days
-            while points_read != points_needed:
-                bytes = f.read(2)
-                if bytes:
-                    # Get correct variable and data type with i,
-                    # then unpack & scale
-                    data_list[i].append(
-                        struct.unpack(datatypes[i], bytes)[0] / scales[i])
-                    i = (i + 1) % n_vars
-                    points_read += 1
-                else:
-                    break
-
-        # Binary forcing files have naming format $NAME_$LAT_$LON
-        param_list = os.path.basename(fpath).split("_")
-        params = {"name": param_list[0],
-                  "lat": float(param_list[1]),
-                  "lon": float(param_list[2]),
-                  "n_days": int(n_days)}
-        MetSim.params.update(params)
-        params['elev'] = [[self.find_elevation(params['lat'], params['lon'])]]
-
-        # Assemble the dataset
-        data_dict = {c[0]: (['time'], c[1]) for c in zip(var_names, data_list)}
-        data_dict['elev'] = (['lon', 'lat'], params['elev'])
-        data_dict['day_of_year'] = (['time'], dates.dayofyear)
-        df = xr.Dataset(data_dict,
-                        coords={'lon': [params['lon']],
-                                'lat': [params['lat']],
-                                'time': dates},
-                        attrs={'n_days': params['n_days']})
-        return df
-
-    def read_ascii(self, fpath: str) -> xr.Dataset:
-        """Read in an ascii forcing file"""
-        dates = date_range(MetSim.params['start'], MetSim.params['stop'],
-                           calendar=self.params['calendar'])
-        names = MetSim.params['in_vars'].keys()
-        ds = pd.read_table(fpath, header=None, delim_whitespace=True,
-                           names=names).head(len(dates))
-        ds.index = dates
-        return ds
-
-    def read_netcdf(self, fpath: str) -> xr.Dataset:
-        """
-        Read in a NetCDF file and add elevation information
-        """
-        ds = xr.open_dataset(fpath)
-        ds.rename(MetSim.params['in_vars'], inplace=True)
-        varlist = list(MetSim.params['in_vars'].values())
-        ds = ds[varlist].sel(
-            time=slice(MetSim.params['start'], MetSim.params['stop']))
-        dates = ds.indexes['time']
-        # Add elevation and day of year data
-        ds['elev'] = self.elev
-        ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
-
-        # Update the configuration
-        MetSim.params.update({"n_days": len(ds['time'])})
-        return ds.load()
+    def write_data(self, suffix):
+        pass
 
 
 def wrap_run(func: callable, loc: dict, params: dict,
