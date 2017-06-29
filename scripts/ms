@@ -50,6 +50,7 @@ def init(opts):
     conf = OrderedDict(config['MetSim'])
     conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
     conf['domain_vars'] = OrderedDict(config['domain_vars'])
+    conf['state_vars'] = OrderedDict(config['state_vars'])
     out_dir = conf['out_dir']
     method = conf['method']
 
@@ -92,8 +93,6 @@ def init(opts):
                  "verbose": opts.verbose * logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
-    conf['t_min_lr'] = float(conf['t_min_lr'])
-    conf['t_max_lr'] = float(conf['t_max_lr'])
     conf = {k: v for k, v in conf.items() if v != []}
     return conf
 

@@ -101,21 +101,18 @@ def test_params(in_format, out_format, method):
     domain_vars = domain_section[in_format]
     out_dir = "./tmp"
     out_prefix = "forcing"
-    lr = 0.0065
     params = {'start': start,
               'stop': stop,
               'in_vars': in_vars,
               'forcing_fmt': in_format,
               'domain_fmt': 'netcdf',
               'state_fmt': 'netcdf',
-              'out_format': out_format,
+              'out_fmt': out_format,
               'domain': domain_files[in_format],
               'state': state_files[in_format],
               'method': method,
               'calender': 'standard',
               'time_step': "60",
-              't_max_lr': lr,
-              't_min_lr': lr,
               'annual': False,
               'out_dir': out_dir,
               'out_prefix': out_prefix,
@@ -148,8 +145,7 @@ def test_mtclim(test_setup):
     """Tests the ability to run successfully"""
     # Here we only test a single grid cell
     data_files = test_setup.params['forcing']
-    daily_out_vars = ['prec', 't_max', 't_min', 't_day',
-                      'wind', 'dayl', 'swrad',
+    daily_out_vars = ['prec', 't_max', 't_min', 'wind', 'shortwave',
                       'tskc', 'pet', 'vapor_pressure']
     hourly_out_vars = ['prec', 'temp', 'shortwave', 'longwave',
                        'vapor_pressure', 'rel_humid']
