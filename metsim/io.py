@@ -53,7 +53,7 @@ def read_domain(params):
         "data": read_data
     }
     return read_funcs[params['domain_fmt']](
-        params['domain'], calender=params['calender'],
+        params['domain'], calendar=params['calendar'],
         var_dict=params.get('domain_vars', None))
 
 
@@ -67,7 +67,7 @@ def read_state(params):
     stop = params['start'] - pd.Timedelta('1 days')
     return read_funcs[params['state_fmt']](
         params['state'], start=start, stop=stop,
-        calender=params['calender'], var_dict=params.get('state_vars', None))
+        calendar=params['calendar'], var_dict=params.get('state_vars', None))
 
 
 def process_nc(params, domain):
@@ -78,7 +78,7 @@ def process_nc(params, domain):
     }
     return read_funcs[params['forcing_fmt']](
         params['forcing'], start=params['start'], stop=params['stop'],
-        calender=params['calender'], var_dict=params.get('forcing_vars', None))
+        calendar=params['calendar'], var_dict=params.get('forcing_vars', None))
 
 
 def process_vic(params, domain):
@@ -111,16 +111,16 @@ def process_vic(params, domain):
             list(domain['lon'].values).index(float(lon))]
         ds = read_funcs[params['forcing_fmt']](
             job, start=params['start'], stop=params['stop'],
-            calender=params['calender'], var_dict=params['forcing_vars'])
+            calendar=params['calendar'], var_dict=params['forcing_vars'])
         for var in params['forcing_vars'].keys():
             met_data[var].values[:, i, j] = ds[var].values
     return met_data
 
 
 def read_ascii(data_handle, start=None, stop=None,
-               calender='standard', var_dict=None) -> xr.Dataset:
+               calendar='standard', var_dict=None) -> xr.Dataset:
     """Read in an ascii forcing file"""
-    dates = date_range(start, stop, calender=calender)
+    dates = date_range(start, stop, calendar=calendar)
     names = var_dict.keys()
     ds = pd.read_table(data_handle, header=None, delim_whitespace=True,
                        names=names).head(len(dates))
@@ -129,18 +129,16 @@ def read_ascii(data_handle, start=None, stop=None,
 
 
 def read_netcdf(data_handle, start=None, stop=None,
-                calender='standard', var_dict=None) -> xr.Dataset:
+                calendar='standard', var_dict=None) -> xr.Dataset:
     """Read in a NetCDF file"""
     ds = xr.open_dataset(data_handle)
 
     varlist = list(ds.keys())
     if var_dict is not None:
         ds.rename(var_dict, inplace=True)
-        varlist = list(var_dict.values())
-        ds = ds[varlist]
 
     if start is not None and stop is not None:
-        ds = ds[varlist].sel(time=slice(start, stop))
+        ds = ds.sel(time=slice(start, stop))
         dates = ds.indexes['time']
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
@@ -148,7 +146,7 @@ def read_netcdf(data_handle, start=None, stop=None,
 
 
 def read_data(data_handle, start=None, stop=None,
-              calender='standard', var_dict=None) -> xr.Dataset:
+              calendar='standard', var_dict=None) -> xr.Dataset:
     """Read data directly from an xarray dataset"""
     varlist = list(data_handle.keys())
     if var_dict is not None:
@@ -164,9 +162,9 @@ def read_data(data_handle, start=None, stop=None,
 
 
 def read_binary(data_handle, start=None, stop=None,
-                calender='standard', var_dict=None) -> xr.Dataset:
+                calendar='standard', var_dict=None) -> xr.Dataset:
     """Reads a binary forcing file (VIC 4 format)"""
-    dates = date_range(start, stop, calender=calender)
+    dates = date_range(start, stop, calendar=calendar)
     n_days = len(dates)
     type_lookup = {'signed': 'h', 'unsigned': 'H'}
     # Pack these for nicer syntax in the loop
