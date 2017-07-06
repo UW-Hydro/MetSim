@@ -291,8 +291,8 @@ class MetSim(object):
                                   calendar=self.params['calendar'])
         trailing = self.state['prec'].sel(time=record_dates)
         total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
-        total_precip = total_precip.rolling(time=90).sum().drop(record_dates,
-                                                                dim='time')
+        total_precip = (cnst.DAYS_PER_YEAR * total_precip.rolling(
+            time=90).mean().drop(record_dates, dim='time'))
         self.met_data['seasonal_prec'] = total_precip
 
         # Smoothed daily temperature range
@@ -308,6 +308,7 @@ class MetSim(object):
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
+        self.state['swe'] = self.state.sel(time=end_record).swe.drop('time')
         self.met_data['swe'] = self.state.swe.copy()
 
     def _validate_setup(self):
