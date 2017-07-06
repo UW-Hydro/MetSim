@@ -308,6 +308,7 @@ class MetSim(object):
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
+        self.state['swe'] = self.state.sel(time=end_record).swe.drop('time')
         self.met_data['swe'] = self.state.swe.copy()
 
     def _validate_setup(self):

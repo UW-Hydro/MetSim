@@ -64,7 +64,7 @@ data_ranges = {'temp': (-50, 40),
                'shortwave': (0, 1000),
                'longwave': (0, 450),
                'wind': (0, 10),
-               'vapor_pressure': (0, 1.4),
+               'vapor_pressure': (0, 1.6),
                'rel_humid': (0, 100)}
 
 
