@@ -64,7 +64,7 @@ data_ranges = {'temp': (-50, 40),
                'shortwave': (0, 1000),
                'longwave': (0, 450),
                'wind': (0, 10),
-               'vapor_pressure': (0, 1.6),
+               'vapor_pressure': (0, 2),
                'rel_humid': (0, 100)}
 
 
@@ -179,12 +179,15 @@ def test_mtclim(test_setup):
     for var in test_setup.params['out_vars']:
         assert var in hourly
         l, h = data_ranges[var]
+        vl = min(hourly[var].values)
+        vh = max(hourly[var].values)
+        print(var, vl, vh, l, h)
         assert hourly[var].between(l, h).all()
 
     # Now test sub-hourly disaggregation
     test_setup.params['time_step'] = 30
     test_setup.run()
-    half_hourly = test_setup.output.isel(lat=2, lon=2).to_dataframe()
+    half_hourly = test_setup.output.isel(lat=1, lon=3).to_dataframe()
     assert len(half_hourly) == (2 * n_days * const.HOURS_PER_DAY)
 
 
@@ -200,14 +203,12 @@ def test_disaggregation_values():
               'forcing_fmt': 'binary',
               'domain_fmt': 'netcdf',
               'state_fmt': 'netcdf',
-              'out_format': 'ascii',
+              'out_fmt': 'ascii',
               'domain': './tests/data/stehekin.nc',
               'state': './tests/data/state_vic.nc',
               'forcing': data_files,
               'method': 'mtclim',
               'time_step': "60",
-              't_max_lr': 0.00065,
-              't_min_lr': 0.00065,
               'out_dir': "./tmp",
               'out_vars': out_vars,
               'forcing_vars': in_vars_section['binary'],
@@ -234,3 +235,5 @@ def test_disaggregation_values():
         h = max([good[var].max(), out[var].max()])
         l = min([good[var].min(), out[var].min()])
         nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
+        print(var, nrmse)
+        assert nrmse < 0.02
