@@ -152,7 +152,7 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
     if domain is not None:
-        ds.sel(**{d: domain[d] for d in iter_dims})
+        ds = ds.sel(**{d: domain[d] for d in iter_dims})
     out = ds.load()
     ds.close()
     return out
@@ -173,7 +173,7 @@ def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
         data_handle['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
     if domain is not None:
-        data_handle.sel(**{d: domain[d] for d in iter_dims})
+        data_handle = data_handle.sel(**{d: domain[d] for d in iter_dims})
     out = data_handle.load()
     data_handle.close()
     return out

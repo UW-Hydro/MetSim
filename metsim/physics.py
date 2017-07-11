@@ -107,6 +107,8 @@ def atm_pres(elev: float, lr: float) -> float:
     ----------
     elev:
         Elevation in meters
+    lr:
+        Lapse rate (K/m)
 
     Returns
     -------
@@ -181,6 +183,8 @@ def solar_geom(elev: float, lat: float, lr: float) -> tuple:
         Elevation in meters
     lat:
         Latitude in decimal format
+    lr:
+        Lapse rate in K/m
 
     Returns
     -------
