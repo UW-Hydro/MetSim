@@ -34,12 +34,16 @@ exist, it will be created.
 
 ``forcing_fmt :: str``: A string representing the type of input files specified in
 the ``forcing`` entry.  Can be one of the following: ``ascii``, ``binary``, 
-``netcdf``.
+``netcdf``, or ``data``.
 
-``state_fmt :: str``
+``state_fmt :: str``: A string representing the type of state file specified in 
+the ``state`` entry.  Can be either ``netcdf`` or ``data``.
+
+``domain_fmt :: str``: A string representing the type of state file specified in 
+the ``domain`` entry.  Can be either ``netcdf`` or ``data``.
 
 ``out_fmt:: str``: A string representing the type of output to write to 
-``out_dir``.  Can be either ``netcdf`` or ``ascii``.
+``out_dir``.  Can be either ``netcdf``, ``data``, or ``ascii``.
 
 ``method :: str``: A string representing the simulation methods to use.  The
 current implementation only supports ``mtclim``.
