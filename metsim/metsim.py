@@ -100,6 +100,7 @@ class MetSim(object):
         "time_step": '',
         "calendar": 'standard',
         "out_fmt": '',
+        "out_precision": 'f8',
         "in_format": None,
         "verbose": 0,
         "sw_prec_thresh": 0.0,
@@ -280,7 +281,8 @@ class MetSim(object):
                 data=np.full(shape, np.nan),
                 coords=coords, dims=dims,
                 name=varname, attrs=attrs.get(varname, {}),
-                encoding={'dtype': 'f8', '_FillValue': cnst.FILL_VALUES['f8']})
+                encoding={'dtype': self.params['out_precision'],
+                          '_FillValue': cnst.FILL_VALUES['f8']})
 
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
@@ -372,8 +374,15 @@ class MetSim(object):
         logger.info("Writing netcdf...")
         if not os.path.exists(self.params['out_dir']):
             os.mkdir(self.params['out_dir'])
+
+        # all state variables are written as doubles
+        state_encoding = {'time': {'dtype': 'f8'}}
+        for v in self.state:
+            state_encoding[v] = {'dtype': 'f8'}
+        # write state file
         self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
-                             encoding={'time': {'dtype': 'f8'}})
+                             encoding=state_encoding)
+        # write output file
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
         self.output.to_netcdf(output_filename,
