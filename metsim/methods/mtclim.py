@@ -59,8 +59,7 @@ def run(forcing: pd.DataFrame, params: dict, sg: dict,
 
 def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
     """
-    Adjust temperatures according to lapse rates
-    and calculate t_day
+    Calculate mean daily temperature
 
     Parameters
     ----------
@@ -70,8 +69,7 @@ def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
         Elevation in meters
     params:
         Dictionary containing parameters from a
-        MetSim object. Lapse rates are used in this
-        calculation.
+        MetSim object.
     """
     t_mean = (df['t_min'] + df['t_max']) / 2
     df['t_day'] = ((df['t_max'] - t_mean) * params['tday_coef']) + t_mean
@@ -93,7 +91,7 @@ def calc_snowpack(df: pd.DataFrame, params: dict, snowpack: float=0.0):
     accum = (df['t_min'] <= params['snow_crit_temp'])
     melt = (df['t_min'] > params['snow_crit_temp'])
     swe[accum] += df['prec'][accum]
-    swe[melt] -= (params['snow_crit_temp']
+    swe[melt] -= (params['snow_melt_rate']
                   * (df['t_min'][melt] - params['snow_crit_temp']))
     df['swe'] = np.maximum(np.cumsum(swe), 0.0)
 
@@ -114,6 +112,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
         MetSim object
     """
     def _calc_tfmax(prec, dtr, sm_dtr):
+        """Estimate cloudy day transmittance"""
         b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
         t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
         inds = np.array(prec > params['sw_prec_thresh'])
