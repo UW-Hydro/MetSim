@@ -89,6 +89,8 @@ attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
                      'references': references,
                      'comment': 'no comment at this time'}}
 
+attrs = {k: OrderedDict(v) for k, v in attrs.items()}
+
 
 class MetSim(object):
     """
