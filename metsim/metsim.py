@@ -346,6 +346,7 @@ class MetSim(object):
 
         # Check that the parameters specified are available
         opts = {'mtclim_swe_corr': [True, False],
+                'out_precision': ['f4', 'f8'],
                 'lw_cloud': ['default', 'cloud_deardorff'],
                 'lw_type': ['default', 'tva', 'anderson',
                             'brutsaert', 'satterlund',

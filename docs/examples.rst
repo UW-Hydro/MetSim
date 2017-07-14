@@ -36,6 +36,7 @@ contents are:
     out_fmt = netcdf
     out_dir = ./results
     out_prefix = forcing
+    out_precision = f8
 
     # How to disaggregate
     method = mtclim

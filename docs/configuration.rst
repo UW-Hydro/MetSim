@@ -52,6 +52,9 @@ current implementation only supports ``mtclim``.
 
 ``out_prefix :: str``: The output file base name. Defaults to ``forcing``.
 
+``out_precision :: str``: Precision to use when writing output.  Defaults to
+``f8``.  Can be either ``f4`` or ``f8``.
+
 ``annual :: bool``: Whether to chunk up the timeseries into years for 
 processing. This option is useful to set for when you are limited on 
 memory.  Each year of output is written as ``{out_prefix}_{year}`` when
