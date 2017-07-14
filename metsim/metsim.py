@@ -30,6 +30,7 @@ output specified.
 
 import os
 import sys
+import json
 import logging
 import itertools
 import time as tm
@@ -39,7 +40,7 @@ from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 import xarray as xr
-from collections import OrderedDict
+from collections import OrderedDict, Iterable
 
 from metsim import io
 from metsim.methods import mtclim
@@ -286,10 +287,10 @@ class MetSim(object):
             if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
                 v = str(v)
             # Don't include complex types
-            if type(v) is list:
+            if isinstance(v, dict):
+                v = json.dumps(v)
+            elif not isinstance(v, str) and isinstance(v, Iterable):
                 v = ', '.join(v)
-            elif type(v) in [pd.DatetimeIndex, OrderedDict]:
-                continue
             attrs['_global'][k] = v
         self.output.attrs = attrs['_global']
         for varname in self.params['out_vars']:
