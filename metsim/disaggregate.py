@@ -194,6 +194,9 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
 def prec(prec: pd.Series, ts: float):
     """
     Splits the daily precipitation evenly throughout the day
+    Note: this returns only through to the beginning of the
+          last day.  Final values are filled in using a
+          forward fill in the top level disaggregate function
 
     Parameters
     ----------
@@ -215,6 +218,9 @@ def prec(prec: pd.Series, ts: float):
 def wind(wind: pd.Series, ts: float):
     """
     Wind is assumed constant throughout the day
+    Note: this returns only through to the beginning of the
+          last day.  Final values are filled in using a
+          forward fill in the top level disaggregate function
 
     Parameters
     ----------
