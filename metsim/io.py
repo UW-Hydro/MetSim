@@ -96,14 +96,16 @@ def process_vic(params: dict, domain: xr.Dataset) -> xr.Dataset:
             ' specified via `iter_dims` in configuration.')
 
     # Creates the master dataset which will be used to parallelize
-    coords = {'time': params['dates'],
+    dates = date_range(params['start'], params['stop'],
+                       calendar=params['calendar'])
+    coords = {'time': dates,
               'lon': domain['lon'],
               'lat': domain['lat']}
-    shape = (len(params['dates']), len(domain['lat']), len(domain['lon']))
+    shape = (len(dates), len(domain['lat']), len(domain['lon']))
     dims = ('time', 'lat', 'lon', )
 
     met_data = xr.Dataset(
-        coords=coords, attrs={'n_days': len(params['dates'])})
+        coords=coords, attrs={'n_days': len(dates)})
     for var in params['forcing_vars']:
         met_data[var] = xr.DataArray(data=np.full(shape, np.nan),
                                      coords=coords, dims=dims, name=var)

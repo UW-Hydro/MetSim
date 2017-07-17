@@ -30,6 +30,7 @@ output specified.
 
 import os
 import sys
+import json
 import logging
 import itertools
 import time as tm
@@ -39,6 +40,7 @@ from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 import xarray as xr
+from collections import OrderedDict, Iterable
 
 from metsim import io
 from metsim.methods import mtclim
@@ -66,18 +68,28 @@ attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
                   'standard_name': 'precipitation_flux'},
          'shortwave': {'units': 'W m-2', 'long_name': 'shortwave radiation',
                        'standard_name': 'surface_downwelling_shortwave_flux'},
-         'lwrad': {'units': 'W m-2', 'long_name': 'longwave radiation',
-                   'standard_name': 'surface_downwelling_longwave_flux'},
+         'longwave': {'units': 'W m-2', 'long_name': 'longwave radiation',
+                      'standard_name': 'surface_downwelling_longwave_flux'},
          't_max': {'units': 'C', 'long_name': 'maximum daily air temperature',
                    'standard_name': 'daily_maximum_air_temperature'},
          't_min': {'units': 'C', 'long_name': 'minimum daily air temperature',
                    'standard_name': 'daily_minimum_air_temperature'},
+         'temp': {'units': 'C', 'long_name': 'air temperature',
+                  'standard_name': 'air_temperature'},
+         'vapor_pressure': {'units': 'mbar', 'long_name': 'vapor pressure',
+                            'standard_name': 'vapor_pressure'},
+         'tskc': {'units': 'fraction', 'long_name': 'cloud fraction',
+                  'standard_name': 'cloud_fraction'},
+         'rel_humid': {'units': '%', 'long_name': 'relative humidity',
+                       'standard_name': 'relative_humidity'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
                      'history': 'Created: {0} by {1}'.format(now, user),
                      'references': references,
                      'comment': 'no comment at this time'}}
+
+attrs = {k: OrderedDict(v) for k, v in attrs.items()}
 
 
 class MetSim(object):
@@ -101,7 +113,6 @@ class MetSim(object):
         "calendar": 'standard',
         "out_fmt": '',
         "out_precision": 'f8',
-        "in_format": None,
         "verbose": 0,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
@@ -126,8 +137,6 @@ class MetSim(object):
         """
         # Record parameters
         self.params.update(params)
-        self.params['dates'] = date_range(params['start'], params['stop'],
-                                          calendar=self.params['calendar'])
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
@@ -275,6 +284,16 @@ class MetSim(object):
         dims = ('time', ) + self.domain['mask'].dims
         coords = {'time': times, **self.domain.mask.coords}
         self.output = xr.Dataset(coords=coords)
+        for k, v in self.params.items():
+            # Need to convert some parameters to strings
+            if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
+                v = str(v)
+            # Don't include complex types
+            if isinstance(v, dict):
+                v = json.dumps(v)
+            elif not isinstance(v, str) and isinstance(v, Iterable):
+                v = ', '.join(v)
+            attrs['_global'][k] = v
         self.output.attrs = attrs['_global']
         for varname in self.params['out_vars']:
             self.output[varname] = xr.DataArray(
