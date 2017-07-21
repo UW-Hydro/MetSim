@@ -46,6 +46,7 @@ SW_RAD_DT = 30.0          # timestep for radiation routine (seconds)
 
 MA = 28.9644e-3         # (kg mol-1) molecular weight of air
 R = 8.3143              # (m3 Pa mol-1 K-1) gas law constant
+R_DRY = 287             # (J / degC * kg) Gas constant of dry air 
 G_STD = 9.80665         # (m s-2) standard gravitational accel.
 P_STD = 101325.0        # (Pa) standard pressure at 0. m elevation
 T_STD = 288.15          # (K) standard temp at 0. m elevation

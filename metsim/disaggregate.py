@@ -91,6 +91,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         df_daily['tskc'], params)
 
     df_disagg['prec'] = prec(df_daily['prec'], ts)
+    df_disagg['air_pressure'] = pressure(df_disagg['temp'],
+                                         params['elev'], params['lapse_rate'])
     if 'wind' in df_daily:
         df_disagg['wind'] = wind(df_daily['wind'], ts)
 
@@ -235,6 +237,15 @@ def wind(wind: pd.Series, ts: float):
         A sub-daily timeseries of wind
     """
     return wind.resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
+
+
+def pressure(temp: pd.Series, elev: float, lr: float):
+    """
+    Air pressure
+    """
+    temp_corr = cnst.KELVIN + temp + 0.5 * elev * lr
+    ratio = -(elev * cnst.G_STD) / (cnst.R_DRY * temp_corr)
+    return cnst.P_STD * np.exp(ratio)
 
 
 def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
