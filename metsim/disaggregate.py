@@ -393,11 +393,12 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     disaggrad:
         A sub-daily timeseries of shortwave radiation.
     """
+    ts = int(params['time_step'])
+    ts_hourly = float(ts) / cnst.MIN_PER_HOUR
     tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SW_RAD_DT
-    tmp_rad = sw_rad * daylength / cnst.SEC_PER_HOUR
+    tmp_rad = sw_rad * daylength / cnst.SEC_PER_HOUR / ts_hourly
     n_days = len(tmp_rad)
-    ts_per_day = (cnst.HOURS_PER_DAY *
-                  cnst.MIN_PER_HOUR / int(params['time_step']))
+    ts_per_day = (cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
     disaggrad = np.zeros(int(n_days*ts_per_day))
     tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0)
                    / (cnst.HOURS_PER_DAY / cnst.DEG_PER_REV)))
@@ -412,8 +413,7 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
 
     # Chunk sum takes in the distribution of radiation throughout the day
     # and collapses it into chunks that correspond to the desired timestep
-    chunk_size = int(int(params['time_step'])
-                     * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
+    chunk_size = int(ts * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
 
     # Chunk sum takes in the distribution of radiation throughout the day
     # and collapses it into chunks that correspond to the desired timestep
