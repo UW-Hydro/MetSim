@@ -245,7 +245,21 @@ def wind(wind: pd.Series, ts: float):
 
 def pressure(temp: pd.Series, elev: float, lr: float):
     """
-    Air pressure
+    Calculates air pressure.
+
+    Parameters
+    ----------
+    temp:
+        A sub-daily timeseries of temperature
+    elev:
+        Elevation
+    lr: 
+        Lapse rate
+
+    Returns
+    -------
+    pressure:
+        A sub-daily timeseries of air pressure (kPa)
     """
     temp_corr = cnst.KELVIN + temp + 0.5 * elev * -lr
     ratio = -(elev * cnst.G_STD) / (cnst.R_DRY * temp_corr)
@@ -254,6 +268,19 @@ def pressure(temp: pd.Series, elev: float, lr: float):
 
 def specific_humidity(vapor_pressure: pd.Series, air_pressure: pd.Series):
     """
+    Calculates specific humidity
+
+    Parameters
+    ----------
+    vapor_pressure:
+        A sub-daily timeseries of vapor pressure (kPa)
+    air_pressure:
+        A sub-daily timeseries of air pressure (kPa)
+
+    Returns
+    -------
+    spec_humid:
+        A sub-daily timeseries of specific humidity
     """
     mix_rat = (cnst.EPS * vapor_pressure) / (air_pressure - vapor_pressure)
     return mix_rat / (1 + mix_rat)
