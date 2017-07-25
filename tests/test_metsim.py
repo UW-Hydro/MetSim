@@ -65,6 +65,8 @@ data_ranges = {'temp': (-50, 40),
                'longwave': (0, 450),
                'wind': (0, 10),
                'vapor_pressure': (0, 2),
+               'air_pressure': (0, 101325),
+               'spec_humid': (0, 2),
                'rel_humid': (0, 100)}
 
 
@@ -148,7 +150,8 @@ def test_mtclim(test_setup):
     daily_out_vars = ['prec', 't_max', 't_min', 'wind', 'shortwave',
                       'tskc', 'pet', 'vapor_pressure']
     hourly_out_vars = ['prec', 'temp', 'shortwave', 'longwave',
-                       'vapor_pressure', 'rel_humid']
+                       'vapor_pressure', 'wind', 'rel_humid', 'spec_humid',
+                       'air_pressure']
 
     # Load data and ensure the ready flag has been set
     test_setup.params['time_step'] = 1440
