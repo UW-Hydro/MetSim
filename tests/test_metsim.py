@@ -200,7 +200,8 @@ def test_disaggregation_values():
     loc = data_locations['binary']
     data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
     out_vars = ['prec', 'temp', 'shortwave', 'longwave',
-                'vapor_pressure', 'wind', 'rel_humid']
+                       'vapor_pressure', 'wind', 'rel_humid', 'spec_humid',
+                       'air_pressure']
     params = {'start': dates['binary'][0],
               'stop': dates['binary'][1],
               'forcing_fmt': 'binary',

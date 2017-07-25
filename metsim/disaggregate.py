@@ -247,15 +247,15 @@ def pressure(temp: pd.Series, elev: float, lr: float):
     """
     Air pressure
     """
-    temp_corr = cnst.KELVIN + temp + 0.5 * elev * lr
+    temp_corr = cnst.KELVIN + temp + 0.5 * elev * -lr
     ratio = -(elev * cnst.G_STD) / (cnst.R_DRY * temp_corr)
-    return cnst.P_STD * np.exp(ratio)
+    return cnst.P_STD * np.exp(ratio) / cnst.MBAR_PER_BAR
 
 
 def specific_humidity(vapor_pressure: pd.Series, air_pressure: pd.Series):
     """
     """
-    mix_rat = (cnst.EPS * vapor_pressure) / (air_pressure * vapor_pressure)
+    mix_rat = (cnst.EPS * vapor_pressure) / (air_pressure - vapor_pressure)
     return mix_rat / (1 + mix_rat)
 
 
