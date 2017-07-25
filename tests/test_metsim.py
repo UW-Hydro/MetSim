@@ -217,17 +217,6 @@ def test_disaggregation_values():
     # The location we will test against
     loc = (1, 4)
 
-    def check_data(out, good, tol=0.02):
-        assert type(out) is pd.DataFrame
-        for var in ms.params['out_vars']:
-            # Check to make sure each variable has normalized
-            # rmse of less than 0.02
-            h = max([good[var].max(), out[var].max()])
-            l = min([good[var].min(), out[var].min()])
-            nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
-            print(var, nrmse)
-            assert nrmse < tol
-
     # Set up the MetSim object
     ms = MetSim(params)
 
@@ -239,17 +228,12 @@ def test_disaggregation_values():
     good.index = out.index
 
     # Make sure the data comes out right
-    check_data(out, good)
-
-    # Now do 3 hourly
-    ms.params['time_step'] = '180'
-    ms.run()
-    out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
-    good = pd.read_table('./tests/data/three_hourly_48.3125_-120.5625',
-                         names=out_vars)
-    good.index = out.index
-
-    # Make sure the data comes out right
-    check_data(out, good, tol=0.1)
-
-
+    assert type(out) is pd.DataFrame
+    for var in ms.params['out_vars']:
+        # Check to make sure each variable has normalized
+        # rmse of less than 0.02
+        h = max([good[var].max(), out[var].max()])
+        l = min([good[var].min(), out[var].min()])
+        nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
+        print(var, nrmse)
+        assert nrmse < 0.02
