@@ -284,8 +284,6 @@ class MetSim(object):
         dims = ('time', ) + self.domain['mask'].dims
         coords = {'time': times, **self.domain.mask.coords}
         self.output = xr.Dataset(coords=coords)
-        if 'elev' in self.params:
-            self.params.pop('elev')
         for k, v in self.params.items():
             # Need to convert some parameters to strings
             if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
