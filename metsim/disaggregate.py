@@ -86,13 +86,17 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg['rel_humid'] = relative_humidity(df_disagg['vapor_pressure'],
                                                df_disagg['temp'])
 
+    df_disagg['air_pressure'] = pressure(df_disagg['temp'],
+                                         params['elev'], params['lapse_rate'])
+
+    df_disagg['spec_humid'] = specific_humidity(df_disagg['vapor_pressure'],
+                                                df_disagg['air_pressure'])
+
     df_disagg['longwave'], df_disagg['tskc'] = longwave(
         df_disagg['temp'], df_disagg['vapor_pressure'],
         df_daily['tskc'], params)
 
     df_disagg['prec'] = prec(df_daily['prec'], ts)
-    df_disagg['air_pressure'] = pressure(df_disagg['temp'],
-                                         params['elev'], params['lapse_rate'])
     if 'wind' in df_daily:
         df_disagg['wind'] = wind(df_daily['wind'], ts)
 
@@ -246,6 +250,13 @@ def pressure(temp: pd.Series, elev: float, lr: float):
     temp_corr = cnst.KELVIN + temp + 0.5 * elev * lr
     ratio = -(elev * cnst.G_STD) / (cnst.R_DRY * temp_corr)
     return cnst.P_STD * np.exp(ratio)
+
+
+def specific_humidity(vapor_pressure: pd.Series, air_pressure: pd.Series):
+    """
+    """
+    mix_rat = (cnst.EPS * vapor_pressure) / (air_pressure * vapor_pressure)
+    return mix_rat / (1 + mix_rat)
 
 
 def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
