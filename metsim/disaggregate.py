@@ -407,7 +407,7 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     ts = int(params['time_step'])
     ts_hourly = float(ts) / cnst.MIN_PER_HOUR
     tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SW_RAD_DT
-    tmp_rad = sw_rad * daylength / cnst.SEC_PER_HOUR / ts_hourly
+    tmp_rad = (sw_rad * daylength) / (cnst.SEC_PER_HOUR * ts_hourly)
     n_days = len(tmp_rad)
     ts_per_day = (cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
     disaggrad = np.zeros(int(n_days*ts_per_day))
