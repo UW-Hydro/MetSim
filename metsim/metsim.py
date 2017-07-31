@@ -246,7 +246,16 @@ class MetSim(object):
         else:
             locs, df = result
         for varname in self.params['out_vars']:
-            self.output[varname].loc[locs] = df[varname]
+            try:
+                self.output[varname].loc[locs] = df[varname]
+            except ValueError as e:
+                logger.error(e)
+                logger.error("This error is probably indicitive of a mismatch "
+                             "between the domain and input data. Check that "
+                             "all of your cells inside of the mask have both "
+                             "elevation in the domain as well as all of the "
+                             "required input forcings.")
+                raise
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""
