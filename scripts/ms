@@ -52,6 +52,10 @@ def init(opts):
     conf['domain_vars'] = OrderedDict(config['domain_vars'])
     conf['state_vars'] = OrderedDict(config['state_vars'])
     out_dir = conf['out_dir']
+    out_state = conf.get('out_state', None)
+    if out_state is None:
+        out_state = os.path.join(out_dir, 'state.nc')
+
     method = conf['method']
 
     # If the forcing variable is a directory, scan it for files
@@ -86,6 +90,7 @@ def init(opts):
                  "nprocs": opts.n_processes,
                  "method": method,
                  "out_dir": out_dir,
+                 "out_state": out_state,
                  "state": state_file,
                  "annual": opts.annual,
                  "domain": domain_file,
