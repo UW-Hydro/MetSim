@@ -56,7 +56,8 @@ Output Specifications
 =====================
 .. ATTENTION::
     The ``time`` coordinate in MetSim's output is local to the location of each 
-    cell!
+    cell! This means that for a single time slice in the NetCDF file all locations
+    along a parallel (same latitude) will have the same solar geometry at that time.
 
 The output variables that are available are dependent on the time step being used.  There are two cases:
 
@@ -70,9 +71,9 @@ step:
 * ``t_min`` : Minimum temperature (also a required input value) (C)
 * ``t_max`` : Maximum temperature (also a required input value) (C)
 * ``prec`` : Precipitation (also a required input value) (mm/day)
-* ``swe`` : Snow water equivalent (mm)
+* ``shortwave`` : Snow water equivalent (mm)
 * ``vapor_pressure`` : Vapor pressure (kPa)
-* ``shortwave`` : Shortwave radiation (W/m^2)
+* ``swrad`` : Shortwave radiation (W/m^2)
 * ``tskc`` : Cloud cover fraction
 * ``pet`` : Potential evapotranpiration (mm/day)
 
