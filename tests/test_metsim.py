@@ -4,6 +4,7 @@ Unit tests for MetSim
 """
 
 import os
+import tempfile
 import pytest
 import numpy as np
 import pandas as pd
@@ -101,7 +102,7 @@ def test_params(in_format, out_format, method):
     stop = dates[in_format][1]
     in_vars = in_vars_section[in_format]
     domain_vars = domain_section[in_format]
-    out_dir = "./tmp"
+    out_dir = tempfile.mkdtemp('results')
     out_prefix = "forcing"
     params = {'start': start,
               'stop': stop,
@@ -117,6 +118,7 @@ def test_params(in_format, out_format, method):
               'time_step': "60",
               'annual': False,
               'out_dir': out_dir,
+              'out_state': os.path.join(out_dir, 'state.nc'),
               'out_prefix': out_prefix,
               'forcing_vars': in_vars,
               'domain_vars': domain_vars}
@@ -199,9 +201,9 @@ def test_disaggregation_values():
     # Set parameters
     loc = data_locations['binary']
     data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
-    out_vars = ['prec', 'temp', 'shortwave', 'longwave',
-                       'vapor_pressure', 'wind', 'rel_humid', 'spec_humid',
-                       'air_pressure']
+    out_vars = ['prec', 'temp', 'shortwave', 'longwave', 'vapor_pressure',
+                'wind', 'rel_humid', 'spec_humid', 'air_pressure']
+    out_dir = tempfile.mkdtemp('results')
     params = {'start': dates['binary'][0],
               'stop': dates['binary'][1],
               'forcing_fmt': 'binary',
@@ -213,7 +215,8 @@ def test_disaggregation_values():
               'forcing': data_files,
               'method': 'mtclim',
               'time_step': "60",
-              'out_dir': "./tmp",
+              'out_dir': out_dir,
+              'out_state': os.path.join(out_dir, 'state.nc'),
               'out_vars': out_vars,
               'forcing_vars': in_vars_section['binary'],
               'domain_vars': domain_section['binary']
@@ -255,5 +258,3 @@ def test_disaggregation_values():
 
     # Make sure the data comes out right
     check_data(out, good, tol=0.1)
-
-
