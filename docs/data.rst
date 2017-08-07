@@ -54,6 +54,10 @@ grid cell. It should be named ``swe`` in the file.
 
 Output Specifications
 =====================
+.. ATTENTION::
+    The ``time`` coordinate in MetSim's output is local to the location of each 
+    cell!
+
 The output variables that are available are dependent on the time step being used.  There are two cases:
 
 Daily Output
