@@ -357,7 +357,7 @@ class MetSim(object):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
-        non_empty = ['method', 'out_dir', 'start',
+        non_empty = ['method', 'out_dir', 'out_state', 'start',
                      'stop', 'time_step', 'out_fmt',
                      'forcing_fmt', 'domain_fmt', 'state_fmt']
         for each in non_empty:
@@ -408,14 +408,16 @@ class MetSim(object):
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
         logger.info("Writing netcdf...")
-        if not os.path.exists(self.params['out_dir']):
-            os.mkdir(self.params['out_dir'])
+        for dirname in [self.params['out_dir'],
+                        os.path.dirname(self.params['out_state'])]:
+            os.makedirs(dirname, exist_ok=True)
 
         # all state variables are written as doubles
         state_encoding = {'time': {'dtype': 'f8'}}
         for v in self.state:
             state_encoding[v] = {'dtype': 'f8'}
         # write state file
+
         self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
         # write output file
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
@@ -427,8 +429,9 @@ class MetSim(object):
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
         logger.info("Writing ascii...")
-        if not os.path.exists(self.params['out_dir']):
-            os.mkdir(self.params['out_dir'])
+        for dirname in [self.params['out_dir'],
+                        os.path.dirname(self.params['out_state'])]:
+            os.makedirs(dirname, exist_ok=True)
         # all state variables are written as doubles
         state_encoding = {'time': {'dtype': 'f8'}}
         for v in self.state:
