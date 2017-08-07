@@ -71,9 +71,9 @@ step:
 * ``t_min`` : Minimum temperature (also a required input value) (C)
 * ``t_max`` : Maximum temperature (also a required input value) (C)
 * ``prec`` : Precipitation (also a required input value) (mm/day)
-* ``shortwave`` : Snow water equivalent (mm)
+* ``swe`` : Snow water equivalent (mm)
 * ``vapor_pressure`` : Vapor pressure (kPa)
-* ``swrad`` : Shortwave radiation (W/m^2)
+* ``shortwave`` : Shortwave radiation (W/m^2)
 * ``tskc`` : Cloud cover fraction
 * ``pet`` : Potential evapotranpiration (mm/day)
 
