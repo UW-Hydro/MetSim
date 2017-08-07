@@ -86,6 +86,12 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg['rel_humid'] = relative_humidity(df_disagg['vapor_pressure'],
                                                df_disagg['temp'])
 
+    df_disagg['air_pressure'] = pressure(df_disagg['temp'],
+                                         params['elev'], params['lapse_rate'])
+
+    df_disagg['spec_humid'] = specific_humidity(df_disagg['vapor_pressure'],
+                                                df_disagg['air_pressure'])
+
     df_disagg['longwave'], df_disagg['tskc'] = longwave(
         df_disagg['temp'], df_disagg['vapor_pressure'],
         df_daily['tskc'], params)
@@ -127,7 +133,7 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
     rise_times = np.where(diff_mask > 0)[0] * ts
     set_times = np.where(diff_mask < 0)[0] * ts
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
-               rise_times)
+               rise_times) + ts
     t_t_min = rise_times
     return t_t_min, t_t_max
 
@@ -235,6 +241,49 @@ def wind(wind: pd.Series, ts: float):
         A sub-daily timeseries of wind
     """
     return wind.resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
+
+
+def pressure(temp: pd.Series, elev: float, lr: float):
+    """
+    Calculates air pressure.
+
+    Parameters
+    ----------
+    temp:
+        A sub-daily timeseries of temperature
+    elev:
+        Elevation
+    lr: 
+        Lapse rate
+
+    Returns
+    -------
+    pressure:
+        A sub-daily timeseries of air pressure (kPa)
+    """
+    temp_corr = cnst.KELVIN + temp + 0.5 * elev * -lr
+    ratio = -(elev * cnst.G_STD) / (cnst.R_DRY * temp_corr)
+    return cnst.P_STD * np.exp(ratio) / cnst.MBAR_PER_BAR
+
+
+def specific_humidity(vapor_pressure: pd.Series, air_pressure: pd.Series):
+    """
+    Calculates specific humidity
+
+    Parameters
+    ----------
+    vapor_pressure:
+        A sub-daily timeseries of vapor pressure (kPa)
+    air_pressure:
+        A sub-daily timeseries of air pressure (kPa)
+
+    Returns
+    -------
+    spec_humid:
+        A sub-daily timeseries of specific humidity
+    """
+    mix_rat = (cnst.EPS * vapor_pressure) / (air_pressure - vapor_pressure)
+    return mix_rat / (1 + mix_rat)
 
 
 def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
@@ -382,11 +431,12 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     disaggrad:
         A sub-daily timeseries of shortwave radiation.
     """
+    ts = int(params['time_step'])
+    ts_hourly = float(ts) / cnst.MIN_PER_HOUR
     tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SW_RAD_DT
-    tmp_rad = sw_rad * daylength / cnst.SEC_PER_HOUR
+    tmp_rad = (sw_rad * daylength) / (cnst.SEC_PER_HOUR * ts_hourly)
     n_days = len(tmp_rad)
-    ts_per_day = (cnst.HOURS_PER_DAY *
-                  cnst.MIN_PER_HOUR / int(params['time_step']))
+    ts_per_day = (cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
     disaggrad = np.zeros(int(n_days*ts_per_day))
     tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0)
                    / (cnst.HOURS_PER_DAY / cnst.DEG_PER_REV)))
@@ -401,8 +451,7 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
 
     # Chunk sum takes in the distribution of radiation throughout the day
     # and collapses it into chunks that correspond to the desired timestep
-    chunk_size = int(int(params['time_step'])
-                     * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
+    chunk_size = int(ts * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
 
     # Chunk sum takes in the distribution of radiation throughout the day
     # and collapses it into chunks that correspond to the desired timestep

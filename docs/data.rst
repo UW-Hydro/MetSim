@@ -79,7 +79,9 @@ Sub-daily Output
 * ``prec`` : Precipitation (mm/timestep)
 * ``shortwave`` : Shortwave radiation (W/m^2)
 * ``vapor_pressure`` : Vapor pressure (kPa)
+* ``air_pressure`` : Air pressure (kPa)
 * ``rel_humid`` : Relative humidity
+* ``spec_humid`` : Specific humidity
 * ``longwave`` : Longwave radiation (W/m^2)
 * ``tsck`` : Cloud cover fraction
 * ``wind`` : Wind speed (only if given as an input) (m/s)

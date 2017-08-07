@@ -62,9 +62,9 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setFormatter(formatter)
 logger = logging.getLogger("metsim")
 
-attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
+attrs = {'pet': {'units': 'mm timestep-1', 'long_name': 'potential evaporation',
                  'standard_name': 'water_potential_evaporation_flux'},
-         'prec': {'units': 'mm d-1', 'long_name': 'precipitation',
+         'prec': {'units': 'mm timestep-1', 'long_name': 'precipitation',
                   'standard_name': 'precipitation_flux'},
          'shortwave': {'units': 'W m-2', 'long_name': 'shortwave radiation',
                        'standard_name': 'surface_downwelling_shortwave_flux'},
@@ -76,12 +76,16 @@ attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
                    'standard_name': 'daily_minimum_air_temperature'},
          'temp': {'units': 'C', 'long_name': 'air temperature',
                   'standard_name': 'air_temperature'},
-         'vapor_pressure': {'units': 'mbar', 'long_name': 'vapor pressure',
+         'vapor_pressure': {'units': 'kPa', 'long_name': 'vapor pressure',
                             'standard_name': 'vapor_pressure'},
+         'air_pressure': {'units': 'kPa', 'long_name': 'air pressure',
+                          'standard_name': 'air_pressure'},
          'tskc': {'units': 'fraction', 'long_name': 'cloud fraction',
                   'standard_name': 'cloud_fraction'},
          'rel_humid': {'units': '%', 'long_name': 'relative humidity',
                        'standard_name': 'relative_humidity'},
+         'spec_humid': {'units': '', 'long_name': 'specific humidity',
+                        'standard_name': 'specific_humidity'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
@@ -242,7 +246,16 @@ class MetSim(object):
         else:
             locs, df = result
         for varname in self.params['out_vars']:
-            self.output[varname].loc[locs] = df[varname]
+            try:
+                self.output[varname].loc[locs] = df[varname]
+            except ValueError as e:
+                logger.error(e)
+                logger.error("This error is probably indicitive of a mismatch "
+                             "between the domain and input data. Check that "
+                             "all of your cells inside of the mask have both "
+                             "elevation in the domain as well as all of the "
+                             "required input forcings.")
+                raise
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""
@@ -284,6 +297,8 @@ class MetSim(object):
         dims = ('time', ) + self.domain['mask'].dims
         coords = {'time': times, **self.domain.mask.coords}
         self.output = xr.Dataset(coords=coords)
+        if 'elev' in self.params:
+            self.params.pop('elev')
         for k, v in self.params.items():
             # Need to convert some parameters to strings
             if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
@@ -474,6 +489,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
     lat = ds['lat'].values
     elev = ds['elev'].values
     swe = ds['swe'].values
+    params['elev'] = elev
     df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here

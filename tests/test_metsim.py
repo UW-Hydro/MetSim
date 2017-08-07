@@ -65,6 +65,8 @@ data_ranges = {'temp': (-50, 40),
                'longwave': (0, 450),
                'wind': (0, 10),
                'vapor_pressure': (0, 2),
+               'air_pressure': (0, 101325),
+               'spec_humid': (0, 2),
                'rel_humid': (0, 100)}
 
 
@@ -148,7 +150,8 @@ def test_mtclim(test_setup):
     daily_out_vars = ['prec', 't_max', 't_min', 'wind', 'shortwave',
                       'tskc', 'pet', 'vapor_pressure']
     hourly_out_vars = ['prec', 'temp', 'shortwave', 'longwave',
-                       'vapor_pressure', 'rel_humid']
+                       'vapor_pressure', 'wind', 'rel_humid', 'spec_humid',
+                       'air_pressure']
 
     # Load data and ensure the ready flag has been set
     test_setup.params['time_step'] = 1440
@@ -197,7 +200,8 @@ def test_disaggregation_values():
     loc = data_locations['binary']
     data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
     out_vars = ['prec', 'temp', 'shortwave', 'longwave',
-                'vapor_pressure', 'wind', 'rel_humid']
+                       'vapor_pressure', 'wind', 'rel_humid', 'spec_humid',
+                       'air_pressure']
     params = {'start': dates['binary'][0],
               'stop': dates['binary'][1],
               'forcing_fmt': 'binary',
@@ -217,6 +221,17 @@ def test_disaggregation_values():
     # The location we will test against
     loc = (1, 4)
 
+    def check_data(out, good, tol=0.02):
+        assert type(out) is pd.DataFrame
+        for var in ms.params['out_vars']:
+            # Check to make sure each variable has normalized
+            # rmse of less than 0.02
+            h = max([good[var].max(), out[var].max()])
+            l = min([good[var].min(), out[var].min()])
+            nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
+            print(var, nrmse)
+            assert nrmse < tol
+
     # Set up the MetSim object
     ms = MetSim(params)
 
@@ -228,12 +243,17 @@ def test_disaggregation_values():
     good.index = out.index
 
     # Make sure the data comes out right
-    assert type(out) is pd.DataFrame
-    for var in ms.params['out_vars']:
-        # Check to make sure each variable has normalized
-        # rmse of less than 0.02
-        h = max([good[var].max(), out[var].max()])
-        l = min([good[var].min(), out[var].min()])
-        nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
-        print(var, nrmse)
-        assert nrmse < 0.02
+    check_data(out, good)
+
+    # Now do 3 hourly
+    ms.params['time_step'] = '180'
+    ms.run()
+    out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
+    good = pd.read_table('./tests/data/three_hourly_48.3125_-120.5625',
+                         names=out_vars)
+    good.index = out.index
+
+    # Make sure the data comes out right
+    check_data(out, good, tol=0.1)
+
+
