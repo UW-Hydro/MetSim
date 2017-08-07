@@ -86,11 +86,14 @@ attrs = {'pet': {'units': 'mm timestep-1', 'long_name': 'potential evaporation',
                        'standard_name': 'relative_humidity'},
          'spec_humid': {'units': '', 'long_name': 'specific humidity',
                         'standard_name': 'specific_humidity'},
+         'time': {'long_name': 'local time at grid location',
+                  'standard_name': 'local_time'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
                      'history': 'Created: {0} by {1}'.format(now, user),
                      'references': references,
+                     'documentation': 'Times given are local to their locations.',
                      'comment': 'no comment at this time'}}
 
 attrs = {k: OrderedDict(v) for k, v in attrs.items()}
@@ -318,6 +321,7 @@ class MetSim(object):
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding={'dtype': self.params['out_precision'],
                           '_FillValue': cnst.FILL_VALUES['f8']})
+        self.output.time.attrs.update(attrs['time'])
 
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
