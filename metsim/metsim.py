@@ -30,7 +30,7 @@ output specified.
 
 import os
 import sys
-import struct
+import json
 import logging
 import itertools
 import time as tm
@@ -40,11 +40,14 @@ from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 import xarray as xr
+from collections import OrderedDict, Iterable
 
+from metsim import io
 from metsim.methods import mtclim
 from metsim.disaggregate import disaggregate
 from metsim.physics import solar_geom
 import metsim.constants as cnst
+from metsim.datetime import date_range
 
 references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm for estimating incident daily solar radiation from measurements of temperature, humidity, and precipitation. Agricultural and Forest Meteorology, 93:211-228.
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
@@ -59,24 +62,41 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setFormatter(formatter)
 logger = logging.getLogger("metsim")
 
-attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
+attrs = {'pet': {'units': 'mm timestep-1', 'long_name': 'potential evaporation',
                  'standard_name': 'water_potential_evaporation_flux'},
-         'prec': {'units': 'mm d-1', 'long_name': 'precipitation',
+         'prec': {'units': 'mm timestep-1', 'long_name': 'precipitation',
                   'standard_name': 'precipitation_flux'},
-         'swrad': {'units': 'W m-2', 'long_name': 'shortwave radiation',
-                   'standard_name': 'surface_downwelling_shortwave_flux'},
-         'lwrad': {'units': 'W m-2', 'long_name': 'longwave radiation',
-                   'standard_name': 'surface_downwelling_longwave_flux'},
+         'shortwave': {'units': 'W m-2', 'long_name': 'shortwave radiation',
+                       'standard_name': 'surface_downwelling_shortwave_flux'},
+         'longwave': {'units': 'W m-2', 'long_name': 'longwave radiation',
+                      'standard_name': 'surface_downwelling_longwave_flux'},
          't_max': {'units': 'C', 'long_name': 'maximum daily air temperature',
                    'standard_name': 'daily_maximum_air_temperature'},
          't_min': {'units': 'C', 'long_name': 'minimum daily air temperature',
                    'standard_name': 'daily_minimum_air_temperature'},
+         'temp': {'units': 'C', 'long_name': 'air temperature',
+                  'standard_name': 'air_temperature'},
+         'vapor_pressure': {'units': 'kPa', 'long_name': 'vapor pressure',
+                            'standard_name': 'vapor_pressure'},
+         'air_pressure': {'units': 'kPa', 'long_name': 'air pressure',
+                          'standard_name': 'air_pressure'},
+         'tskc': {'units': 'fraction', 'long_name': 'cloud fraction',
+                  'standard_name': 'cloud_fraction'},
+         'rel_humid': {'units': '%', 'long_name': 'relative humidity',
+                       'standard_name': 'relative_humidity'},
+         'spec_humid': {'units': '', 'long_name': 'specific humidity',
+                        'standard_name': 'specific_humidity'},
+         'time': {'long_name': 'local time at grid location',
+                  'standard_name': 'local_time'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
                      'history': 'Created: {0} by {1}'.format(now, user),
                      'references': references,
+                     'documentation': 'Times given are local to their locations.',
                      'comment': 'no comment at this time'}}
+
+attrs = {k: OrderedDict(v) for k, v in attrs.items()}
 
 
 class MetSim(object):
@@ -87,31 +107,34 @@ class MetSim(object):
     """
 
     # Class variables
-    process_handles = []
     methods = {'mtclim': mtclim}
     params = {
         "method": '',
         "domain": '',
         "state": '',
         "out_dir": '',
+        "out_state": '',
         "out_prefix": 'forcing',
         "start": '',
         "stop": '',
         "time_step": '',
-        "out_format": '',
-        "in_format": None,
+        "calendar": 'standard',
+        "out_fmt": '',
+        "out_precision": 'f8',
         "verbose": 0,
-        "base_elev": 0,
-        "t_max_lr": '',
-        "t_min_lr": '',
-        "site_isoh": 1,
-        "base_isoh": 1,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
+        "annual": False,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
         "tmax_daylength_fraction": 0.67,
+        "snow_crit_temp": -6.0,
+        "snow_melt_rate": 0.042,
+        "rain_scalar": 0.75,
+        "tday_coef": 0.45,
+        "lapse_rate": 0.0065,
+        "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid']
     }
@@ -121,66 +144,36 @@ class MetSim(object):
         Constructor
         """
         # Record parameters
-        MetSim.params.update(params)
-        MetSim.params['dates'] = pd.date_range(params['start'], params['stop'])
-        logger.setLevel(MetSim.params['verbose'])
-        ch.setLevel(MetSim.params['verbose'])
+        self.params.update(params)
+        logger.setLevel(self.params['verbose'])
+        ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
-        self.output = None
-        self.met_data = None
-        self.ready = False
-
-    def load(self):
-        """Load the necessary datasets into memory"""
-        # Get the necessary information from the domain
-        self.domain = xr.open_dataset(self.params['domain']).rename(
-                MetSim.params['domain_vars']).load()
-        self.state = xr.open_dataset(self.params['state']).rename(
-            MetSim.params.get('state_vars',
-                              {'prec': 'prec'})).load()
-        self.lat = self.domain['lat']
-        self.lon = self.domain['lon']
-        self.mask = self.domain['mask']
-        self.elev = self.domain['elev']
-        self.domain_shape = self.mask.shape
-        self.domain_dims = self.mask.dims
-        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        self.method = MetSim.methods[self.params['method']]
-        ilist, jlist = np.nonzero(np.nan_to_num(self.mask.values))
-
-        self.i_idx = ilist
-        self.j_idx = jlist
-
-        self.locations = list(zip(ilist, jlist))
-        logger.info('found %d locations' % len(self.locations))
-
-        out_dir = MetSim.params['out_dir']
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-
-        # Input preprocessing
-        in_preprocess = {"ascii": self.vic_in_preprocess,
-                         "binary": self.vic_in_preprocess,
-                         "netcdf": self.netcdf_in_preprocess}
-        in_preprocess[MetSim.params['in_format']](self.params['forcing'])
-        # Get data from the state file
+        self.domain = io.read_domain(self.params)
+        self.met_data = io.read_met_data(self.params, self.domain)
+        self.state = io.read_state(self.params, self.domain)
+        self.met_data['elev'] = self.domain['elev']
+        self.met_data['lat'] = self.domain['lat']
         self._aggregate_state()
-        # Double check that we are ready to do calculations
-        self._validate_setup()
-        self.ready = True
 
     def launch(self):
         """Farm out the jobs to separate processes"""
-        nprocs = MetSim.params['nprocs']
-
         # Do the forcing generation and disaggregation if required
-        time_dim = pd.to_datetime(self.met_data.time.values)
+        self._validate_setup()
+        nprocs = self.params['nprocs']
+        time_dim = pd.DatetimeIndex(self.met_data.time.values)
+        iter_list = [self.met_data[dim].values
+                     for dim in self.params['iter_dims']]
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
+        self.method = MetSim.methods[self.params['method']]
+
         if self.params['annual']:
             groups = time_dim.groupby(time_dim.year)
         else:
             groups = {'total': time_dim}
+
         for label, times in groups.items():
             self.pool = Pool(processes=nprocs)
+            self.site_generator = itertools.product(*iter_list)
             logger.info("Beginning {}".format(label))
             status = []
 
@@ -190,21 +183,63 @@ class MetSim(object):
                                     ).intersection(time_dim)
             data = self.met_data.sel(time=times_ext)
             self.setup_output(self.met_data.sel(time=times))
-            for i, j in self.locations:
-                locd = dict(lat=i, lon=j)
+            for site in self.site_generator:
+                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+                # Don't run masked cells
+                if not self.domain['mask'].sel(**locs).values > 0:
+                    continue
                 stat = self.pool.apply_async(
                     wrap_run,
-                    args=(self.method.run, locd, self.params,
-                          data.isel(lat=i, lon=j),
-                          self.state.isel(lat=i, lon=j),
+                    args=(self.method.run, locs, self.params,
+                          data.sel(**locs),
+                          self.state.sel(**locs),
                           self.disagg, times, label),
                     callback=self._unpack_results)
                 status.append(stat)
             self.pool.close()
-
             # Check that everything worked
             [stat.get() for stat in status]
             self.pool.join()
+            self.write(label)
+
+    def run(self):
+        """
+        Kicks off the disaggregation and queues up data for IO
+        """
+        self._validate_setup()
+        time_dim = pd.DatetimeIndex(self.met_data.time.values)
+        iter_list = [self.met_data[dim].values
+                     for dim in self.params['iter_dims']]
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
+        self.method = MetSim.methods[self.params['method']]
+
+        if self.params['annual']:
+            groups = time_dim.groupby(time_dim.year)
+        else:
+            groups = {'total': time_dim}
+
+        for label, times in groups.items():
+            logger.info("Beginning {}".format(label))
+            self.site_generator = itertools.product(*iter_list)
+            # Add in some end point data for continuity
+            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
+                                     times[-1] + pd.Timedelta("1 days")]
+                                    ).intersection(time_dim)
+            data = self.met_data.sel(time=times_ext)
+            self.setup_output(self.met_data.sel(time=times))
+
+            for site in self.site_generator:
+                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+                # Don't run masked cells
+                if not self.domain['mask'].sel(**locs).values > 0:
+                    continue
+                wrap_results = wrap_run(
+                    self.method.run, locs, self.params, data.sel(**locs),
+                    self.state.sel(**locs), self.disagg, times, label)
+
+                # Cut the returned data down to the correct time index
+                self._unpack_results(wrap_results)
+
             self.write(label)
 
     def _unpack_results(self, result: tuple):
@@ -214,120 +249,40 @@ class MetSim(object):
             self._unpack_state(state, locs)
         else:
             locs, df = result
-        i = locs['lat']
-        j = locs['lon']
         for varname in self.params['out_vars']:
-            self.output[varname].values[:, i, j] = df[varname].values
+            try:
+                self.output[varname].loc[locs] = df[varname]
+            except ValueError as e:
+                logger.error(e)
+                logger.error("This error is probably indicitive of a mismatch "
+                             "between the domain and input data. Check that "
+                             "all of your cells inside of the mask have both "
+                             "elevation in the domain as well as all of the "
+                             "required input forcings.")
+                raise
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""
-        i = locs['lat']
-        j = locs['lon']
-
         # We concatenate with the old state values in case we don't
         # have 90 new days to use
-        tmin = np.concatenate((self.state['t_min'].values[:, i, j],
+        tmin = np.concatenate((self.state['t_min'].sel(**locs).values[:],
                                result['t_min'].values))
-        tmax = np.concatenate((self.state['t_max'].values[:, i, j],
+        tmax = np.concatenate((self.state['t_max'].sel(**locs).values[:],
                                result['t_max'].values))
-        prec = np.concatenate((self.state['prec'].values[:, i, j],
+        prec = np.concatenate((self.state['prec'].sel(**locs).values[:],
                                result['prec'].values))
-        self.state['t_min'].values[:, i, j] = tmin[-90:]
-        self.state['t_max'].values[:, i, j] = tmax[-90:]
-        self.state['prec'].values[:, i, j] = prec[-90:]
-        self.state['swe'].values[i, j] = result['swe'].values[-1]
+        self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
+        self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
+        self.state['prec'].sel(**locs).values[:] = prec[-90:]
+        self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
-        self.state.time.values = pd.date_range(state_start, result.index[-1])
-
-    def run(self):
-        """
-        Kicks off the disaggregation and queues up data for IO
-        """
-        time_dim = pd.to_datetime(self.met_data.time.values)
-        if self.params['annual']:
-            groups = time_dim.groupby(time_dim.year)
-        else:
-            groups = {'total': time_dim}
-        for label, times in groups.items():
-            logger.info("Beginning {}".format(label))
-            # Add in some end point data for continuity
-            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
-                                     times[-1] + pd.Timedelta("1 days")]
-                                    ).intersection(time_dim)
-            data = self.met_data.sel(time=times_ext)
-            self.setup_output(self.met_data.sel(time=times))
-            for i, j in self.locations:
-                locs = dict(lat=i, lon=j)
-                logger.info("Processing {}".format(locs))
-                ds = data.isel(**locs)
-                lat = ds['lat'].values
-                elev = ds['elev'].values
-                swe = ds['swe'].values
-                df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
-                # solar_geom returns a tuple due to restrictions of numba
-                # for clarity we convert it to a dictionary here
-                sg = solar_geom(elev, lat)
-                sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
-                      'potrad': sg[2], 'tt_max0': sg[3]}
-
-                # Generate the daily values - these are saved
-                # so that we can use a subset of them to write
-                # out the state file later
-                df = self.method.run(df, self.params, sg,
-                                     elev=elev, swe=swe)
-
-                # Get some values for padding the time list,
-                # so that when interpolating in the disaggregation
-                # functions we can match endpoints with adjoining
-                # chunks - if no data is available, just repeat some
-                # default values (this case is used at the very
-                # beginning and end of the record)
-                if self.disagg:
-                    try:
-                        prevday = data.time[0] - pd.Timedelta('1 days')
-                        t_begin = [self.met_data['t_min'].sel(
-                                       time=prevday).isel(lat=i, lon=j),
-                                   self.met_data['t_max'].sel(
-                                       time=prevday).isel(lat=i, lon=j)]
-                    except (KeyError, ValueError):
-                        t_begin = [self.state['t_min'].values[-1, i, j],
-                                   self.state['t_max'].values[-1, i, j]]
-                    try:
-                        nextday = pd.datetime(int(label)+1, 1, 1)
-                        t_end = [self.met_data['t_min'].sel(
-                                     time=nextday).isel(lat=i, lon=j),
-                                 self.met_data['t_max'].sel(
-                                     time=nextday).isel(lat=i, lon=j)]
-                    except (KeyError, ValueError):
-                        # None so that we don't extend the record
-                        t_end = None
-
-                    self._unpack_state(df, locs)
-                    df = disaggregate(df, self.params, sg, t_begin, t_end)
-                    start = times[0]
-                    stop = (times[-1] + pd.Timedelta('1 days')
-                            - pd.Timedelta(self.params['time_step']))
-                    new_times = pd.date_range(start, stop, freq='{}T'.format(
-                        self.params['time_step']))
-                else:
-                    # convert srad to daily average flux from daytime flux
-                    self._unpack_state(df, locs)
-                    df['swrad'] *= df['dayl'] / cnst.SEC_PER_DAY
-                    # If we're outputting daily values, we dont' need to
-                    # change the output dates - see inside of `if` condition
-                    # above for more explanation
-                    new_times = times
-
-                # Cut the returned data down to the correct time index
-                self._unpack_results((locs, df.loc[new_times[0]:new_times[-1]]))
-
-            self.write(label)
+        self.state.time.values = date_range(state_start, result.index[-1],
+                                            calendar=self.params['calendar'])
 
     def setup_output(self, prototype: xr.Dataset=None):
         if not prototype:
             prototype = self.met_data
-        self.output = self.domain.copy(deep=True)
-        self.output.attrs = attrs['_global']
+        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         # Number of timesteps
         if self.disagg:
             delta = pd.Timedelta('1 days') - pd.Timedelta(
@@ -335,44 +290,58 @@ class MetSim(object):
         else:
             delta = pd.Timedelta('0 days')
 
-        start = pd.Timestamp(prototype.time.values[0]).to_datetime()
-        stop = pd.Timestamp(prototype.time.values[-1]).to_datetime()
-        times = pd.date_range(start, stop + delta,
-                              freq="{}T".format(MetSim.params['time_step']))
+        start = pd.Timestamp(prototype.time.values[0]).to_pydatetime()
+        stop = pd.Timestamp(prototype.time.values[-1]).to_pydatetime()
+        times = date_range(start, stop + delta,
+                           freq="{}T".format(self.params['time_step']),
+                           calendar=self.params['calendar'])
         n_ts = len(times)
 
-        shape = (n_ts, ) + self.domain_shape
-        dims = ('time', ) + self.domain_dims
+        shape = (n_ts, ) + self.domain['mask'].shape
+        dims = ('time', ) + self.domain['mask'].dims
         coords = {'time': times, **self.domain.mask.coords}
-        for varname in MetSim.params['out_vars']:
+        self.output = xr.Dataset(coords=coords)
+        if 'elev' in self.params:
+            self.params.pop('elev')
+        for k, v in self.params.items():
+            # Need to convert some parameters to strings
+            if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
+                v = str(v)
+            # Don't include complex types
+            if isinstance(v, dict):
+                v = json.dumps(v)
+            elif not isinstance(v, str) and isinstance(v, Iterable):
+                v = ', '.join(v)
+            attrs['_global'][k] = v
+        self.output.attrs = attrs['_global']
+        for varname in self.params['out_vars']:
             self.output[varname] = xr.DataArray(
                 data=np.full(shape, np.nan),
                 coords=coords, dims=dims,
                 name=varname, attrs=attrs.get(varname, {}),
-                encoding={'dtype': 'f8', '_FillValue': cnst.FILL_VALUES['f8']})
-
-    def find_elevation(self, lat: float, lon: float) -> float:
-        """ Use the domain file to get the elevation """
-        return self.elev.sel(lat=lat, lon=lon, method='nearest')
+                encoding={'dtype': self.params['out_precision'],
+                          '_FillValue': cnst.FILL_VALUES['f8']})
+        self.output.time.attrs.update(attrs['time'])
 
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
-        trailing = self.state['prec']
         begin_record = self.params['start'] - pd.Timedelta("90 days")
         end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = pd.date_range(begin_record, end_record)
-        trailing['time'] = record_dates
+        record_dates = date_range(begin_record, end_record,
+                                  calendar=self.params['calendar'])
+        trailing = self.state['prec'].sel(time=record_dates)
         total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
-        total_precip = total_precip.rolling(time=90).mean().drop(record_dates,
-                                                                 dim='time')
+        total_precip = (cnst.DAYS_PER_YEAR * total_precip.rolling(
+            time=90).mean().drop(record_dates, dim='time'))
         self.met_data['seasonal_prec'] = total_precip
 
         # Smoothed daily temperature range
         trailing = self.state['t_max'] - self.state['t_min']
         begin_record = self.params['start'] - pd.Timedelta("90 days")
         end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = pd.date_range(begin_record, end_record)
+        record_dates = date_range(begin_record, end_record,
+                                  calendar=self.params['calendar'])
         trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         sm_dtr = xr.concat([trailing, dtr], dim='time')
@@ -380,8 +349,8 @@ class MetSim(object):
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
-        self.met_data['swe'] = xr.Variable(('lat', 'lon'),
-                                           self.state['swe'].values)
+        self.state['swe'] = self.state.sel(time=end_record).swe.drop('time')
+        self.met_data['swe'] = self.state.swe.copy()
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
@@ -392,9 +361,9 @@ class MetSim(object):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
-        non_empty = ['method', 'domain', 'state', 'out_dir',
-                     'start', 'stop', 'time_step', 'out_format',
-                     'in_format', 't_max_lr', 't_min_lr']
+        non_empty = ['method', 'out_dir', 'out_state', 'start',
+                     'stop', 'time_step', 'out_fmt',
+                     'forcing_fmt', 'domain_fmt', 'state_fmt']
         for each in non_empty:
             if self.params[each] is None or self.params[each] == '':
                 errs.append("Cannot have empty value for {}".format(each))
@@ -410,57 +379,24 @@ class MetSim(object):
             if each not in self.met_data.variables:
                 errs.append("Input requires {}".format(each))
 
-        # Convert data types as necessary
-        self.params['t_max_lr'] = float(self.params['t_max_lr'])
-        self.params['t_min_lr'] = float(self.params['t_min_lr'])
-
         # Make sure that we are going to write out some data
         if not len(self.params['out_vars']):
             errs.append("Output variable list must not be empty")
 
         # Check that the parameters specified are available
         opts = {'mtclim_swe_corr': [True, False],
+                'out_precision': ['f4', 'f8'],
                 'lw_cloud': ['default', 'cloud_deardorff'],
                 'lw_type': ['default', 'tva', 'anderson',
                             'brutsaert', 'satterlund',
                             'idso', 'prata']}
         for k, v in opts.items():
-            if not MetSim.params[k] in v:
+            if not self.params[k] in v:
                 errs.append("Invalid option given for {}".format(k))
 
         # If any errors, raise and give a summary
         if len(errs) > 1:
             raise Exception("\n  ".join(errs))
-
-    def netcdf_in_preprocess(self, filename: str):
-        """Get the extent and load the data"""
-        self.met_data = self.read(filename)
-
-    def vic_in_preprocess(self, job_list: list):
-        """Process all files to find spatial extent"""
-        # Creates the master dataset which will be used to parallelize
-        self.met_data = xr.Dataset(
-            coords={'time': MetSim.params['dates'],
-                    'lon': self.lon,
-                    'lat': self.lat},
-            attrs={'n_days': len(MetSim.params['dates'])})
-        shape = (len(MetSim.params['dates']), len(self.lat), len(self.lon))
-
-        self.met_data['elev'] = xr.Variable(
-            ('lat', 'lon'), np.full((len(self.lat), len(self.lon)), np.nan))
-        for var in MetSim.params['in_vars']:
-            self.met_data[var] = xr.Variable(
-                ('time', 'lat', 'lon'), np.full(shape, np.nan))
-
-        # Fill in the data
-        for job in job_list:
-            _, lat, lon = os.path.basename(job).split("_")
-            i = np.unique(self.i_idx)[list(self.lat.values).index(float(lat))]
-            j = np.unique(self.j_idx)[list(self.lon.values).index(float(lon))]
-            ds = self.read(job)
-            self.met_data['elev'].values[i, j] = self.elev.values[i, j]
-            for var in MetSim.params['in_vars']:
-                self.met_data[var].values[:, i, j] = ds[var].values
 
     def write(self, suffix=""):
         """
@@ -468,15 +404,26 @@ class MetSim(object):
         """
         dispatch = {
                 'netcdf': self.write_netcdf,
-                'ascii': self.write_ascii
+                'ascii': self.write_ascii,
+                'data': self.write_data
                 }
-        self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
-                             encoding={'time': {'dtype': 'f8'}})
-        dispatch[MetSim.params.get('out_format', 'netcdf').lower()](suffix)
+        dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
 
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
         logger.info("Writing netcdf...")
+        for dirname in [self.params['out_dir'],
+                        os.path.dirname(self.params['out_state'])]:
+            os.makedirs(dirname, exist_ok=True)
+
+        # all state variables are written as doubles
+        state_encoding = {'time': {'dtype': 'f8'}}
+        for v in self.state:
+            state_encoding[v] = {'dtype': 'f8'}
+        # write state file
+
+        self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
+        # write output file
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
         self.output.to_netcdf(output_filename,
@@ -486,103 +433,32 @@ class MetSim(object):
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
         logger.info("Writing ascii...")
-        shape = self.output.dims
-        for i, j in itertools.product(range(shape['lat']),
-                                      range(shape['lon'])):
-            if self.output.mask[i, j] > 0:
-                lat = self.output.lat.values[i]
-                lon = self.output.lon.values[j]
-                fname = "{}_{}_{}_{}.csv".format(
-                            self.params['out_prefix'], lat, lon, suffix)
-                fpath = os.path.join(self.params['out_dir'], fname)
-                self.output.isel(lat=i, lon=j)[self.params[
-                    'out_vars']].to_dataframe().to_csv(fpath)
+        for dirname in [self.params['out_dir'],
+                        os.path.dirname(self.params['out_state'])]:
+            os.makedirs(dirname, exist_ok=True)
+        # all state variables are written as doubles
+        state_encoding = {'time': {'dtype': 'f8'}}
+        for v in self.state:
+            state_encoding[v] = {'dtype': 'f8'}
+        # write state file
+        self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
+        # Need to create new generator to loop over
+        iter_list = [self.met_data[dim].values
+                     for dim in self.params['iter_dims']]
+        site_generator = itertools.product(*iter_list)
 
-    def read(self, fpath: str) -> xr.Dataset:
-        """
-        Dispatch to the right function based on the file extension
-        """
-        dispatch = {
-                'binary': self.read_binary,
-                'netcdf': self.read_netcdf,
-                'ascii': self.read_ascii
-                }
-        return dispatch[MetSim.params['in_format']](fpath)
+        for site in site_generator:
+            locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+            if not self.domain['mask'].sel(**locs).values > 0:
+                continue
+            fname = ("{}_" * (len(iter_list)+1) + "{}.csv").format(
+                self.params['out_prefix'], *site, suffix)
+            fpath = os.path.join(self.params['out_dir'], fname)
+            self.output.sel(**locs)[self.params[
+                   'out_vars']].to_dataframe().to_csv(fpath)
 
-    def read_binary(self, fpath: str) -> xr.Dataset:
-        """ Reads a binary forcing file (VIC 4 format) """
-        dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
-        n_days = len(dates)
-        type_lookup = {'signed': 'h', 'unsigned': 'H'}
-        # Pack these for nicer syntax in the loop
-        var_names = MetSim.params['in_vars'].keys()
-        data_list = [[] for var in MetSim.params['in_vars'].keys()]
-        n_vars = len(var_names)
-        params = [p for p in MetSim.params['in_vars'].values()]
-        scales = [float(s.split()[0]) for s in params]
-        datatypes = [type_lookup[s.split()[-1]] for s in params]
-        with open(fpath, 'rb') as f:
-            i = 0
-            points_read = 0
-            points_needed = 4*n_days
-            while points_read != points_needed:
-                bytes = f.read(2)
-                if bytes:
-                    # Get correct variable and data type with i,
-                    # then unpack & scale
-                    data_list[i].append(
-                        struct.unpack(datatypes[i], bytes)[0] / scales[i])
-                    i = (i + 1) % n_vars
-                    points_read += 1
-                else:
-                    break
-
-        # Binary forcing files have naming format $NAME_$LAT_$LON
-        param_list = os.path.basename(fpath).split("_")
-        params = {"name": param_list[0],
-                  "lat": float(param_list[1]),
-                  "lon": float(param_list[2]),
-                  "n_days": int(n_days)}
-        MetSim.params.update(params)
-        params['elev'] = [[self.find_elevation(params['lat'], params['lon'])]]
-
-        # Assemble the dataset
-        data_dict = {c[0]: (['time'], c[1]) for c in zip(var_names, data_list)}
-        data_dict['elev'] = (['lon', 'lat'], params['elev'])
-        data_dict['day_of_year'] = (['time'], dates.dayofyear)
-        df = xr.Dataset(data_dict,
-                        coords={'lon': [params['lon']],
-                                'lat': [params['lat']],
-                                'time': dates},
-                        attrs={'n_days': params['n_days']})
-        return df
-
-    def read_ascii(self, fpath: str) -> xr.Dataset:
-        """Read in an ascii forcing file"""
-        dates = pd.date_range(MetSim.params['start'], MetSim.params['stop'])
-        names = MetSim.params['in_vars'].keys()
-        ds = pd.read_table(fpath, header=None, delim_whitespace=True,
-                           names=names).head(len(dates))
-        ds.index = dates
-        return ds
-
-    def read_netcdf(self, fpath: str) -> xr.Dataset:
-        """
-        Read in a NetCDF file and add elevation information
-        """
-        ds = xr.open_dataset(fpath)
-        ds.rename(MetSim.params['in_vars'], inplace=True)
-        varlist = list(MetSim.params['in_vars'].values())
-        ds = ds[varlist].sel(
-            time=slice(MetSim.params['start'], MetSim.params['stop']))
-        dates = ds.indexes['time']
-        # Add elevation and day of year data
-        ds['elev'] = self.elev
-        ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
-
-        # Update the configuration
-        MetSim.params.update({"n_days": len(ds['time'])})
-        return ds.load()
+    def write_data(self, suffix):
+        pass
 
 
 def wrap_run(func: callable, loc: dict, params: dict,
@@ -624,10 +500,11 @@ def wrap_run(func: callable, loc: dict, params: dict,
     lat = ds['lat'].values
     elev = ds['elev'].values
     swe = ds['swe'].values
-    df = ds.drop(['lat', 'lon', 'elev', 'swe']).to_dataframe()
+    params['elev'] = elev
+    df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
-    sg = solar_geom(elev, lat)
+    sg = solar_geom(elev, lat, params['lapse_rate'])
     sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
           'potrad': sg[2], 'tt_max0': sg[3]}
 
@@ -663,18 +540,20 @@ def wrap_run(func: callable, loc: dict, params: dict,
         # Calculate the times that we want to get out by chopping
         # off the endpoints that were added on previously
         start = out_times[0]
-        stop = out_times[-1] + pd.Timedelta('23 hours')
-        new_times = pd.date_range(start, stop, freq='{}T'.format(
-            params['time_step']))
+        stop = (out_times[-1] + pd.Timedelta('1 days')
+                - pd.Timedelta("{} minutes".format(params['time_step'])))
+        new_times = date_range(
+            start, stop, freq='{}T'.format(params['time_step']),
+            calendar=params['calendar'])
     else:
         # convert srad to daily average flux from daytime flux
-        df_base['swrad'] *= df_base['dayl'] / cnst.SEC_PER_DAY
+        df_base['shortwave'] *= df_base['dayl'] / cnst.SEC_PER_DAY
         # If we're outputting daily values, we dont' need to
         # change the output dates - see inside of `if` condition
         # above for more explanation
         new_times = out_times
+        df_complete = df_base
 
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
-    df_base = df_base.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)

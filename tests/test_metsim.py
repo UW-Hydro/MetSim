@@ -4,6 +4,7 @@ Unit tests for MetSim
 """
 
 import os
+import tempfile
 import pytest
 import numpy as np
 import pandas as pd
@@ -64,7 +65,9 @@ data_ranges = {'temp': (-50, 40),
                'shortwave': (0, 1000),
                'longwave': (0, 450),
                'wind': (0, 10),
-               'vapor_pressure': (0, 1.4),
+               'vapor_pressure': (0, 2),
+               'air_pressure': (0, 101325),
+               'spec_humid': (0, 2),
                'rel_humid': (0, 100)}
 
 
@@ -99,24 +102,25 @@ def test_params(in_format, out_format, method):
     stop = dates[in_format][1]
     in_vars = in_vars_section[in_format]
     domain_vars = domain_section[in_format]
-    out_dir = "./tmp"
+    out_dir = tempfile.mkdtemp('results')
     out_prefix = "forcing"
-    lr = 0.0065
     params = {'start': start,
               'stop': stop,
               'in_vars': in_vars,
-              'in_format': in_format,
-              'out_format': out_format,
+              'forcing_fmt': in_format,
+              'domain_fmt': 'netcdf',
+              'state_fmt': 'netcdf',
+              'out_fmt': out_format,
               'domain': domain_files[in_format],
               'state': state_files[in_format],
               'method': method,
+              'calender': 'standard',
               'time_step': "60",
-              't_max_lr': lr,
-              't_min_lr': lr,
               'annual': False,
               'out_dir': out_dir,
+              'out_state': os.path.join(out_dir, 'state.nc'),
               'out_prefix': out_prefix,
-              'in_vars': in_vars,
+              'forcing_vars': in_vars,
               'domain_vars': domain_vars}
     return params
 
@@ -124,7 +128,7 @@ def test_params(in_format, out_format, method):
 @pytest.fixture()
 def test_setup(test_params, domain_file):
     """Tests the setup of the MetSim object"""
-    in_fmt = test_params['in_format']
+    in_fmt = test_params['forcing_fmt']
     loc = data_locations[in_fmt]
 
     # Get the files and make sure the right amount exist
@@ -136,10 +140,8 @@ def test_setup(test_params, domain_file):
         assert data_files == './tests/data/test.nc'
     test_params['forcing'] = data_files
 
-    # Test construction - should not yet be ready to run
+    # Test construction
     ms = MetSim(test_params)
-    assert not ms.ready
-
     return ms
 
 
@@ -147,19 +149,15 @@ def test_mtclim(test_setup):
     """Tests the ability to run successfully"""
     # Here we only test a single grid cell
     data_files = test_setup.params['forcing']
-    daily_out_vars = ['prec', 't_max', 't_min', 't_day',
-                      'wind', 'dayl', 'swrad',
+    daily_out_vars = ['prec', 't_max', 't_min', 'wind', 'shortwave',
                       'tskc', 'pet', 'vapor_pressure']
     hourly_out_vars = ['prec', 'temp', 'shortwave', 'longwave',
-                       'vapor_pressure', 'rel_humid']
+                       'vapor_pressure', 'wind', 'rel_humid', 'spec_humid',
+                       'air_pressure']
 
     # Load data and ensure the ready flag has been set
     test_setup.params['time_step'] = 1440
     test_setup.params['out_vars'] = daily_out_vars
-    test_setup.load()
-    loc = test_setup.locations[0]
-    assert test_setup.ready
-    assert not test_setup.disagg
 
     # Check to see that the data is valid
     assert type(test_setup.met_data) is xr.Dataset
@@ -176,25 +174,25 @@ def test_mtclim(test_setup):
     # Now test the disaggregation as well as forcing generation
     test_setup.params['time_step'] = 60
     test_setup.params['out_vars'] = hourly_out_vars
-    test_setup.load()
-    assert test_setup.ready
 
     # Check to see that the data is valid
     assert type(test_setup.met_data) is xr.Dataset
 
     test_setup.run()
-    hourly = test_setup.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()
+    hourly = test_setup.output.isel(lat=2, lon=2).to_dataframe()
     assert len(hourly) == (n_days * const.HOURS_PER_DAY)
     for var in test_setup.params['out_vars']:
         assert var in hourly
         l, h = data_ranges[var]
+        vl = min(hourly[var].values)
+        vh = max(hourly[var].values)
+        print(var, vl, vh, l, h)
         assert hourly[var].between(l, h).all()
 
     # Now test sub-hourly disaggregation
     test_setup.params['time_step'] = 30
-    test_setup.load()
     test_setup.run()
-    half_hourly = test_setup.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()
+    half_hourly = test_setup.output.isel(lat=1, lon=3).to_dataframe()
     assert len(half_hourly) == (2 * n_days * const.HOURS_PER_DAY)
 
 
@@ -203,30 +201,42 @@ def test_disaggregation_values():
     # Set parameters
     loc = data_locations['binary']
     data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
-    out_vars = ['prec', 'temp', 'shortwave', 'longwave',
-                'vapor_pressure', 'wind', 'rel_humid']
+    out_vars = ['prec', 'temp', 'shortwave', 'longwave', 'vapor_pressure',
+                'wind', 'rel_humid', 'spec_humid', 'air_pressure']
+    out_dir = tempfile.mkdtemp('results')
     params = {'start': dates['binary'][0],
               'stop': dates['binary'][1],
-              'in_format': 'binary',
-              'out_format': 'ascii',
+              'forcing_fmt': 'binary',
+              'domain_fmt': 'netcdf',
+              'state_fmt': 'netcdf',
+              'out_fmt': 'ascii',
               'domain': './tests/data/stehekin.nc',
               'state': './tests/data/state_vic.nc',
               'forcing': data_files,
               'method': 'mtclim',
               'time_step': "60",
-              't_max_lr': 0.00065,
-              't_min_lr': 0.00065,
-              'out_dir': "./tmp",
+              'out_dir': out_dir,
+              'out_state': os.path.join(out_dir, 'state.nc'),
               'out_vars': out_vars,
-              'in_vars': in_vars_section['binary'],
+              'forcing_vars': in_vars_section['binary'],
               'domain_vars': domain_section['binary']
               }
     # The location we will test against
     loc = (1, 4)
 
+    def check_data(out, good, tol=0.02):
+        assert type(out) is pd.DataFrame
+        for var in ms.params['out_vars']:
+            # Check to make sure each variable has normalized
+            # rmse of less than 0.02
+            h = max([good[var].max(), out[var].max()])
+            l = min([good[var].min(), out[var].min()])
+            nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
+            print(var, nrmse)
+            assert nrmse < tol
+
     # Set up the MetSim object
     ms = MetSim(params)
-    ms.load()
 
     # Run MetSim and load in the validated data
     ms.run()
@@ -236,10 +246,15 @@ def test_disaggregation_values():
     good.index = out.index
 
     # Make sure the data comes out right
-    assert type(out) is pd.DataFrame
-    for var in ms.params['out_vars']:
-        # Check to make sure each variable has normalized
-        # rmse of less than 0.02
-        h = max([good[var].max(), out[var].max()])
-        l = min([good[var].min(), out[var].min()])
-        nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
+    check_data(out, good)
+
+    # Now do 3 hourly
+    ms.params['time_step'] = '180'
+    ms.run()
+    out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
+    good = pd.read_table('./tests/data/three_hourly_48.3125_-120.5625',
+                         names=out_vars)
+    good.index = out.index
+
+    # Make sure the data comes out right
+    check_data(out, good, tol=0.1)

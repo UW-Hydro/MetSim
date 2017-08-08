@@ -24,8 +24,8 @@ from numba import jit
 import metsim.constants as cnst
 
 
-def calc_pet(rad: pd.Series, ta: pd.Series, dayl: pd.Series,
-             pa: float, dt: float=0.2) -> pd.Series:
+def calc_pet(rad: np.array, ta: np.array, dayl: np.array,
+             pa: float, dt: float=0.2) -> np.array:
     '''
     Calculates the potential evapotranspiration for aridity corrections in
     `calc_vpd()`, according to Kimball et al., 1997
@@ -95,7 +95,7 @@ def calc_pet(rad: pd.Series, ta: pd.Series, dayl: pd.Series,
     return (pet / 10.)
 
 
-def atm_pres(elev: float) -> float:
+def atm_pres(elev: float, lr: float) -> float:
     '''
     Atmospheric pressure (Pa) as a function of elevation (m)
 
@@ -107,23 +107,25 @@ def atm_pres(elev: float) -> float:
     ----------
     elev:
         Elevation in meters
+    lr:
+        Lapse rate (K/m)
 
     Returns
     -------
     pressure:
         Atmospheric pressure (Pa)
     '''
-    t1 = 1.0 - (cnst.LR_STD * elev) / cnst.T_STD
-    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R/cnst.MA))
+    t1 = 1.0 - (lr * elev) / cnst.T_STD
+    t2 = cnst.G_STD / (lr * (cnst.R/cnst.MA))
     return cnst.P_STD * np.power(t1, t2)
 
 
-@jit
-def svp(temp: pd.Series, a: float=0.61078, b: float=17.269, c: float=237.3):
+@jit(nopython=True)
+def svp(temp: np.array, a: float=0.61078, b: float=17.269, c: float=237.3):
     '''
     Compute the saturated vapor pressure.
 
-    .. [1] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+    .. [2] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
       1992 Equation 4.2.2.
 
     Parameters
@@ -154,7 +156,7 @@ def svp_slope(temp: pd.Series, a: float=0.61078,
     Compute the gradient of the saturated vapor pressure as a function of
     temperature.
 
-    .. [1] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
+    .. [3] Maidment, David R. Handbook of hydrology. McGraw-Hill Inc.,
       1992. Equation 4.2.3.
 
     Parameters
@@ -171,7 +173,7 @@ def svp_slope(temp: pd.Series, a: float=0.61078,
 
 
 @jit(nopython=True)
-def solar_geom(elev: float, lat: float) -> tuple:
+def solar_geom(elev: float, lat: float, lr: float) -> tuple:
     """
     Flat earth assumption
 
@@ -181,6 +183,8 @@ def solar_geom(elev: float, lat: float) -> tuple:
         Elevation in meters
     lat:
         Latitude in decimal format
+    lr:
+        Lapse rate in K/m
 
     Returns
     -------
@@ -197,8 +201,8 @@ def solar_geom(elev: float, lat: float) -> tuple:
     flat_potrad = np.zeros(dayperyear)
 
     # Calculate pressure ratio as a function of elevation
-    t1 = 1.0 - (cnst.LR_STD * elev)/cnst.T_STD
-    t2 = cnst.G_STD / (cnst.LR_STD * (cnst.R / cnst.MA))
+    t1 = 1.0 - (lr * elev)/cnst.T_STD
+    t2 = cnst.G_STD / (lr * (cnst.R / cnst.MA))
     trans = np.power(cnst.TBASE, np.power(t1, t2))
 
     # Translate lat to rad
