@@ -358,6 +358,14 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
     choosing these parameterizations should be passed in
     via the `params` argument.
 
+    For more information about the options provided in this
+    function see:
+
+    .. [1] Bohn, T.J., Livneh, B., Oyler, J.W., Running, S.W., Nijssen, B.
+      and Lettenmaier, D.P., 2013. Global evaluation of MTCLIM and
+      related algorithms for forcing of ecological and hydrological
+      models.  Agricultural and forest meteorology, 176, pp.38-49.
+
     Parameters
     ----------
     air_temp:
@@ -379,18 +387,25 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
         cover fraction.
     """
     emissivity_calc = {
-        'DEFAULT': lambda vp: vp,
+        # TVA 1972
         'TVA': lambda vp: 0.74 + 0.0049 * vp,
+        # Anderson 1954
         'ANDERSON': lambda vp: 0.68 + 0.036 * np.power(vp, 0.5),
+        # Brutsaert 1975
         'BRUTSAERT': lambda vp: 1.24 * np.power(vp / air_temp, 0.14285714),
+        # Satterlund 1979
         'SATTERLUND': lambda vp: 1.08 * (
             1 - np.exp(-1 * np.power(vp, (air_temp / 2016)))),
+        # Idso 1981
         'IDSO': lambda vp: 0.7 + 5.95e-5 * vp * np.exp(1500 / air_temp),
+        # Prata 1996
         'PRATA': lambda vp: (1 - (1 + (46.5*vp/air_temp)) * np.exp(
             -np.sqrt((1.2 + 3. * (46.5*vp / air_temp)))))
         }
     cloud_calc = {
-        'DEFAULT': lambda emis: (1.0 + (0.17 * tskc ** 2)) * emis,
+        # TVA 1972
+        'TVA': lambda emis: (1.0 + (0.17 * tskc ** 2)) * emis,
+        # Deardorff 1978
         'CLOUD_DEARDORFF': lambda emis: tskc + (1 - tskc) * emis
         }
     # Reindex and fill cloud cover, then convert temps to K
