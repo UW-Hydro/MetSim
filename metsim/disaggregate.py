@@ -253,7 +253,7 @@ def pressure(temp: pd.Series, elev: float, lr: float):
         A sub-daily timeseries of temperature
     elev:
         Elevation
-    lr: 
+    lr:
         Lapse rate
 
     Returns
@@ -358,6 +358,15 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
     choosing these parameterizations should be passed in
     via the `params` argument.
 
+    For more information about the options provided in this
+    function see:
+
+    .. [1] Bohn, T.J., Livneh, B., Oyler, J.W., Running, S.W., Nijssen, B.
+      and Lettenmaier, D.P., 2013. Global evaluation of MTCLIM and
+      related algorithms for forcing of ecological and hydrological
+      models.  Agricultural and forest meteorology, 176, pp.38-49,
+      doi:10.1016/j.agrformet.2013.03.003.
+
     Parameters
     ----------
     air_temp:
@@ -379,21 +388,51 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
         cover fraction.
     """
     emissivity_calc = {
-        'DEFAULT': lambda vp: vp,
+        # TVA 1972
+        # Tennessee Valley Authority, 1972. Heat and mass transfer between a
+        # water surface and the atmosphere. Tennessee Valley Authority, Norris,
+        # TN. Laboratory report no. 14. Water resources research report
+        # no. 0-6803.
         'TVA': lambda vp: 0.74 + 0.0049 * vp,
+        # Anderson 1954
+        # Anderson, E.R., 1954. Energy budget studies, water loss
+        # investigations: lake Hefner studies. U.S. Geol. Surv. Prof. Pap. 269,
+        # 71–119 [Available from U.S. Geological Survey, 807 National Center,
+        # Reston, VA 20192.].
         'ANDERSON': lambda vp: 0.68 + 0.036 * np.power(vp, 0.5),
+        # Brutsaert 1975
+        # Brutsaert, W., 1975. On a derivable formula for long-wave radiation
+        # from clear skies. Water Resour. Res. 11 (5), 742–744,
+        # doi:10.1029/WR011i005p00742.
         'BRUTSAERT': lambda vp: 1.24 * np.power(vp / air_temp, 0.14285714),
+        # Satterlund 1979
+        # Satterlund, D.R., 1979. An improved equation for estimating long-wave
+        # radiation from the atmosphere. Water Resour. Res. 15 (6), 1649–1650,
+        # doi:10.1029/WR015i006p01649.
         'SATTERLUND': lambda vp: 1.08 * (
             1 - np.exp(-1 * np.power(vp, (air_temp / 2016)))),
+        # Idso 1981
+        # Idso, S.B., 1981. A set of equations for full spectrum and 8- to
+        # 14-µm and 10.5- to 12.5-µm, thermal radiation from cloudless skies.
+        # Water Resour. Res. 17 (2), 295–304, doi:10.1029/WR017i002p00295.
         'IDSO': lambda vp: 0.7 + 5.95e-5 * vp * np.exp(1500 / air_temp),
+        # Prata 1996
+        # Prata, A.J., 1996. A new long-wave formula for estimating downward
+        # clear-sky radiation at the surface. Q. J. R. Meteor. Soc. 122 (533),
+        # 1127–1151, doi:10.1002/qj.49712253306.
         'PRATA': lambda vp: (1 - (1 + (46.5*vp/air_temp)) * np.exp(
             -np.sqrt((1.2 + 3. * (46.5*vp / air_temp)))))
         }
     cloud_calc = {
-        'DEFAULT': lambda emis: (1.0 + (0.17 * tskc ** 2)) * emis,
+        # TVA 1972 (see above)
+        'TVA': lambda emis: (1.0 + (0.17 * tskc ** 2)) * emis,
+        # Deardorff 1978
+        # Deardorff, J.W., 1978. Efficient prediction of ground surface
+        # temperature and moisture, with an inclusion of a layer of vegetation.
+        # J. Geophys. Res. 83 (N64), 1889–1903, doi:10.1029/JC083iC04p01889.
         'CLOUD_DEARDORFF': lambda emis: tskc + (1 - tskc) * emis
         }
-    # Reindex and fill cloud cover, then convert temps to K
+    # Re-index and fill cloud cover, then convert temps to K
     tskc = tskc.reindex_like(air_temp).fillna(method='ffill')
     air_temp = air_temp + cnst.KELVIN
     vapor_pressure = vapor_pressure * 10
