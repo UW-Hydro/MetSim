@@ -58,11 +58,12 @@ def date_range(start=None, end=None, periods=None, freq='D', tz=None,
             start_num, end_num = date2num(
                 pd.to_datetime([start, end]).to_pydatetime(),
                 units, calendar=calendar)
-            periods = int((end_num - start_num) / steps)  # Todo divide by freq
+            # Todo divide by freq
+            periods = int((end_num - start_num) / steps) + 1
 
             times = num2date(
                 np.linspace(start_num, end_num, periods,
-                            endpoint=False,
+                            endpoint=True,
                             dtype=np.float128), units, calendar)
 
             index = pd.DatetimeIndex(xr.conventions.nctime_to_nptime(times))
@@ -89,5 +90,7 @@ def units_from_freq(freq, origin=DEFAULT_ORIGIN):
         return 'hours since %s' % origin
     elif 'D' in freq:
         return 'days since %s' % origin
+    elif 'T' in freq:
+        return 'minutes since %s' % origin
     else:
-        raise NotImplementedError()
+        raise NotImplementedError('freq %s not supported at this time' % freq)

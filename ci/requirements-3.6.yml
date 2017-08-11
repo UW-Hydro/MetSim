@@ -6,6 +6,7 @@ dependencies:
   - xarray
   - pandas
   - netcdf4
+  - bottleneck
   - numba
   - numpy
   - scipy

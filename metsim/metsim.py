@@ -148,12 +148,84 @@ class MetSim(object):
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
+        logger.info("read_domain")
         self.domain = io.read_domain(self.params)
+        self._normalize_times()
+        logger.info("read_met_data")
         self.met_data = io.read_met_data(self.params, self.domain)
+        self._validate_force_times(force_times=self.met_data['time'])
+        logger.info("read_state")
         self.state = io.read_state(self.params, self.domain)
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
+        logger.info("_aggregate_state")
         self._aggregate_state()
+        logger.info("load_inputs")
+        self.load_inputs()
+
+    def _normalize_times(self):
+        # handle when start/stop times are not specified
+        for p in ['start', 'stop']:
+            # TODO: make sure these options get documented
+            if self.params[p] in [None, 'forcing', '']:
+                self.params[p] = None
+            elif isinstance(self.params[p], str):
+                if ':' in self.params[p]:
+                    # start from config file
+                    date, hour = self.params[p].split(':')
+                    year, month, day = date.split('/')
+                    self.params[p] = pd.datetime(int(year), int(month),
+                                                 int(day), int(hour))
+                elif '/' in self.params[p]:
+                    # end from config file
+                    year, month, day = self.params[p].split('/')
+                    self.params[p] = pd.datetime(int(year), int(month),
+                                                 int(day))
+                else:
+                    self.params[p] = pd.to_datetime(self.params[p])
+            else:
+                self.params[p] = pd.to_datetime(self.params[p])
+
+        logger.info('start %s' % self.params['start'])
+        logger.info('stop %s' % self.params['stop'])
+
+    def _validate_force_times(self, force_times):
+
+        for p, i in [('start', 0), ('stop', -1)]:
+            # infer times from force_times
+            if self.params[p] is None:
+                self.params[p] = pd.Timestamp(
+                    force_times.values[i]).to_pydatetime()
+
+        assert self.params['start'] >= pd.Timestamp(
+            force_times.values[0]).to_pydatetime()
+        assert self.params['stop'] <= pd.Timestamp(
+            force_times.values[-1]).to_pydatetime()
+
+        self.params['state_start'] = (self.params['start'] -
+                                      pd.Timedelta("90 days"))
+        self.params['state_stop'] = (self.params['start'] -
+                                     pd.Timedelta("1 days"))
+        logger.info('start %s' % self.params['start'])
+        logger.info('stop %s' % self.params['stop'])
+
+        logger.info('force start %s' % pd.Timestamp(
+            force_times.values[0]).to_pydatetime())
+        logger.info('force stop %s' % pd.Timestamp(
+            force_times.values[-1]).to_pydatetime())
+
+        logger.info('state start %s' % self.params['state_start'])
+        logger.info('state stop %s' % self.params['state_stop'])
+
+
+    def load_inputs(self, close=True):
+        self.domain = self.domain.load()
+        self.met_data = self.met_data.load()
+        self.state = self.state.load()
+        if close:
+            self.domain.close()
+            self.met_data.close()
+            self.state.close()
 
     def launch(self):
         """Farm out the jobs to separate processes"""
@@ -307,8 +379,11 @@ class MetSim(object):
             # Need to convert some parameters to strings
             if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
                 v = str(v)
+            elif k in ['state_start', 'state_stop']:
+                # skip
+                continue
             # Don't include complex types
-            if isinstance(v, dict):
+            elif isinstance(v, dict):
                 v = json.dumps(v)
             elif not isinstance(v, str) and isinstance(v, Iterable):
                 v = ', '.join(v)
@@ -326,22 +401,24 @@ class MetSim(object):
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
-        begin_record = self.params['start'] - pd.Timedelta("90 days")
-        end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = date_range(begin_record, end_record,
+
+        assert self.state.dims['time'] == 90
+
+        record_dates = date_range(self.params['state_start'],
+                                  self.params['state_stop'],
                                   calendar=self.params['calendar'])
-        trailing = self.state['prec'].sel(time=record_dates)
+        trailing = self.state['prec']
+        trailing['time'] = record_dates
         total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
         total_precip = (cnst.DAYS_PER_YEAR * total_precip.rolling(
-            time=90).mean().drop(record_dates, dim='time'))
+            time=90).mean().sel(time=slice(self.params['start'],
+                                           self.params['stop'])))
+
         self.met_data['seasonal_prec'] = total_precip
 
         # Smoothed daily temperature range
         trailing = self.state['t_max'] - self.state['t_min']
-        begin_record = self.params['start'] - pd.Timedelta("90 days")
-        end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = date_range(begin_record, end_record,
-                                  calendar=self.params['calendar'])
+
         trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         sm_dtr = xr.concat([trailing, dtr], dim='time')
@@ -349,8 +426,12 @@ class MetSim(object):
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
-        self.state['swe'] = self.state.sel(time=end_record).swe.drop('time')
-        self.met_data['swe'] = self.state.swe.copy()
+        if 'time' in self.state['swe'].dims:
+            self.state['swe'] = self.state['swe'].sel(
+                time=self.params['state_stop']).drop('time')
+        else:
+            self.state['swe'] = self.state['swe']
+        self.met_data['swe'] = self.state['swe'].copy()
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""

@@ -69,24 +69,10 @@ def init(opts):
     domain_file = conf['domain']
     state_file = conf['state']
 
-    # Generate the date range that will be put into the data frame
-    start_date, start_hour = conf['start'].split(':')
-    start_year, start_month, start_day = start_date.split('/')
-    end_year, end_month, end_day = conf['stop'].split('/')
-    start = pd.datetime(int(start_year),
-                        int(start_month),
-                        int(start_day),
-                        int(start_hour))
-    stop = pd.datetime(int(end_year),
-                       int(end_month),
-                       int(end_day))
-
     def to_list(s):
         return json.loads(s.replace("'", '"'))
 
-    conf.update({"stop": stop,
-                 "start": start,
-                 "calendar": conf.get('calendar', 'standard'),
+    conf.update({"calendar": conf.get('calendar', 'standard'),
                  "nprocs": opts.n_processes,
                  "method": method,
                  "out_dir": out_dir,
