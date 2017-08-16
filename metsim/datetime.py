@@ -93,4 +93,5 @@ def units_from_freq(freq, origin=DEFAULT_ORIGIN):
     elif 'T' in freq:
         return 'minutes since %s' % origin
     else:
-        raise NotImplementedError('freq %s not supported at this time' % freq)
+        raise NotImplementedError(
+            'freq {} not supported at this time'.format(freq))

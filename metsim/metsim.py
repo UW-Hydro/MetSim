@@ -186,8 +186,8 @@ class MetSim(object):
             else:
                 self.params[p] = pd.to_datetime(self.params[p])
 
-        logger.info('start %s' % self.params['start'])
-        logger.info('stop %s' % self.params['stop'])
+        logger.info('start {}'.format(self.params['start']))
+        logger.info('stop {}'.format(self.params['stop']))
 
     def _validate_force_times(self, force_times):
 
@@ -206,17 +206,16 @@ class MetSim(object):
                                       pd.Timedelta("90 days"))
         self.params['state_stop'] = (self.params['start'] -
                                      pd.Timedelta("1 days"))
-        logger.info('start %s' % self.params['start'])
-        logger.info('stop %s' % self.params['stop'])
+        logger.info('start {}'.format(self.params['start']))
+        logger.info('stop {}'.format(self.params['stop']))
 
-        logger.info('force start %s' % pd.Timestamp(
+        logger.info('force start {}', pd.Timestamp(
             force_times.values[0]).to_pydatetime())
-        logger.info('force stop %s' % pd.Timestamp(
+        logger.info('force stop {}', pd.Timestamp(
             force_times.values[-1]).to_pydatetime())
 
-        logger.info('state start %s' % self.params['state_start'])
-        logger.info('state stop %s' % self.params['state_stop'])
-
+        logger.info('state start {}'.format(self.params['state_start']))
+        logger.info('state stop {}'.format(self.params['state_stop']))
 
     def load_inputs(self, close=True):
         self.domain = self.domain.load()
@@ -383,7 +382,7 @@ class MetSim(object):
                 # skip
                 continue
             # Don't include complex types
-            elif isinstance(v, dict):
+            if isinstance(v, dict):
                 v = json.dumps(v)
             elif not isinstance(v, str) and isinstance(v, Iterable):
                 v = ', '.join(v)
