@@ -124,7 +124,7 @@ class MetSim(object):
         "verbose": 0,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
-        "annual": False,
+        "time_grouper": None,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
@@ -226,21 +226,29 @@ class MetSim(object):
             self.met_data.close()
             self.state.close()
 
+    def _get_time_dim_and_time_dim(self):
+
+        time_dim = pd.DatetimeIndex(self.met_data.time.values)
+
+        if self.params['time_grouper'] is not None:
+            grouper = pd.TimeGrouper(self.params['time_grouper'])
+            groups = time_dim.groupby(grouper)
+        else:
+            groups = {'total': time_dim}
+
+        return time_dim, groups
+
     def launch(self):
         """Farm out the jobs to separate processes"""
         # Do the forcing generation and disaggregation if required
         self._validate_setup()
         nprocs = self.params['nprocs']
-        time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
-        if self.params['annual']:
-            groups = time_dim.groupby(time_dim.year)
-        else:
-            groups = {'total': time_dim}
+        time_dim, groups = self._get_time_dim_and_time_dim()
 
         for label, times in groups.items():
             self.pool = Pool(processes=nprocs)
@@ -278,16 +286,12 @@ class MetSim(object):
         Kicks off the disaggregation and queues up data for IO
         """
         self._validate_setup()
-        time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
-        if self.params['annual']:
-            groups = time_dim.groupby(time_dim.year)
-        else:
-            groups = {'total': time_dim}
+        time_dim, groups = self._get_time_dim_and_time_dim()
 
         for label, times in groups.items():
             logger.info("Beginning {}".format(label))
@@ -376,7 +380,7 @@ class MetSim(object):
             self.params.pop('elev')
         for k, v in self.params.items():
             # Need to convert some parameters to strings
-            if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
+            if k in ['start', 'stop', 'time_grouper', 'mtclim_swe_corr']:
                 v = str(v)
             elif k in ['state_start', 'state_stop']:
                 # skip
@@ -489,6 +493,12 @@ class MetSim(object):
                 }
         dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
 
+    def get_nc_output_suffix(self):
+        s, e = self.output.indexes['time'][[0, -1]]
+        template = '{sy}{sm}{sd}-{ey}{em}{ed}'
+        return template.format(sy=s.year, sm=s.month, sd=s.day,
+                               ey=e.year, em=e.month, ed=e.day,)
+
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
         logger.info("Writing netcdf...")
@@ -501,9 +511,10 @@ class MetSim(object):
         for v in self.state:
             state_encoding[v] = {'dtype': 'f8'}
         # write state file
-
         self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
+
         # write output file
+        suffix = self.get_nc_output_suffix()
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
         self.output.to_netcdf(output_filename,

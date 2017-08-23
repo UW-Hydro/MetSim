@@ -28,21 +28,31 @@ from configparser import SafeConfigParser
 from collections import OrderedDict
 
 
+def _is_valid_file(parser, arg):
+    if not os.path.isfile(arg):
+        message = "Configuration file {} does not exist.\n".format(arg)
+        parser.print_help()
+        parser.exit(status=1, message=message)
+    return arg
+
+
 def parse(args):
     """Parse the command line arguments"""
     parser = argparse.ArgumentParser()
-    parser.add_argument('config')
-    parser.add_argument('-n', '--n-processes', default=1, type=int)
-    parser.add_argument('-v', '--verbose', action='store_true')
-    parser.add_argument('-a', '--annual', action='store_true')
+    parser.add_argument('config', type=lambda x: _is_valid_file(parser, x),
+                        help='Input configuration file')
+    parser.add_argument('-n', '--n-processes', default=1, type=int,
+                        help='Parallel mode: number of processes to use')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Increase the verbosity of MetSim')
+    parser.add_argument('-tg', '--time_grouper', nargs='?',
+                        const='1AS', default=None, type=str,
+                        help='Pandas TimeGrouper string (e.g. `1AS`)')
     return parser.parse_args()
 
 
 def init(opts):
     """Initialize some information based on the options & config"""
-    if not os.path.isfile(opts.config):
-        exit("Configuration file {} does not exist.".format(opts.config)
-             + "Use `ms -h` for more information.")
     config = SafeConfigParser()
     config.optionxform = str
     config.read(opts.config)
@@ -77,7 +87,7 @@ def init(opts):
                  "out_dir": out_dir,
                  "out_state": out_state,
                  "state": state_file,
-                 "annual": opts.annual,
+                 "time_grouper": opts.time_grouper,
                  "domain": domain_file,
                  "forcing": forcing_files,
                  "verbose": opts.verbose * logging.INFO})
