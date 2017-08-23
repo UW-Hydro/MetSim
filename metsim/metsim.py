@@ -209,10 +209,10 @@ class MetSim(object):
         logger.info('start {}'.format(self.params['start']))
         logger.info('stop {}'.format(self.params['stop']))
 
-        logger.info('force start {}', pd.Timestamp(
-            force_times.values[0]).to_pydatetime())
-        logger.info('force stop {}', pd.Timestamp(
-            force_times.values[-1]).to_pydatetime())
+        logger.info('force start {}'.format(pd.Timestamp(
+            force_times.values[0]).to_pydatetime()))
+        logger.info('force stop {}'.format(pd.Timestamp(
+            force_times.values[-1]).to_pydatetime()))
 
         logger.info('state start {}'.format(self.params['state_start']))
         logger.info('state stop {}'.format(self.params['state_stop']))
@@ -228,15 +228,18 @@ class MetSim(object):
 
     def _get_time_dim_and_time_dim(self):
 
-        time_dim = pd.DatetimeIndex(self.met_data.time.values)
+        index = self.met_data.indexes['time']
 
+        groups = OrderedDict()
         if self.params['time_grouper'] is not None:
+            time_dim = pd.Series(index=index)
             grouper = pd.TimeGrouper(self.params['time_grouper'])
-            groups = time_dim.groupby(grouper)
+            for key, vals in time_dim.groupby(grouper):
+                groups[key] = vals.index
         else:
-            groups = {'total': time_dim}
+            groups['total'] = index
 
-        return time_dim, groups
+        return index, groups
 
     def launch(self):
         """Farm out the jobs to separate processes"""
@@ -495,9 +498,9 @@ class MetSim(object):
 
     def get_nc_output_suffix(self):
         s, e = self.output.indexes['time'][[0, -1]]
-        template = '{sy}{sm}{sd}-{ey}{em}{ed}'
-        return template.format(sy=s.year, sm=s.month, sd=s.day,
-                               ey=e.year, em=e.month, ed=e.day,)
+        template = '{:04d}{:02d}{:02d}-{:04d}{:02d}{:02d}'
+        return template.format(s.year, s.month, s.day,
+                               e.year, e.month, e.day,)
 
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
@@ -554,7 +557,7 @@ class MetSim(object):
 
 def wrap_run(func: callable, loc: dict, params: dict,
              ds: xr.Dataset, state: xr.Dataset, disagg: bool,
-             out_times: pd.DatetimeIndex, year: str):
+             out_times: pd.DatetimeIndex, group: str):
     """
     Iterate over a chunk of the domain. This is wrapped
     so we can return a tuple of locs and df.
@@ -576,7 +579,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
     out_times: pd.DatetimeIndex
         Times to return (should be trimmed 1 day at
         each end from the given index)
-    year: str
+    group: str
         The year being run. This is used to add on
         extra times to make output smooth at endpoints
         if the run is chunked in time.
@@ -619,7 +622,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
             t_begin = [state['t_min'].values[-1],
                        state['t_max'].values[-1]]
         try:
-            nextday = pd.datetime(int(year)+1, 1, 1)
+            nextday = out_times[-1] + pd.Timedelta('1 days')
             t_end = [ds['t_min'].sel(time=nextday),
                      ds['t_max'].sel(time=nextday)]
         except (KeyError, ValueError):

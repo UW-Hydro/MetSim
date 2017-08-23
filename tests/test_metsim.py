@@ -116,7 +116,7 @@ def test_params(in_format, out_format, method):
               'method': method,
               'calender': 'standard',
               'time_step': "60",
-              'annual': False,
+              'time_grouper': None,
               'out_dir': out_dir,
               'out_state': os.path.join(out_dir, 'state.nc'),
               'out_prefix': out_prefix,
