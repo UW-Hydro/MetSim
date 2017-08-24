@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from collections import OrderedDict
+import subprocess
 
 from metsim.metsim import MetSim
 import metsim.constants as const
@@ -148,7 +149,6 @@ def test_setup(test_params, domain_file):
 def test_mtclim(test_setup):
     """Tests the ability to run successfully"""
     # Here we only test a single grid cell
-    data_files = test_setup.params['forcing']
     daily_out_vars = ['prec', 't_max', 't_min', 'wind', 'shortwave',
                       'tskc', 'pet', 'vapor_pressure']
     hourly_out_vars = ['prec', 'temp', 'shortwave', 'longwave',
@@ -258,3 +258,10 @@ def test_disaggregation_values():
 
     # Make sure the data comes out right
     check_data(out, good, tol=0.1)
+
+
+@pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc'])
+def test_examples(kind):
+    filename = './examples/example_{kind}.conf'.format(kind=kind)
+    ret_code = subprocess.call(['ms', '-v', filename])
+    assert ret_code == 0
