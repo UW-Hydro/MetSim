@@ -51,6 +51,7 @@ contents are:
     prec = prec
     t_max = t_max
     t_min = t_min
+    swe = swe
 
     [domain_vars]
     lat = lat
