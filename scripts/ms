@@ -87,12 +87,13 @@ def init(opts):
                  "out_dir": out_dir,
                  "out_state": out_state,
                  "state": state_file,
-                 "time_grouper": opts.time_grouper,
                  "domain": domain_file,
                  "forcing": forcing_files,
                  "verbose": opts.verbose * logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
+    if opts.time_grouper is not None:
+        conf['time_grouper'] = opts.time_grouper
     conf = {k: v for k, v in conf.items() if v != []}
     return conf
 

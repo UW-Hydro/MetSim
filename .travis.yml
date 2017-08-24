@@ -29,3 +29,7 @@ install:
 
 script:
   - py.test --verbose
+  # run examples (see GH #95)
+  - ms examples/example_nc.conf -v
+  - ms examples/example_ascii.conf -v
+  - ms examples/example_bin.conf -v
