@@ -494,7 +494,6 @@ class MetSim(object):
             if not self.params[k] in v:
                 errs.append("Invalid option given for {}".format(k))
 
-
         # If any errors, raise and give a summary
         if len(errs) > 1:
             raise Exception("\n  ".join(errs))
