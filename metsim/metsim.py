@@ -197,6 +197,10 @@ class MetSim(object):
                 self.params[p] = pd.Timestamp(
                     force_times.values[i]).to_pydatetime()
 
+        # update calendar from input data (fall back to params version)
+        self.params['calendar'] = self.met_data['time'].encoding.get(
+            'calendar', self.params['calendar'])
+
         assert self.params['start'] >= pd.Timestamp(
             force_times.values[0]).to_pydatetime()
         assert self.params['stop'] <= pd.Timestamp(
@@ -216,6 +220,8 @@ class MetSim(object):
 
         logger.info('state start {}'.format(self.params['state_start']))
         logger.info('state stop {}'.format(self.params['state_stop']))
+
+        logger.info('calendar {}'.format(self.params['calendar']))
 
     def load_inputs(self, close=True):
         self.domain = self.domain.load()
@@ -354,8 +360,8 @@ class MetSim(object):
         self.state['prec'].sel(**locs).values[:] = prec[-90:]
         self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
-        self.state.time.values = date_range(state_start, result.index[-1],
-                                            calendar=self.params['calendar'])
+        self.state['time'].values = date_range(
+            state_start, result.index[-1], calendar=self.params['calendar'])
 
     def setup_output(self, prototype: xr.Dataset=None):
         if not prototype:
@@ -368,8 +374,8 @@ class MetSim(object):
         else:
             delta = pd.Timedelta('0 days')
 
-        start = pd.Timestamp(prototype.time.values[0]).to_pydatetime()
-        stop = pd.Timestamp(prototype.time.values[-1]).to_pydatetime()
+        start = pd.Timestamp(prototype['time'].values[0]).to_pydatetime()
+        stop = pd.Timestamp(prototype['time'].values[-1]).to_pydatetime()
         times = date_range(start, stop + delta,
                            freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
@@ -377,8 +383,9 @@ class MetSim(object):
 
         shape = (n_ts, ) + self.domain['mask'].shape
         dims = ('time', ) + self.domain['mask'].dims
-        coords = {'time': times, **self.domain.mask.coords}
+        coords = {'time': times, **self.domain['mask'].coords}
         self.output = xr.Dataset(coords=coords)
+        self.output['time'].encoding['calendar'] = self.params['calendar']
         if 'elev' in self.params:
             self.params.pop('elev')
         for k, v in self.params.items():
@@ -402,7 +409,7 @@ class MetSim(object):
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding={'dtype': self.params['out_precision'],
                           '_FillValue': cnst.FILL_VALUES['f8']})
-        self.output.time.attrs.update(attrs['time'])
+        self.output['time'].attrs.update(attrs['time'])
 
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
@@ -510,9 +517,10 @@ class MetSim(object):
             os.makedirs(dirname, exist_ok=True)
 
         # all state variables are written as doubles
-        state_encoding = {'time': {'dtype': 'f8'}}
+        state_encoding = {}
         for v in self.state:
             state_encoding[v] = {'dtype': 'f8'}
+        state_encoding['time']['calendar'] = self.params['calendar']
         # write state file
         self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
 
@@ -520,9 +528,14 @@ class MetSim(object):
         suffix = self.get_nc_output_suffix()
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
+        logger.info(output_filename)
+        out_encoding = {'time': {'dtype': 'f8',
+                                 'calendar': self.params['calendar']}}
+        for v in self.output.data_vars:
+            out_encoding[v] = {'dtype': 'f8'}
         self.output.to_netcdf(output_filename,
                               unlimited_dims=['time'],
-                              encoding={'time': {'dtype': 'f8'}})
+                              encoding=out_encoding)
 
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
