@@ -383,7 +383,7 @@ class MetSim(object):
 
         shape = (n_ts, ) + self.domain['mask'].shape
         dims = ('time', ) + self.domain['mask'].dims
-        coords = {'time': times, **self.domain.mask.coords}
+        coords = {'time': times, **self.domain['mask'].coords}
         self.output = xr.Dataset(coords=coords)
         self.output['time'].encoding['calendar'] = self.params['calendar']
         if 'elev' in self.params:
