@@ -15,6 +15,8 @@ Enhancements
   By `Joe Hamman <https://github.com/jhamman>`_.
 - Added option a flexible time grouper when chunking MetSim runs (:issue:`93`).
   By `Joe Hamman <https://github.com/jhamman>`_.
+- Improved configuration validation by checking for correctness of output variables (:issue:`96`)
+  By `Andrew Bennett <https://github.com/arbennett>`
 
 Bug fixes
 ~~~~~~~~~

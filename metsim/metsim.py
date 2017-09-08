@@ -477,6 +477,19 @@ class MetSim(object):
         if not len(self.params['out_vars']):
             errs.append("Output variable list must not be empty")
 
+        # Check output variables are valid
+        daily_out_vars = ['t_min', 't_max', 'prec', 'swe', 'vapor_pressure',
+                          'shortwave', 'tskc', 'pet', 'wind']
+        out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
+                         'air_pressure', 'rel_humid', 'spec_humid',
+                         'longwave', 'tsck', 'wind']
+        if int(self.params['time_step']) == 1440:
+            out_var_check = daily_out_vars
+        for var in self.params['out_vars']:
+            if var not in out_var_check:
+                errs.append('Cannot output variable {} at timestep {}'.format(
+                    var, self.params['time_step']))
+
         # Check that the parameters specified are available
         opts = {'mtclim_swe_corr': [True, False],
                 'out_precision': ['f4', 'f8'],
