@@ -360,8 +360,8 @@ class MetSim(object):
         self.state['prec'].sel(**locs).values[:] = prec[-90:]
         self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
-        self.state['time'].values = date_range(state_start, result.index[-1],
-                                               calendar=self.params['calendar'])
+        self.state['time'].values = date_range(
+            state_start, result.index[-1], calendar=self.params['calendar'])
 
     def setup_output(self, prototype: xr.Dataset=None):
         if not prototype:
