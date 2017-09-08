@@ -19,5 +19,5 @@ Enhancements
 Bug fixes
 ~~~~~~~~~
 - Fixed bug where output files were not written with the appropriate calendar
-  encoding attribute (:issue:`93`).
+  encoding attribute (:issue:`97`).
   By `Joe Hamman <https://github.com/jhamman>`_.
