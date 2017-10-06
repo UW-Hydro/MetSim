@@ -118,7 +118,7 @@ class MetSim(object):
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid'],
-        "prec_type": 'uniform'
+        "prec_type": 'triangle'
     }
 
     def __init__(self, params: dict):
@@ -137,8 +137,22 @@ class MetSim(object):
         self.state = io.read_state(self.params, self.domain)
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
-        self.met_data['t_pk'] = self.domain['t_pk']
-        self.met_data['dur'] = self.domain['dur']
+
+        if self.params['prec_type'].upper() == 'TRIANGLE':
+            try:
+                self.met_data['t_pk'] = self.domain['t_pk']
+            except:
+                print('Storm duration and time to peak values are required in the '
+                      'domain file for the triangle preciptation disagregation '
+                      'method.')
+                sys.exit()
+            try:
+                self.met_data['dur'] = self.domain['dur']
+            except:
+                print('Storm duration and time to peak values are required in the '
+                      'domain file for the triangle preciptation disagregation '
+                      'method.')
+                sys.exit()
 
         self._aggregate_state()
 
@@ -471,7 +485,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
             t_pk = ds['t_pk'].values
         except:
             print('Storm duration and time to peak values are required in the '
-                  'domain file for the triangle preciptation disagregation ''
+                  'domain file for the triangle preciptation disagregation '
                   'method.')
             sys.exit()
         day_length = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
@@ -482,7 +496,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
                   ,day_length, ' (i.e. the day length in minutes)')
             sys.exit()
         t_pk_zero_test = t_pk < 0
-        t_pk_day_test = t_pk >= day_length
+        t_pk_day_test = t_pk > day_length
         if t_pk_zero_test.any() or t_pk_day_test.any():
             print('Storm time to peak must be greater than or equal to 0, and '
                   'less than ',day_length,' (i.e. the end of a day)')
@@ -492,15 +506,15 @@ def wrap_run(func: callable, loc: dict, params: dict,
 
     if params['prec_type'].upper() == 'TRIANGLE':
         tri_df = df.copy(deep=True)
-        tri_df = tri_df.drop(labels=['prec','t_max','t_min','wind','day_of_year'
+        tri_df = tri_df.drop(labels=['prec','t_max','t_min','day_of_year'
                                      ,'elev','seasonal_prec','smoothed_dtr'
                                      ,'swe'], axis=1)
         tri_df.reset_index(level='time', drop=True, inplace=True)
-        tri_df = tri_df.reset_index().drop_duplicates(subset='monthly', keep='first').set_index('monthly')
+        tri_df = tri_df.reset_index().drop_duplicates(subset='month', keep='first').set_index('month')
         months = np.arange(12, dtype=int)
         tri_df.index = months
         df = df.drop(['dur','t_pk'], axis=1)
-        df.reset_index(level='monthly', drop=True, inplace=True)
+        df.reset_index(level='month', drop=True, inplace=True)
         df = df.reset_index().drop_duplicates(subset='time', keep='first').set_index('time')
 
     # solar_geom returns a tuple due to restrictions of numba

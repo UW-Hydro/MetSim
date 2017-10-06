@@ -208,8 +208,12 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
 
 def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
     """
-    Distributes sub-daily precipitation either evenly or with a triangular
-    distribution, depending upon the chosen method.
+    Distributes sub-daily precipitation either evenly (uniform) or with a
+    triangular (triangle) distribution, depending upon the chosen method.
+
+    Note: The uniform disaggregation returns only through to the beginning of the
+          last day. Final values are filled in using a
+          forward fill in the top level disaggregate function
 
     Parameters
     ----------
@@ -361,14 +365,15 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
         for d in np.arange(n_days):
             if d == 0:
                 i1 = int(np.ceil(steps_per_day * 1.5))
-                P_return[:i1] += prec[d] * kernels[month_of_year[d], int(np.ceil(steps_per_day / 2)):]
+                P_return[:i1] += (1 / sum(kernels[month_of_year[d] - 1, int(np.ceil(steps_per_day / 2)):])) * prec[d] * kernels[month_of_year[d] - 1, int(np.ceil(steps_per_day / 2)):]
             elif d == (n_days - 1):
                 i0 = int(np.floor((d - 0.5) * steps_per_day))
-                P_return[i0:] += prec[d] * kernels[month_of_year[d], :int(np.ceil(steps_per_day * 1.5))]
+                P_return[i0:] += (1 / sum(kernels[month_of_year[d] - 1, :int(np.ceil(steps_per_day * 1.5))])) * prec[d] * kernels[month_of_year[d] - 1, :int(np.ceil(steps_per_day * 1.5))]
             else:
                 i0 = int(np.floor((d - 0.5) * steps_per_day))
                 i1 = int(i0 + (2 * steps_per_day))
-                P_return[i0:i1] += prec[d]*kernels[month_of_year[d], :]
+                P_return[i0:i1] += prec[d]*kernels[month_of_year[d] - 1, :]
+        P_return = np.around(P_return,decimals=5)
         return P_return.values
 
     prec_function = {
