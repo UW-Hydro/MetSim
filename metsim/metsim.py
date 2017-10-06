@@ -72,6 +72,8 @@ attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
                    'standard_name': 'daily_maximum_air_temperature'},
          't_min': {'units': 'C', 'long_name': 'minimum daily air temperature',
                    'standard_name': 'daily_minimum_air_temperature'},
+         'wind': {'units': 'mm s-1', 'long_name': 'wind speed',
+                   'standard_name': 'wind speed'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
@@ -117,7 +119,7 @@ class MetSim(object):
         "lapse_rate": 0.0065,
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'vapor_pressure', 'rel_humid'],
+                     'vapor_pressure', 'rel_humid','wind'],
         "prec_type": 'triangle'
     }
 
@@ -508,7 +510,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
         tri_df = df.copy(deep=True)
         tri_df = tri_df.drop(labels=['prec','t_max','t_min','day_of_year'
                                      ,'elev','seasonal_prec','smoothed_dtr'
-                                     ,'swe'], axis=1)
+                                     ,'swe','wind'], axis=1)
         tri_df.reset_index(level='time', drop=True, inplace=True)
         tri_df = tri_df.reset_index().drop_duplicates(subset='month', keep='first').set_index('month')
         months = np.arange(12, dtype=int)
