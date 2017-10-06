@@ -59,7 +59,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     dur: pd.DataFrame
         Daily timeseries of storm durations for given month of year. [minutes]
     t_pk: pd.DataFrame
-        Daily timeseries of time to storm peaks for given month of year. [minutes]
+        Daily timeseries of time to storm peaks for given month of year.
+        [minutes]
 
     Returns
     -------
@@ -206,14 +207,16 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
     temps = interp(ts * np.arange(0, len(df_disagg.index)))
     return temps
 
+
 def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
+
     """
     Distributes sub-daily precipitation either evenly (uniform) or with a
     triangular (triangle) distribution, depending upon the chosen method.
 
-    Note: The uniform disaggregation returns only through to the beginning of the
-          last day. Final values are filled in using a
-          forward fill in the top level disaggregate function
+    Note: The uniform disaggregation returns only through to the beginning of
+          the last day. Final values are filled in using a forward fill in the
+          top level disaggregate function
 
     Parameters
     ----------
@@ -253,30 +256,31 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
 
         dur = kwargs['dur']
         t_pk = kwargs['t_pk']
-        day_of_year = kwargs['day_of_year']
         month_of_year = kwargs['month_of_year']
         n_days = len(prec)
         steps_per_day = int(cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY / int(ts))
         offset = np.ceil(steps_per_day / 2)
         output_length = int(steps_per_day * n_days)
         index = np.arange(output_length)
-        steps_per_two_days = int(((np.ceil(steps_per_day / 2)) * 2) + steps_per_day)
-        P_return = pd.Series(np.zeros(output_length, dtype='float'), index=index)
+        steps_per_two_days = int(((np.ceil(steps_per_day / 2)) * 2) +
+                                 steps_per_day)
+        P_return = pd.Series(np.zeros(output_length, dtype='float'),
+                             index=index)
 
         # create kernel of unit hyetographs, one for each month
-        kernels = np.zeros(shape = (12, steps_per_two_days))
+        kernels = np.zeros(shape=(12, steps_per_two_days))
 
         for month in np.arange(12, dtype=int):
             I_pk = 2. * 1. / dur[month]
             m = I_pk / (dur[month] / 2.)
             t_start = (t_pk[month] - (dur[month] / 2.))
             t_end = (t_pk[month] + (dur[month] / 2.))
-            i_start = np.floor(t_start / ts ) + offset
-            i_end = np.floor(t_end / ts ) + offset
+            i_start = np.floor(t_start / ts) + offset
+            i_end = np.floor(t_end / ts) + offset
             i_t_pk = np.floor(t_pk[month] / ts) + offset
 
             if (i_start == i_t_pk) and (i_end != i_start):
-                for step in np.arange(steps_per_two_days, dtype = int):
+                for step in np.arange(steps_per_two_days, dtype=int):
                     t_step_start = (step - offset) * ts
                     t_step_end = t_step_start + ts
                     if step == i_start:
@@ -298,7 +302,7 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
                     else:
                         kernels[month, step] = 0
             elif i_t_pk == i_end and (i_end != i_start):
-                for step in np.arange(steps_per_two_days, dtype = int):
+                for step in np.arange(steps_per_two_days, dtype=int):
                     t_step_start = (step - offset) * ts
                     t_step_end = t_step_start + ts
                     if step == i_start:
@@ -310,13 +314,13 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
                         b2 = -m * h2
                         A2 = b2 / 2 * -h2
                         b1 = m * (t_step_start - t_start)
-                        a1 = b1 + ( m * (t_pk[month] - t_step_start))
+                        a1 = b1 + (m * (t_pk[month] - t_step_start))
                         A1 = (a1 + b1) / 2 * (t_pk[month] - t_step_start)
                         kernels[month, step] = A1 + A2
                     else:
                         kernels[month, step] = 0
             elif i_start == i_end:
-                for step in np.arange(steps_per_two_days, dtype = int):
+                for step in np.arange(steps_per_two_days, dtype=int):
                     t_step_start = (step - offset) * ts
                     t_step_end = t_step_start + ts
                     if step == i_start:
@@ -324,7 +328,7 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
                     else:
                         kernels[month, step] = 0
             else:
-                for step in np.arange(steps_per_two_days, dtype = int):
+                for step in np.arange(steps_per_two_days, dtype=int):
                     t_step_start = (step - offset) * ts
                     t_step_end = t_step_start + ts
                     if step == i_start:
@@ -342,13 +346,14 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
                         h2 = (t_step_end - t_pk[month])
                         b2 = -m * (t_step_end - t_end)
                         a2 = b2 + (m * h2)
-                        kernels[month, step] = ((a1 + b1) / 2 * h1 ) + ((a2 + b2) / 2 * h2)
+                        kernels[month, step] = ((a1 + b1) / 2 * h1) + \
+                                                ((a2 + b2) / 2 * h2)
                     elif (step < i_end) and (step > i_t_pk):
                         if (t_step_end != t_end):
                             b = -m * (t_step_end - t_end)
                         else:
                             b = 0
-                        a = b + ( m * ts)
+                        a = b + (m * ts)
                         kernels[month, step] = (a + b) / 2 * ts
                     elif (step == i_end):
                         h = t_step_start - t_end
@@ -360,20 +365,26 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
                     else:
                         P_return[step] = 0
 
-
-        # Loop through each day of the timeseries and apply the kernel for the appropriate month of year
+        # Loop through each day of the timeseries and apply the kernel for the
+        # appropriate month of year
         for d in np.arange(n_days):
             if d == 0:
                 i1 = int(np.ceil(steps_per_day * 1.5))
-                P_return[:i1] += (1 / sum(kernels[month_of_year[d] - 1, int(np.ceil(steps_per_day / 2)):])) * prec[d] * kernels[month_of_year[d] - 1, int(np.ceil(steps_per_day / 2)):]
+                P_return[:i1] += (1 / sum(kernels[month_of_year[d] - 1,
+                                  int(np.ceil(steps_per_day / 2)):])) * \
+                                      prec[d] * kernels[month_of_year[d] - 1,
+                                  int(np.ceil(steps_per_day / 2)):]
             elif d == (n_days - 1):
                 i0 = int(np.floor((d - 0.5) * steps_per_day))
-                P_return[i0:] += (1 / sum(kernels[month_of_year[d] - 1, :int(np.ceil(steps_per_day * 1.5))])) * prec[d] * kernels[month_of_year[d] - 1, :int(np.ceil(steps_per_day * 1.5))]
+                P_return[i0:] += (1 / sum(kernels[month_of_year[d] - 1,
+                                  :int(np.ceil(steps_per_day * 1.5))])) * \
+                                       prec[d] * kernels[month_of_year[d] - 1,
+                                  :int(np.ceil(steps_per_day * 1.5))]
             else:
                 i0 = int(np.floor((d - 0.5) * steps_per_day))
                 i1 = int(i0 + (2 * steps_per_day))
                 P_return[i0:i1] += prec[d]*kernels[month_of_year[d] - 1, :]
-        P_return = np.around(P_return,decimals=5)
+        P_return = np.around(P_return, decimals=5)
         return P_return.values
 
     prec_function = {

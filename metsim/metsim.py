@@ -142,16 +142,16 @@ class MetSim(object):
             try:
                 self.met_data['t_pk'] = self.domain['t_pk']
             except:
-                print('Storm duration and time to peak values are required in the '
-                      'domain file for the triangle preciptation disagregation '
-                      'method.')
+                print('Storm duration and time to peak values are required in '
+                      'the domain file for the triangle preciptation '
+                      'disagregation method.')
                 sys.exit()
             try:
                 self.met_data['dur'] = self.domain['dur']
             except:
-                print('Storm duration and time to peak values are required in the '
-                      'domain file for the triangle preciptation disagregation '
-                      'method.')
+                print('Storm duration and time to peak values are required in '
+                      'the domain file for the triangle preciptation '
+                      'disagregation method.')
                 sys.exit()
 
         self._aggregate_state()
@@ -492,30 +492,32 @@ def wrap_run(func: callable, loc: dict, params: dict,
         dur_zero_test = dur <= 0
         dur_day_test = dur > day_length
         if dur_zero_test.any() or dur_day_test.any():
-            print('Storm duration must be greater than 0 and less than '
-                  ,day_length, ' (i.e. the day length in minutes)')
+            print('Storm duration must be greater than 0 and less than',
+                  day_length, '(i.e. the day length in minutes)')
             sys.exit()
         t_pk_zero_test = t_pk < 0
         t_pk_day_test = t_pk > day_length
         if t_pk_zero_test.any() or t_pk_day_test.any():
-            print('Storm time to peak must be greater than or equal to 0, and '
-                  'less than ',day_length,' (i.e. the end of a day)')
+            print('Storm time to peak must be greater than or equal to 0, and'
+                  'less than', day_length, '(i.e. the end of a day)')
             sys.exit()
 
     df = ds.to_dataframe()
 
     if params['prec_type'].upper() == 'TRIANGLE':
         tri_df = df.copy(deep=True)
-        tri_df = tri_df.drop(labels=['prec','t_max','t_min','day_of_year'
-                                     ,'elev','seasonal_prec','smoothed_dtr'
-                                     ,'swe'], axis=1)
+        tri_df = tri_df.drop(labels=['prec', 't_max', 't_min', 'day_of_year',
+                                     'elev', 'seasonal_prec', 'smoothed_dtr',
+                                     'swe'], axis=1)
         tri_df.reset_index(level='time', drop=True, inplace=True)
-        tri_df = tri_df.reset_index().drop_duplicates(subset='month', keep='first').set_index('month')
+        tri_df = tri_df.reset_index().drop_duplicates(subset='month',
+                                                      keep='first').set_index('month')
         months = np.arange(12, dtype=int)
         tri_df.index = months
-        df = df.drop(['dur','t_pk'], axis=1)
+        df = df.drop(['dur', 't_pk'], axis=1)
         df.reset_index(level='month', drop=True, inplace=True)
-        df = df.reset_index().drop_duplicates(subset='time', keep='first').set_index('time')
+        df = df.reset_index().drop_duplicates(subset='time',
+                                              keep='first').set_index('time')
 
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
@@ -527,7 +529,6 @@ def wrap_run(func: callable, loc: dict, params: dict,
     # so that we can use a subset of them to write
     # out the state file later
     df_base = func(df, params, sg, elev=elev, swe=swe)
-
 
     if disagg:
         # Get some values for padding the time list,
@@ -553,7 +554,8 @@ def wrap_run(func: callable, loc: dict, params: dict,
 
         # Disaggregate to subdaily values
         if params['prec_type'].upper() == 'TRIANGLE':
-            df_complete = disaggregate(df, params, sg, t_begin,t_end, dur=tri_df['dur'], t_pk=tri_df['t_pk'])
+            df_complete = disaggregate(df, params, sg, t_begin, t_end,
+                                       dur=tri_df['dur'], t_pk=tri_df['t_pk'])
         else:
             df_complete = disaggregate(df, params, sg, t_begin, t_end)
 
