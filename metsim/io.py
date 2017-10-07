@@ -63,11 +63,11 @@ def read_state(params: dict, domain: xr.Dataset) -> xr.Dataset:
         "netcdf": read_netcdf,
         "data": read_data
     }
-    start = params['start'] - pd.Timedelta('90 days')
-    stop = params['start'] - pd.Timedelta('1 days')
+
     return read_funcs[params['state_fmt']](
         params['state'], domain=domain, iter_dims=params['iter_dims'],
-        start=start, stop=stop, calendar=params['calendar'],
+        start=params['state_start'], stop=params['state_stop'],
+        calendar=params['calendar'],
         var_dict=params.get('state_vars', None))
 
 
@@ -96,14 +96,16 @@ def process_vic(params: dict, domain: xr.Dataset) -> xr.Dataset:
             ' specified via `iter_dims` in configuration.')
 
     # Creates the master dataset which will be used to parallelize
-    coords = {'time': params['dates'],
+    dates = date_range(params['start'], params['stop'],
+                       calendar=params['calendar'])
+    coords = {'time': dates,
               'lon': domain['lon'],
               'lat': domain['lat']}
-    shape = (len(params['dates']), len(domain['lat']), len(domain['lon']))
+    shape = (len(dates), len(domain['lat']), len(domain['lon']))
     dims = ('time', 'lat', 'lon', )
 
     met_data = xr.Dataset(
-        coords=coords, attrs={'n_days': len(params['dates'])})
+        coords=coords, attrs={'n_days': len(dates)})
     for var in params['forcing_vars']:
         met_data[var] = xr.DataArray(data=np.full(shape, np.nan),
                                      coords=coords, dims=dims, name=var)
@@ -144,18 +146,18 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
     ds = xr.open_dataset(data_handle)
 
     if var_dict is not None:
+        var_list = list(var_dict.keys())
+        ds = ds[var_list]
         ds.rename(var_dict, inplace=True)
 
-    if start is not None and stop is not None:
+    if start is not None or stop is not None:
         ds = ds.sel(time=slice(start, stop))
         dates = ds.indexes['time']
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
     if domain is not None:
         ds = ds.sel(**{d: domain[d] for d in iter_dims})
-    out = ds.load()
-    ds.close()
-    return out
+    return ds
 
 
 def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
@@ -166,17 +168,16 @@ def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
     if var_dict is not None:
         data_handle.rename(var_dict, inplace=True)
         varlist = list(var_dict.values())
+    data_handle = data_handle[varlist]
 
     if start is not None and stop is not None:
-        data_handle = data_handle[varlist].sel(time=slice(start, stop))
+        data_handle = data_handle.sel(time=slice(start, stop))
         dates = data_handle.indexes['time']
         data_handle['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
     if domain is not None:
         data_handle = data_handle.sel(**{d: domain[d] for d in iter_dims})
-    out = data_handle.load()
-    data_handle.close()
-    return out
+    return data_handle
 
 
 def read_binary(data_handle, domain=None, iter_dims=['lat', 'lon'],

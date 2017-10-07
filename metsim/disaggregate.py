@@ -94,6 +94,12 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg['rel_humid'] = relative_humidity(df_disagg['vapor_pressure'],
                                                df_disagg['temp'])
 
+    df_disagg['air_pressure'] = pressure(df_disagg['temp'],
+                                         params['elev'], params['lapse_rate'])
+
+    df_disagg['spec_humid'] = specific_humidity(df_disagg['vapor_pressure'],
+                                                df_disagg['air_pressure'])
+
     df_disagg['longwave'], df_disagg['tskc'] = longwave(
         df_disagg['temp'], df_disagg['vapor_pressure'],
         df_daily['tskc'], params)
@@ -144,7 +150,7 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
     rise_times = np.where(diff_mask > 0)[0] * ts
     set_times = np.where(diff_mask < 0)[0] * ts
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
-               rise_times)
+               rise_times) + ts
     t_t_min = rise_times
     return t_t_min, t_t_max
 
@@ -399,6 +405,9 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
 def wind(wind: pd.Series, ts: float):
     """
     Wind is assumed constant throughout the day
+    Note: this returns only through to the beginning of the
+          last day.  Final values are filled in using a
+          forward fill in the top level disaggregate function
 
     Parameters
     ----------
@@ -413,6 +422,49 @@ def wind(wind: pd.Series, ts: float):
         A sub-daily timeseries of wind
     """
     return wind.resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
+
+
+def pressure(temp: pd.Series, elev: float, lr: float):
+    """
+    Calculates air pressure.
+
+    Parameters
+    ----------
+    temp:
+        A sub-daily timeseries of temperature
+    elev:
+        Elevation
+    lr:
+        Lapse rate
+
+    Returns
+    -------
+    pressure:
+        A sub-daily timeseries of air pressure (kPa)
+    """
+    temp_corr = cnst.KELVIN + temp + 0.5 * elev * -lr
+    ratio = -(elev * cnst.G_STD) / (cnst.R_DRY * temp_corr)
+    return cnst.P_STD * np.exp(ratio) / cnst.MBAR_PER_BAR
+
+
+def specific_humidity(vapor_pressure: pd.Series, air_pressure: pd.Series):
+    """
+    Calculates specific humidity
+
+    Parameters
+    ----------
+    vapor_pressure:
+        A sub-daily timeseries of vapor pressure (kPa)
+    air_pressure:
+        A sub-daily timeseries of air pressure (kPa)
+
+    Returns
+    -------
+    spec_humid:
+        A sub-daily timeseries of specific humidity
+    """
+    mix_rat = (cnst.EPS * vapor_pressure) / (air_pressure - vapor_pressure)
+    return mix_rat / (1 + mix_rat)
 
 
 def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
@@ -487,6 +539,15 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
     choosing these parameterizations should be passed in
     via the `params` argument.
 
+    For more information about the options provided in this
+    function see:
+
+    .. [1] Bohn, T.J., Livneh, B., Oyler, J.W., Running, S.W., Nijssen, B.
+      and Lettenmaier, D.P., 2013. Global evaluation of MTCLIM and
+      related algorithms for forcing of ecological and hydrological
+      models.  Agricultural and forest meteorology, 176, pp.38-49,
+      doi:10.1016/j.agrformet.2013.03.003.
+
     Parameters
     ----------
     air_temp:
@@ -508,21 +569,51 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
         cover fraction.
     """
     emissivity_calc = {
-        'DEFAULT': lambda vp: vp,
+        # TVA 1972
+        # Tennessee Valley Authority, 1972. Heat and mass transfer between a
+        # water surface and the atmosphere. Tennessee Valley Authority, Norris,
+        # TN. Laboratory report no. 14. Water resources research report
+        # no. 0-6803.
         'TVA': lambda vp: 0.74 + 0.0049 * vp,
+        # Anderson 1954
+        # Anderson, E.R., 1954. Energy budget studies, water loss
+        # investigations: lake Hefner studies. U.S. Geol. Surv. Prof. Pap. 269,
+        # 71–119 [Available from U.S. Geological Survey, 807 National Center,
+        # Reston, VA 20192.].
         'ANDERSON': lambda vp: 0.68 + 0.036 * np.power(vp, 0.5),
+        # Brutsaert 1975
+        # Brutsaert, W., 1975. On a derivable formula for long-wave radiation
+        # from clear skies. Water Resour. Res. 11 (5), 742–744,
+        # doi:10.1029/WR011i005p00742.
         'BRUTSAERT': lambda vp: 1.24 * np.power(vp / air_temp, 0.14285714),
+        # Satterlund 1979
+        # Satterlund, D.R., 1979. An improved equation for estimating long-wave
+        # radiation from the atmosphere. Water Resour. Res. 15 (6), 1649–1650,
+        # doi:10.1029/WR015i006p01649.
         'SATTERLUND': lambda vp: 1.08 * (
             1 - np.exp(-1 * np.power(vp, (air_temp / 2016)))),
+        # Idso 1981
+        # Idso, S.B., 1981. A set of equations for full spectrum and 8- to
+        # 14-µm and 10.5- to 12.5-µm, thermal radiation from cloudless skies.
+        # Water Resour. Res. 17 (2), 295–304, doi:10.1029/WR017i002p00295.
         'IDSO': lambda vp: 0.7 + 5.95e-5 * vp * np.exp(1500 / air_temp),
+        # Prata 1996
+        # Prata, A.J., 1996. A new long-wave formula for estimating downward
+        # clear-sky radiation at the surface. Q. J. R. Meteor. Soc. 122 (533),
+        # 1127–1151, doi:10.1002/qj.49712253306.
         'PRATA': lambda vp: (1 - (1 + (46.5*vp/air_temp)) * np.exp(
             -np.sqrt((1.2 + 3. * (46.5*vp / air_temp)))))
         }
     cloud_calc = {
-        'DEFAULT': lambda emis: (1.0 + (0.17 * tskc ** 2)) * emis,
+        # TVA 1972 (see above)
+        'TVA': lambda emis: (1.0 + (0.17 * tskc ** 2)) * emis,
+        # Deardorff 1978
+        # Deardorff, J.W., 1978. Efficient prediction of ground surface
+        # temperature and moisture, with an inclusion of a layer of vegetation.
+        # J. Geophys. Res. 83 (N64), 1889–1903, doi:10.1029/JC083iC04p01889.
         'CLOUD_DEARDORFF': lambda emis: tskc + (1 - tskc) * emis
         }
-    # Reindex and fill cloud cover, then convert temps to K
+    # Re-index and fill cloud cover, then convert temps to K
     tskc = tskc.reindex_like(air_temp).fillna(method='ffill')
     air_temp = air_temp + cnst.KELVIN
     vapor_pressure = vapor_pressure * 10
@@ -560,11 +651,12 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     disaggrad:
         A sub-daily timeseries of shortwave radiation.
     """
+    ts = int(params['time_step'])
+    ts_hourly = float(ts) / cnst.MIN_PER_HOUR
     tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SW_RAD_DT
-    tmp_rad = sw_rad * daylength / cnst.SEC_PER_HOUR
+    tmp_rad = (sw_rad * daylength) / (cnst.SEC_PER_HOUR * ts_hourly)
     n_days = len(tmp_rad)
-    ts_per_day = (cnst.HOURS_PER_DAY *
-                  cnst.MIN_PER_HOUR / int(params['time_step']))
+    ts_per_day = (cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
     disaggrad = np.zeros(int(n_days*ts_per_day))
     tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0)
                    / (cnst.HOURS_PER_DAY / cnst.DEG_PER_REV)))
@@ -579,8 +671,7 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
 
     # Chunk sum takes in the distribution of radiation throughout the day
     # and collapses it into chunks that correspond to the desired timestep
-    chunk_size = int(int(params['time_step'])
-                     * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
+    chunk_size = int(ts * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
 
     # Chunk sum takes in the distribution of radiation throughout the day
     # and collapses it into chunks that correspond to the desired timestep
