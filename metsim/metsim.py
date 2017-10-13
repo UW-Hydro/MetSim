@@ -30,6 +30,7 @@ output specified.
 
 import os
 import sys
+import json
 import logging
 import itertools
 import time as tm
@@ -39,11 +40,12 @@ from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 import xarray as xr
+from collections import OrderedDict, Iterable
 
 from metsim import io
 from metsim.methods import mtclim
 from metsim.disaggregate import disaggregate
-from metsim.physics import solar_geom, svp
+from metsim.physics import solar_geom
 import metsim.constants as cnst
 from metsim.datetime import date_range
 
@@ -60,26 +62,43 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setFormatter(formatter)
 logger = logging.getLogger("metsim")
 
-attrs = {'pet': {'units': 'mm d-1', 'long_name': 'potential evaporation',
+attrs = {'pet': {'units': 'mm timestep-1', 'long_name': 'potential evaporation',
                  'standard_name': 'water_potential_evaporation_flux'},
-         'prec': {'units': 'mm d-1', 'long_name': 'precipitation',
+         'prec': {'units': 'mm timestep-1', 'long_name': 'precipitation',
                   'standard_name': 'precipitation_flux'},
          'shortwave': {'units': 'W m-2', 'long_name': 'shortwave radiation',
                        'standard_name': 'surface_downwelling_shortwave_flux'},
-         'lwrad': {'units': 'W m-2', 'long_name': 'longwave radiation',
-                   'standard_name': 'surface_downwelling_longwave_flux'},
+         'longwave': {'units': 'W m-2', 'long_name': 'longwave radiation',
+                      'standard_name': 'surface_downwelling_longwave_flux'},
          't_max': {'units': 'C', 'long_name': 'maximum daily air temperature',
                    'standard_name': 'daily_maximum_air_temperature'},
          't_min': {'units': 'C', 'long_name': 'minimum daily air temperature',
                    'standard_name': 'daily_minimum_air_temperature'},
+         'temp': {'units': 'C', 'long_name': 'air temperature',
+                  'standard_name': 'air_temperature'},
+         'vapor_pressure': {'units': 'kPa', 'long_name': 'vapor pressure',
+                            'standard_name': 'vapor_pressure'},
+         'air_pressure': {'units': 'kPa', 'long_name': 'air pressure',
+                          'standard_name': 'air_pressure'},
+         'tskc': {'units': 'fraction', 'long_name': 'cloud fraction',
+                  'standard_name': 'cloud_fraction'},
+         'rel_humid': {'units': '%', 'long_name': 'relative humidity',
+                       'standard_name': 'relative_humidity'},
+         'spec_humid': {'units': '', 'long_name': 'specific humidity',
+                        'standard_name': 'specific_humidity'},
          'wind': {'units': 'mm s-1', 'long_name': 'wind speed',
-                   'standard_name': 'wind speed'},
+                  'standard_name': 'wind speed'},
+         'time': {'long_name': 'local time at grid location',
+                  'standard_name': 'local_time'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
                      'history': 'Created: {0} by {1}'.format(now, user),
                      'references': references,
+                     'documentation': 'Times given are local to their locations.',
                      'comment': 'no comment at this time'}}
+
+attrs = {k: OrderedDict(v) for k, v in attrs.items()}
 
 
 class MetSim(object):
@@ -96,6 +115,7 @@ class MetSim(object):
         "domain": '',
         "state": '',
         "out_dir": '',
+        "out_state": '',
         "out_prefix": 'forcing',
         "start": '',
         "stop": '',
@@ -103,7 +123,6 @@ class MetSim(object):
         "calendar": 'standard',
         "out_fmt": '',
         "out_precision": 'f8',
-        "in_format": None,
         "verbose": 0,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
@@ -119,7 +138,7 @@ class MetSim(object):
         "lapse_rate": 0.0065,
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'vapor_pressure', 'rel_humid','wind'],
+                     'vapor_pressure', 'rel_humid', 'wind'],
         "prec_type": 'triangle'
     }
 
@@ -129,34 +148,103 @@ class MetSim(object):
         """
         # Record parameters
         self.params.update(params)
-        self.params['dates'] = date_range(params['start'], params['stop'],
-                                          calendar=self.params['calendar'])
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
+        logger.info("read_domain")
         self.domain = io.read_domain(self.params)
+        self._normalize_times()
+        logger.info("read_met_data")
         self.met_data = io.read_met_data(self.params, self.domain)
+        self._validate_force_times(force_times=self.met_data['time'])
+        logger.info("read_state")
         self.state = io.read_state(self.params, self.domain)
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
-
         if self.params['prec_type'].upper() == 'TRIANGLE':
             try:
                 self.met_data['t_pk'] = self.domain['t_pk']
             except:
-                print('Storm duration and time to peak values are required in the '
-                      'domain file for the triangle preciptation disagregation '
-                      'method.')
+                print('Storm duration and time to peak values are required in '
+                      'the domain file for the triangle preciptation '
+                      'disagregation method.')
                 sys.exit()
             try:
                 self.met_data['dur'] = self.domain['dur']
             except:
-                print('Storm duration and time to peak values are required in the '
-                      'domain file for the triangle preciptation disagregation '
-                      'method.')
+                print('Storm duration and time to peak values are required in '
+                      'the domain file for the triangle preciptation '
+                      'disagregation method.')
                 sys.exit()
 
+        logger.info("_aggregate_state")
+
         self._aggregate_state()
+        logger.info("load_inputs")
+        self.load_inputs()
+
+    def _normalize_times(self):
+        # handle when start/stop times are not specified
+        for p in ['start', 'stop']:
+            # TODO: make sure these options get documented
+            if self.params[p] in [None, 'forcing', '']:
+                self.params[p] = None
+            elif isinstance(self.params[p], str):
+                if ':' in self.params[p]:
+                    # start from config file
+                    date, hour = self.params[p].split(':')
+                    year, month, day = date.split('/')
+                    self.params[p] = pd.datetime(int(year), int(month),
+                                                 int(day), int(hour))
+                elif '/' in self.params[p]:
+                    # end from config file
+                    year, month, day = self.params[p].split('/')
+                    self.params[p] = pd.datetime(int(year), int(month),
+                                                 int(day))
+                else:
+                    self.params[p] = pd.to_datetime(self.params[p])
+            else:
+                self.params[p] = pd.to_datetime(self.params[p])
+
+        logger.info('start {}'.format(self.params['start']))
+        logger.info('stop {}'.format(self.params['stop']))
+
+    def _validate_force_times(self, force_times):
+
+        for p, i in [('start', 0), ('stop', -1)]:
+            # infer times from force_times
+            if self.params[p] is None:
+                self.params[p] = pd.Timestamp(
+                    force_times.values[i]).to_pydatetime()
+
+        assert self.params['start'] >= pd.Timestamp(
+            force_times.values[0]).to_pydatetime()
+        assert self.params['stop'] <= pd.Timestamp(
+            force_times.values[-1]).to_pydatetime()
+
+        self.params['state_start'] = (self.params['start'] -
+                                      pd.Timedelta("90 days"))
+        self.params['state_stop'] = (self.params['start'] -
+                                     pd.Timedelta("1 days"))
+        logger.info('start {}'.format(self.params['start']))
+        logger.info('stop {}'.format(self.params['stop']))
+
+        logger.info('force start {}', pd.Timestamp(
+            force_times.values[0]).to_pydatetime())
+        logger.info('force stop {}', pd.Timestamp(
+            force_times.values[-1]).to_pydatetime())
+
+        logger.info('state start {}'.format(self.params['state_start']))
+        logger.info('state stop {}'.format(self.params['state_stop']))
+
+    def load_inputs(self, close=True):
+        self.domain = self.domain.load()
+        self.met_data = self.met_data.load()
+        self.state = self.state.load()
+        if close:
+            self.domain.close()
+            self.met_data.close()
+            self.state.close()
 
     def launch(self):
         """Farm out the jobs to separate processes"""
@@ -253,7 +341,16 @@ class MetSim(object):
         else:
             locs, df = result
         for varname in self.params['out_vars']:
-            self.output[varname].loc[locs] = df[varname]
+            try:
+                self.output[varname].loc[locs] = df[varname]
+            except ValueError as e:
+                logger.error(e)
+                logger.error("This error is probably indicitive of a mismatch "
+                             "between the domain and input data. Check that "
+                             "all of your cells inside of the mask have both "
+                             "elevation in the domain as well as all of the "
+                             "required input forcings.")
+                raise
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""
@@ -295,6 +392,21 @@ class MetSim(object):
         dims = ('time', ) + self.domain['mask'].dims
         coords = {'time': times, **self.domain.mask.coords}
         self.output = xr.Dataset(coords=coords)
+        if 'elev' in self.params:
+            self.params.pop('elev')
+        for k, v in self.params.items():
+            # Need to convert some parameters to strings
+            if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
+                v = str(v)
+            elif k in ['state_start', 'state_stop']:
+                # skip
+                continue
+            # Don't include complex types
+            if isinstance(v, dict):
+                v = json.dumps(v)
+            elif not isinstance(v, str) and isinstance(v, Iterable):
+                v = ', '.join(v)
+            attrs['_global'][k] = v
         self.output.attrs = attrs['_global']
         for varname in self.params['out_vars']:
             self.output[varname] = xr.DataArray(
@@ -303,26 +415,29 @@ class MetSim(object):
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding={'dtype': self.params['out_precision'],
                           '_FillValue': cnst.FILL_VALUES['f8']})
+        self.output.time.attrs.update(attrs['time'])
 
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
-        begin_record = self.params['start'] - pd.Timedelta("90 days")
-        end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = date_range(begin_record, end_record,
+
+        assert self.state.dims['time'] == 90
+
+        record_dates = date_range(self.params['state_start'],
+                                  self.params['state_stop'],
                                   calendar=self.params['calendar'])
-        trailing = self.state['prec'].sel(time=record_dates)
+        trailing = self.state['prec']
+        trailing['time'] = record_dates
         total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
         total_precip = (cnst.DAYS_PER_YEAR * total_precip.rolling(
-            time=90).mean().drop(record_dates, dim='time'))
+            time=90).mean().sel(time=slice(self.params['start'],
+                                           self.params['stop'])))
+
         self.met_data['seasonal_prec'] = total_precip
 
         # Smoothed daily temperature range
         trailing = self.state['t_max'] - self.state['t_min']
-        begin_record = self.params['start'] - pd.Timedelta("90 days")
-        end_record = self.params['start'] - pd.Timedelta("1 days")
-        record_dates = date_range(begin_record, end_record,
-                                  calendar=self.params['calendar'])
+
         trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         sm_dtr = xr.concat([trailing, dtr], dim='time')
@@ -330,8 +445,12 @@ class MetSim(object):
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
-        self.state['swe'] = self.state.sel(time=end_record).swe.drop('time')
-        self.met_data['swe'] = self.state.swe.copy()
+        if 'time' in self.state['swe'].dims:
+            self.state['swe'] = self.state['swe'].sel(
+                time=self.params['state_stop']).drop('time')
+        else:
+            self.state['swe'] = self.state['swe']
+        self.met_data['swe'] = self.state['swe'].copy()
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
@@ -342,7 +461,7 @@ class MetSim(object):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
-        non_empty = ['method', 'out_dir', 'start',
+        non_empty = ['method', 'out_dir', 'out_state', 'start',
                      'stop', 'time_step', 'out_fmt',
                      'forcing_fmt', 'domain_fmt', 'state_fmt']
         for each in non_empty:
@@ -366,6 +485,7 @@ class MetSim(object):
 
         # Check that the parameters specified are available
         opts = {'mtclim_swe_corr': [True, False],
+                'out_precision': ['f4', 'f8'],
                 'lw_cloud': ['default', 'cloud_deardorff'],
                 'lw_type': ['default', 'tva', 'anderson',
                             'brutsaert', 'satterlund',
@@ -392,16 +512,17 @@ class MetSim(object):
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
         logger.info("Writing netcdf...")
-        if not os.path.exists(self.params['out_dir']):
-            os.mkdir(self.params['out_dir'])
+        for dirname in [self.params['out_dir'],
+                        os.path.dirname(self.params['out_state'])]:
+            os.makedirs(dirname, exist_ok=True)
 
         # all state variables are written as doubles
         state_encoding = {'time': {'dtype': 'f8'}}
         for v in self.state:
             state_encoding[v] = {'dtype': 'f8'}
         # write state file
-        self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
-                             encoding=state_encoding)
+
+        self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
         # write output file
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
@@ -412,10 +533,15 @@ class MetSim(object):
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
         logger.info("Writing ascii...")
-        if not os.path.exists(self.params['out_dir']):
-            os.mkdir(self.params['out_dir'])
-        self.state.to_netcdf(os.path.join(self.params['out_dir'], 'state.nc'),
-                             encoding={'time': {'dtype': 'f8'}})
+        for dirname in [self.params['out_dir'],
+                        os.path.dirname(self.params['out_state'])]:
+            os.makedirs(dirname, exist_ok=True)
+        # all state variables are written as doubles
+        state_encoding = {'time': {'dtype': 'f8'}}
+        for v in self.state:
+            state_encoding[v] = {'dtype': 'f8'}
+        # write state file
+        self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
         # Need to create new generator to loop over
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
@@ -494,30 +620,34 @@ def wrap_run(func: callable, loc: dict, params: dict,
         dur_zero_test = dur <= 0
         dur_day_test = dur > day_length
         if dur_zero_test.any() or dur_day_test.any():
-            print('Storm duration must be greater than 0 and less than '
-                  ,day_length, ' (i.e. the day length in minutes)')
+            print('Storm duration must be greater than 0 and less than',
+                  day_length, '(i.e. the day length in minutes)')
             sys.exit()
         t_pk_zero_test = t_pk < 0
         t_pk_day_test = t_pk > day_length
         if t_pk_zero_test.any() or t_pk_day_test.any():
-            print('Storm time to peak must be greater than or equal to 0, and '
-                  'less than ',day_length,' (i.e. the end of a day)')
+            print('Storm time to peak must be greater than or equal to 0, and'
+                  'less than', day_length, '(i.e. the end of a day)')
             sys.exit()
+
+    params['elev'] = elev
 
     df = ds.to_dataframe()
 
     if params['prec_type'].upper() == 'TRIANGLE':
         tri_df = df.copy(deep=True)
-        tri_df = tri_df.drop(labels=['prec','t_max','t_min','day_of_year'
-                                     ,'elev','seasonal_prec','smoothed_dtr'
-                                     ,'swe','wind'], axis=1)
+        tri_df = tri_df.drop(labels=['prec', 't_max', 't_min', 'day_of_year',
+                                     'elev', 'seasonal_prec', 'smoothed_dtr',
+                                     'swe', 'wind'], axis=1)
         tri_df.reset_index(level='time', drop=True, inplace=True)
-        tri_df = tri_df.reset_index().drop_duplicates(subset='month', keep='first').set_index('month')
+        tri_df = tri_df.reset_index().drop_duplicates(subset='month',
+                                                      keep='first').set_index('month')
         months = np.arange(12, dtype=int)
         tri_df.index = months
-        df = df.drop(['dur','t_pk'], axis=1)
+        df = df.drop(['dur', 't_pk'], axis=1)
         df.reset_index(level='month', drop=True, inplace=True)
-        df = df.reset_index().drop_duplicates(subset='time', keep='first').set_index('time')
+        df = df.reset_index().drop_duplicates(subset='time',
+                                              keep='first').set_index('time')
 
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
@@ -529,7 +659,6 @@ def wrap_run(func: callable, loc: dict, params: dict,
     # so that we can use a subset of them to write
     # out the state file later
     df_base = func(df, params, sg, elev=elev, swe=swe)
-
 
     if disagg:
         # Get some values for padding the time list,
@@ -555,7 +684,8 @@ def wrap_run(func: callable, loc: dict, params: dict,
 
         # Disaggregate to subdaily values
         if params['prec_type'].upper() == 'TRIANGLE':
-            df_complete = disaggregate(df, params, sg, t_begin,t_end, dur=tri_df['dur'], t_pk=tri_df['t_pk'])
+            df_complete = disaggregate(df, params, sg, t_begin, t_end,
+                                       dur=tri_df['dur'], t_pk=tri_df['t_pk'])
         else:
             df_complete = disaggregate(df, params, sg, t_begin, t_end)
 
