@@ -49,11 +49,6 @@ component of MetSim can be disaggregated down to sub-daily values at
 intervals specified in minutes (provided they divide evenly into 24 
 hours).  The operation of these algorithms is also described in [1]_.
 
-
-Depending on the setup of these various components MetSim can be used
-for different purposes.  For examples on how you can use MetSim 
-see the :ref:`examples` page.
-
 This documentation is a work in progress.
 If you don't find what you're looking for here, check out MetSim's Github page.  
 

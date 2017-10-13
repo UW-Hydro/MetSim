@@ -16,7 +16,7 @@ the VIC4 format). The input forcing data is used to provide the base forcing
 variables. The required variable data is minimum daily temperature, maximum
 daily temperature, and daily precipitation.
 
-The variable names can be mapped via the configuration file in the ``in_vars``
+The variable names can be mapped via the configuration file in the ``forcing_vars``
 section. For more information about how to set up your configuration file see
 the :ref:`configuration` page.
 
@@ -35,22 +35,30 @@ Second, is the ``elev`` variable. This provides elevation data used for
 calculation of solar geometry. It should be specified in meters, and only needs
 to be given at sites which are marked to be processed via the ``mask`` variable.
 
+It is important to ensure that all valid locations in ``mask`` have data in 
+``elev``.  Failure to ensure this will result in errors during runtime.
+
 State file
 ----------
 The state file provides information about the history of each of the grid cells
-to be processed. There are three required variables.
+to be processed. There are four required variables.
 
-The first two are daily minimum and daily maximum temperatures for the 90 days
-preceeding the start date specified in the configuration file. These variables
-are used to generate seasonal averages which are used in the calculation of
-shortwave and longwave radiation. They should be specified as ``t_min`` and
-``t_max`` respectively.
+The first two are daily minimum and daily maximum temperatures for the 90 days 
+preceeding the start date specified in the configuration file.  They should be 
+specified as ``t_min`` and ``t_max`` respectively. Similarly precipitation 
+should be given as ``prec``.  These variables are used to generate seasonal 
+averages which are used in the calculation of shortwave and longwave radiation.
 
-The third required variable is the initial snow water equivalent (SWE) for each
+The final required variable is the initial snow water equivalent (SWE) for each
 grid cell. It should be named ``swe`` in the file.
 
 Output Specifications
 =====================
+.. ATTENTION::
+    The ``time`` coordinate in MetSim's output is local to the location of each 
+    cell! This means that for a single time slice in the NetCDF file all locations
+    along a parallel (same latitude) will have the same solar geometry at that time.
+
 The output variables that are available are dependent on the time step being used.  There are two cases:
 
 Daily Output
@@ -65,18 +73,20 @@ step:
 * ``prec`` : Precipitation (also a required input value) (mm/day)
 * ``swe`` : Snow water equivalent (mm)
 * ``vapor_pressure`` : Vapor pressure (kPa)
-* ``swrad`` : Shortwave radiation (W/m^2)
+* ``shortwave`` : Shortwave radiation (W/m^2)
 * ``tskc`` : Cloud cover fraction
 * ``pet`` : Potential evapotranpiration (mm/day)
 
 Sub-daily Output
 ----------------
 
-* ``temperature`` : Temperature (C)
+* ``temp`` : Temperature (C)
 * ``prec`` : Precipitation (mm/timestep)
 * ``shortwave`` : Shortwave radiation (W/m^2)
 * ``vapor_pressure`` : Vapor pressure (kPa)
+* ``air_pressure`` : Air pressure (kPa)
 * ``rel_humid`` : Relative humidity
+* ``spec_humid`` : Specific humidity
 * ``longwave`` : Longwave radiation (W/m^2)
 * ``tsck`` : Cloud cover fraction
 * ``wind`` : Wind speed (only if given as an input) (m/s)
