@@ -162,7 +162,7 @@ def main():
                 forcing_filename = (infile_prefix +
                                     "%04d%02d" % (year_current,
                                                    month_current) + '.nc')
-                infile = (infile_directory + forcing_filename)
+                infile = (infile_directory + '/' + forcing_filename)
 
                 # delete any previous temporary state files created with
                 # ms.run()
@@ -176,6 +176,7 @@ def main():
                 params['start'] = startdate
                 params['stop'] = enddate
                 params['forcing'] = infile
+
                 ms = MetSim(params)
                 print('Running forcings from start and stop dates:', startdate,
                       enddate)
