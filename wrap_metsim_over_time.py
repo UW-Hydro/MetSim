@@ -20,9 +20,11 @@ def main():
     outfile_directory = ''
     startdate = ''
     enddate = ''
+
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hi:p:d:s:f:o:u:a:b:",
-                                                 ["infile_directory=", "spinup="
+                                                 ["infile_directory=",
+                                                  "spinup="
                                                   "domainfile=",
                                                   "statefile_initial=",
                                                   "infile_prefix=",
@@ -79,10 +81,9 @@ def main():
     last_year = int(last_year)
 
     forcing_file = infile_directory + '/' + \
-                   infile_prefix + "%04d%02d" % (first_year, first_month) + \
+                   infile_prefix + ".%04d%02d" % (first_year, first_month) + \
                    '.nc'
     forcing_intial = xr.open_dataset(forcing_file)
-    outfile_prefix_month_1 = "%s%04d%02d" % (outfile_prefix, first_year, first_month)
 
     year = first_year
     date_i = 0
@@ -95,8 +96,8 @@ def main():
         "domain_fmt": 'netcdf',
         "state_fmt": 'netcdf',
         "out_dir": outfile_directory,
-        "out_state": outfile_directory + 'state_tmp.nc',
-        "out_prefix": 'forcing_tmp',
+        "out_state": outfile_directory + outfile_prefix + '.state_tmp.nc',
+        "out_prefix": outfile_prefix + '.forcing_tmp',
         "time_step": '60',
         "out_fmt": 'netcdf',
         "annual": False,
@@ -117,8 +118,9 @@ def main():
                                     'dur': 'dur'})
     }
 
-    forcing_outfile_tmp = outfile_directory + 'forcing_tmp' + '_total.nc'
-    state_outfile = outfile_directory + 'state.nc'
+    forcing_outfile_tmp = outfile_directory + outfile_prefix + \
+                          '.forcing_tmp' + '_total.nc'
+    state_outfile = outfile_directory + outfile_prefix + '.state.nc'
 
     if spinup:
         print('Doing spinup year')
@@ -140,7 +142,8 @@ def main():
                 # delete any previous temporary state files created with
                 # ms.run()
                 try:
-                    os.remove(outfile_directory + 'state_tmp.nc')
+                    os.remove(outfile_directory + outfile_prefix +
+                              '.state_tmp.nc')
                 except:
                     pass
                 params["forcing"] = forcing_file
@@ -160,14 +163,15 @@ def main():
                 ms.state.to_netcdf(state_outfile)
             else:
                 forcing_filename = (infile_prefix +
-                                    "%04d%02d" % (year_current,
+                                    ".%04d%02d" % (year_current,
                                                    month_current) + '.nc')
                 infile = (infile_directory + '/' + forcing_filename)
 
                 # delete any previous temporary state files created with
                 # ms.run()
                 try:
-                    os.remove(outfile_directory + 'state_tmp.nc')
+                    os.remove(outfile_directory + outfile_prefix +
+                              'state_tmp.nc')
                 except:
                     pass
 
@@ -176,7 +180,6 @@ def main():
                 params['start'] = startdate
                 params['stop'] = enddate
                 params['forcing'] = infile
-
                 ms = MetSim(params)
                 print('Running forcings from start and stop dates:', startdate,
                       enddate)
@@ -211,38 +214,46 @@ def main():
             date_i += 1
             print('Completed forcings from start and stop dates:',
                   startdate, enddate)
+            if date_i > len(dates) - 1:
+                break
+
         if spinup:
             # save the state file at the end of spinup
             print('Saving spinup month 12 state file')
             ds = xr.open_dataset(statefile_initial)
             ms.state.coords['time'] = ds.coords['time']
-
+            state_spinup_end_file = outfile_directory + outfile_prefix + \
+                                    'state_spinup_end.nc'
             try:
-                os.remove(outfile_directory + 'state_spinup_end.nc')
+                os.remove(state_spinup_end_file)
             except:
                 pass
-            state_spinup_end_file = outfile_directory + 'state_spinup_end.nc'
             ms.state.to_netcdf(state_spinup_end_file)
-
             spinup = 0
             date_i = 0
             params['state'] = state_spinup_end_file
+
         else:
             # output concatenated dataset
             outfile = (outfile_directory + '/' + outfile_prefix +
-                       "%04d_" % (year) + 'total.nc')
+                       ".%04d_" % (year) + 'total.nc')
             print('Saving yearly datasets to outfile:', outfile)
             try:
                 os.remove(outfile)
             except:
                 pass
             forcing_concat.to_netcdf(outfile, engine='scipy')
-
             year = year + 1
 
     # delete any previous temporary state files created with ms.run()
     try:
-        os.remove(outfile_directory + 'state_tmp.nc')
+        os.remove(outfile_directory + outfile_prefix + '.state_tmp.nc')
+    except:
+        pass
+
+    # delete the last month's forcing files
+    try:
+        os.remove(forcing_outfile_tmp)
     except:
         pass
     state.close()
