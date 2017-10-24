@@ -121,7 +121,7 @@ class MetSim(object):
         "stop": '',
         "time_step": '',
         "calendar": 'standard',
-        "out_fmt": '',
+        "out_fmt": 'zz',
         "out_precision": 'f8',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
