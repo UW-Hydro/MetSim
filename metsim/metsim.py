@@ -119,7 +119,7 @@ class MetSim(object):
         "stop": '',
         "time_step": '',
         "calendar": 'standard',
-        "out_fmt": '',
+        "out_fmt": 'zz',
         "out_precision": 'f8',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
@@ -629,7 +629,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
             sys.exit()
 
     params['elev'] = elev
-            
+
     df = ds.to_dataframe()
 
     if params['prec_type'].upper() == 'TRIANGLE':
