@@ -41,11 +41,11 @@ dates = {'netcdf': (pd.datetime(1950, 1, 1), pd.datetime(1950, 1, 31)),
 
 # Domain vars
 domain_section = {'netcdf': OrderedDict(lat='lat', lon='lon', mask='mask',
-                                        elev='elev'),
+                                        elev='elev', t_pk='t_pk', dur='dur'),
                   'binary': OrderedDict(lat='lat', lon='lon', mask='mask',
-                                        elev='elev'),
+                                        elev='elev',t_pk='t_pk', dur='dur'),
                   'ascii': OrderedDict(lat='lat', lon='lon', mask='mask',
-                                       elev='elev')}
+                                       elev='elev', t_pk='t_pk', dur='dur')}
 
 # Input vars
 in_vars_section = {'netcdf': OrderedDict(Prec='prec', Tmax='t_max',
