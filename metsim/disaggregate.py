@@ -373,23 +373,27 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
 
         # Loop through each day of the timeseries and apply the kernel for the
         # appropriate month of year
-        for d in np.arange(n_days):
-            if d == 0:
-                i1 = int(np.ceil(steps_per_day * 1.5))
-                P_return[:i1] += (1 / sum(kernels[month_of_year[d] - 1,
-                                  int(np.ceil(steps_per_day / 2)):])) * \
-                                      prec[d] * kernels[month_of_year[d] - 1,
-                                  int(np.ceil(steps_per_day / 2)):]
-            elif d == (n_days - 1):
-                i0 = int(np.floor((d - 0.5) * steps_per_day))
-                P_return[i0:] += (1 / sum(kernels[month_of_year[d] - 1,
-                                  :int(np.ceil(steps_per_day * 1.5))])) * \
-                                       prec[d] * kernels[month_of_year[d] - 1,
-                                  :int(np.ceil(steps_per_day * 1.5))]
-            else:
-                i0 = int(np.floor((d - 0.5) * steps_per_day))
-                i1 = int(i0 + (2 * steps_per_day))
-                P_return[i0:i1] += prec[d]*kernels[month_of_year[d] - 1, :]
+        tmp = np.asarray(np.where(prec > 0))[0]
+        if len(tmp) > 0:
+            for d in tmp:
+                if d == 0:
+                    i1 = int(np.ceil(steps_per_day * 1.5))
+                    P_return[:i1] += (1 / sum(kernels[month_of_year[d] - 1,
+                                      int(np.ceil(steps_per_day / 2)):])) * \
+                                          prec[d] * kernels[month_of_year[d] -
+                                          1,
+                                      int(np.ceil(steps_per_day / 2)):]
+                elif d == (n_days - 1):
+                    i0 = int(np.floor((d - 0.5) * steps_per_day))
+                    P_return[i0:] += (1 / sum(kernels[month_of_year[d] - 1,
+                                      :int(np.ceil(steps_per_day * 1.5))])) * \
+                                           prec[d] * kernels[month_of_year[d] -
+                                           1,
+                                      :int(np.ceil(steps_per_day * 1.5))]
+                else:
+                    i0 = int(np.floor((d - 0.5) * steps_per_day))
+                    i1 = int(i0 + (2 * steps_per_day))
+                    P_return[i0:i1] += prec[d]*kernels[month_of_year[d] - 1, :]
         P_return = np.around(P_return, decimals=5)
         return P_return.values
 

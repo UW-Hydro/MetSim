@@ -83,7 +83,7 @@ def main():
     forcing_file = infile_directory + '/' + \
                    infile_prefix + ".%04d%02d" % (first_year, first_month) + \
                    '.nc'
-    forcing_intial = xr.open_dataset(forcing_file)
+    forcing_initial = xr.open_dataset(forcing_file)
 
     year = first_year
     date_i = 0
@@ -223,7 +223,7 @@ def main():
             ds = xr.open_dataset(statefile_initial)
             ms.state.coords['time'] = ds.coords['time']
             state_spinup_end_file = outfile_directory + outfile_prefix + \
-                                    'state_spinup_end.nc'
+                                    '.state_spinup_end.nc'
             try:
                 os.remove(state_spinup_end_file)
             except:
@@ -257,7 +257,7 @@ def main():
     except:
         pass
     state.close()
-    forcing_intial.close()
+    forcing_initial.close()
     domain.close()
     computation_end = datetime.datetime.now()
     computation_total = computation_end - computation_start

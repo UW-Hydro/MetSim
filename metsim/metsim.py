@@ -636,9 +636,10 @@ def wrap_run(func: callable, loc: dict, params: dict,
 
     if params['prec_type'].upper() == 'TRIANGLE':
         tri_df = df.copy(deep=True)
-        tri_df = tri_df.drop(labels=['prec', 't_max', 't_min', 'day_of_year',
-                                     'elev', 'seasonal_prec', 'smoothed_dtr',
-                                     'swe', 'wind'], axis=1)
+        vars_to_drop = list(tri_df)
+        vars_to_drop.remove('t_pk')
+        vars_to_drop.remove('dur')
+        tri_df = tri_df.drop(labels=vars_to_drop, axis=1)
         tri_df.reset_index(level='time', drop=True, inplace=True)
         tri_df = tri_df.reset_index().drop_duplicates(subset='month',
                                                       keep='first').set_index('month')

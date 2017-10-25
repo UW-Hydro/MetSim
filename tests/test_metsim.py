@@ -41,11 +41,11 @@ dates = {'netcdf': (pd.datetime(1950, 1, 1), pd.datetime(1950, 1, 31)),
 
 # Domain vars
 domain_section = {'netcdf': OrderedDict(lat='lat', lon='lon', mask='mask',
-                                        elev='elev'),
+                                        elev='elev', t_pk='t_pk', dur='dur'),
                   'binary': OrderedDict(lat='lat', lon='lon', mask='mask',
-                                        elev='elev'),
+                                        elev='elev', t_pk='t_pk', dur='dur'),
                   'ascii': OrderedDict(lat='lat', lon='lon', mask='mask',
-                                       elev='elev')}
+                                       elev='elev', t_pk='t_pk', dur='dur')}
 
 # Input vars
 in_vars_section = {'netcdf': OrderedDict(Prec='prec', Tmax='t_max',
@@ -181,6 +181,8 @@ def test_mtclim(test_setup):
     test_setup.run()
     hourly = test_setup.output.isel(lat=2, lon=2).to_dataframe()
     assert len(hourly) == (n_days * const.HOURS_PER_DAY)
+    if test_setup.params['prec_type'].upper() == 'TRIANGLE':
+        data_ranges['prec'] = (0, 50)
     for var in test_setup.params['out_vars']:
         assert var in hourly
         l, h = data_ranges[var]
@@ -224,9 +226,11 @@ def test_disaggregation_values():
     # The location we will test against
     loc = (1, 4)
 
-    def check_data(out, good, tol=0.02):
+    def check_data(out, good, prec_type, tol=0.02):
         assert type(out) is pd.DataFrame
         for var in ms.params['out_vars']:
+            if var == 'prec' and prec_type.upper() == 'TRIANGLE':
+                continue
             # Check to make sure each variable has normalized
             # rmse of less than 0.02
             h = max([good[var].max(), out[var].max()])
@@ -246,7 +250,7 @@ def test_disaggregation_values():
     good.index = out.index
 
     # Make sure the data comes out right
-    check_data(out, good)
+    check_data(out, good, ms.params['prec_type'])
 
     # Now do 3 hourly
     ms.params['time_step'] = '180'
@@ -257,4 +261,4 @@ def test_disaggregation_values():
     good.index = out.index
 
     # Make sure the data comes out right
-    check_data(out, good, tol=0.1)
+    check_data(out, good, ms.params['prec_type'], tol=0.1)
