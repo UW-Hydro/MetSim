@@ -145,6 +145,10 @@ class MetSim(object):
         """
         # Record parameters
         self.params.update(params)
+
+        self._need_initial_swe = (self.params['mtclim_swe_corr'] or
+                                  'swe' in self.params['out_vars'])
+
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
@@ -358,7 +362,8 @@ class MetSim(object):
         self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
         self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
         self.state['prec'].sel(**locs).values[:] = prec[-90:]
-        self.state['swe'].sel(**locs).values = result['swe'].values[-1]
+        if self._need_initial_swe:
+            self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
         self.state['time'].values = date_range(
             state_start, result.index[-1], calendar=self.params['calendar'])
@@ -415,7 +420,7 @@ class MetSim(object):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
 
-        assert self.state.dims['time'] == 90
+        assert self.state.dims['time'] == 90, self.state['time']
 
         record_dates = date_range(self.params['state_start'],
                                   self.params['state_stop'],
@@ -439,12 +444,13 @@ class MetSim(object):
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
-        if 'time' in self.state['swe'].dims:
-            self.state['swe'] = self.state['swe'].sel(
-                time=self.params['state_stop']).drop('time')
-        else:
-            self.state['swe'] = self.state['swe']
-        self.met_data['swe'] = self.state['swe'].copy()
+        if self._need_initial_swe:
+            if 'time' in self.state['swe'].dims:
+                self.state['swe'] = self.state['swe'].sel(
+                    time=self.params['state_stop']).drop('time')
+            else:
+                self.state['swe'] = self.state['swe']
+            self.met_data['swe'] = self.state['swe'].copy()
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
@@ -619,7 +625,10 @@ def wrap_run(func: callable, loc: dict, params: dict,
     logger.info("Processing {}".format(loc))
     lat = ds['lat'].values
     elev = ds['elev'].values
-    swe = ds['swe'].values
+    if 'swe' in ds:
+        swe = ds['swe'].values
+    else:
+        swe = None
     params['elev'] = elev
     df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
