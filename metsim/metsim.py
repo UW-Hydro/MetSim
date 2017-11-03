@@ -159,22 +159,6 @@ class MetSim(object):
         self.state = io.read_state(self.params, self.domain)
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
-        if self.params['prec_type'].upper() == 'TRIANGLE':
-            try:
-                self.met_data['t_pk'] = self.domain['t_pk']
-            except:
-                print('Storm duration and time to peak values are required in '
-                      'the domain file for the triangle preciptation '
-                      'disagregation method.')
-                sys.exit()
-            try:
-                self.met_data['dur'] = self.domain['dur']
-            except:
-                print('Storm duration and time to peak values are required in '
-                      'the domain file for the triangle preciptation '
-                      'disagregation method.')
-                sys.exit()
-
         logger.info("_aggregate_state")
 
         self._aggregate_state()
@@ -322,6 +306,12 @@ class MetSim(object):
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
+
+                if self.params['prec_type'].upper() == 'TRIANGLE':
+                    # add variables for triangle precipitation disgregation
+                    # method to parameters
+                    self.params['dur'], self.params['t_pk'] = add_prec_tri_vars(self.domain.sel(**locs))
+
                 wrap_results = wrap_run(
                     self.method.run, locs, self.params, data.sel(**locs),
                     self.state.sel(**locs), self.disagg, times, label)
@@ -403,6 +393,7 @@ class MetSim(object):
             if isinstance(v, dict):
                 v = json.dumps(v)
             elif not isinstance(v, str) and isinstance(v, Iterable):
+                print('v', v)
                 v = ', '.join(v)
             attrs['_global'][k] = v
         self.output.attrs = attrs['_global']
@@ -599,54 +590,9 @@ def wrap_run(func: callable, loc: dict, params: dict,
     elev = ds['elev'].values
     swe = ds['swe'].values
 
-    if params['prec_type'].upper() == 'TRIANGLE':
-        try:
-            dur = ds['dur'].values
-        except:
-            print('Storm duration and time to peak values are required in the '
-                  'domain file for the triangle preciptation disagregation '
-                  'method.')
-            sys.exit()
-        try:
-            t_pk = ds['t_pk'].values
-        except:
-            print('Storm duration and time to peak values are required in the '
-                  'domain file for the triangle preciptation disagregation '
-                  'method.')
-            sys.exit()
-        day_length = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
-        dur_zero_test = dur <= 0
-        dur_day_test = dur > day_length
-        if dur_zero_test.any() or dur_day_test.any():
-            print('Storm duration must be greater than 0 and less than',
-                  day_length, '(i.e. the day length in minutes)')
-            sys.exit()
-        t_pk_zero_test = t_pk < 0
-        t_pk_day_test = t_pk > day_length
-        if t_pk_zero_test.any() or t_pk_day_test.any():
-            print('Storm time to peak must be greater than or equal to 0, and'
-                  'less than', day_length, '(i.e. the end of a day)')
-            sys.exit()
-
     params['elev'] = elev
 
     df = ds.to_dataframe()
-
-    if params['prec_type'].upper() == 'TRIANGLE':
-        tri_df = df.copy(deep=True)
-        vars_to_drop = list(tri_df)
-        vars_to_drop.remove('t_pk')
-        vars_to_drop.remove('dur')
-        tri_df = tri_df.drop(labels=vars_to_drop, axis=1)
-        tri_df.reset_index(level='time', drop=True, inplace=True)
-        tri_df = tri_df.reset_index().drop_duplicates(subset='month',
-                                                      keep='first').set_index('month')
-        months = np.arange(12, dtype=int)
-        tri_df.index = months
-        df = df.drop(['dur', 't_pk'], axis=1)
-        df.reset_index(level='month', drop=True, inplace=True)
-        df = df.reset_index().drop_duplicates(subset='time',
-                                              keep='first').set_index('time')
 
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
@@ -682,11 +628,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
             t_end = None
 
         # Disaggregate to subdaily values
-        if params['prec_type'].upper() == 'TRIANGLE':
-            df_complete = disaggregate(df, params, sg, t_begin, t_end,
-                                       dur=tri_df['dur'], t_pk=tri_df['t_pk'])
-        else:
-            df_complete = disaggregate(df, params, sg, t_begin, t_end)
+        df_complete = disaggregate(df, params, sg, t_begin, t_end)
 
         # Calculate the times that we want to get out by chopping
         # off the endpoints that were added on previously
@@ -708,3 +650,55 @@ def wrap_run(func: callable, loc: dict, params: dict,
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)
+
+
+def add_prec_tri_vars(domain):
+    """
+    Check that variables for triangle precipitation method exist and have
+    values that are within allowable ranges. Return these variables.
+
+    Parameters
+    ----------
+    domain:
+        Dataset of domain variables for given location.
+
+    Returns
+    -------
+    dur
+        Array of climatological monthly storm durations. [minutes]
+    t_pk
+        Array of climatological monthly times to storm peaks. [minutes]
+    """
+    # Check that variables exist
+    try:
+        dur = domain['dur']
+    except:
+        logger.info("Storm duration and time to peak values are "
+                    "required in the domain file for the triangle "
+                    "preciptation disagregation method.")
+        raise
+    try:
+        t_pk = domain['t_pk']
+    except:
+        logger.info("Storm duration and time to peak values are "
+                    "required in the domain file for the triangle "
+                    "preciptation disagregation method.")
+        raise
+
+    # Check that variable values are within allowable ranges.
+    day_length = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
+    dur_zero_test = dur <= 0
+    dur_day_test = dur > day_length
+    if dur_zero_test.any() or dur_day_test.any():
+        logger.info("Storm duration must be greater than 0 and less than",
+                    day_length, "(i.e. the day length in minutes)")
+        sys.exit()
+    t_pk_zero_test = t_pk < 0
+    t_pk_day_test = t_pk > day_length
+    if t_pk_zero_test.any() or t_pk_day_test.any():
+        logger.info("Storm time to peak must be greater than or equal to "
+                    "0, and less than", day_length,
+                    "(i.e. the end of a day)")
+        sys.exit()
+
+    return dur, t_pk
