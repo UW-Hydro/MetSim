@@ -137,7 +137,7 @@ class MetSim(object):
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid'],
-        "prec_type": 'triangle'
+        "prec_type": 'uniform'
     }
 
     def __init__(self, params: dict):
@@ -393,7 +393,6 @@ class MetSim(object):
             if isinstance(v, dict):
                 v = json.dumps(v)
             elif not isinstance(v, str) and isinstance(v, Iterable):
-                print('v', v)
                 v = ', '.join(v)
             attrs['_global'][k] = v
         self.output.attrs = attrs['_global']
@@ -673,14 +672,14 @@ def add_prec_tri_vars(domain):
     try:
         dur = domain['dur']
     except:
-        logger.info("Storm duration and time to peak values are "
+        logger.error("Storm duration and time to peak values are "
                     "required in the domain file for the triangle "
                     "preciptation disagregation method.")
         raise
     try:
         t_pk = domain['t_pk']
     except:
-        logger.info("Storm duration and time to peak values are "
+        logger.error("Storm duration and time to peak values are "
                     "required in the domain file for the triangle "
                     "preciptation disagregation method.")
         raise
@@ -690,15 +689,14 @@ def add_prec_tri_vars(domain):
     dur_zero_test = dur <= 0
     dur_day_test = dur > day_length
     if dur_zero_test.any() or dur_day_test.any():
-        logger.info("Storm duration must be greater than 0 and less than",
-                    day_length, "(i.e. the day length in minutes)")
-        sys.exit()
+        raise ValueError('Storm duration must be greater than 0 and less than',
+                    day_length, '(i.e. the day length in minutes)')
+
     t_pk_zero_test = t_pk < 0
     t_pk_day_test = t_pk > day_length
     if t_pk_zero_test.any() or t_pk_day_test.any():
-        logger.info("Storm time to peak must be greater than or equal to "
-                    "0, and less than", day_length,
-                    "(i.e. the end of a day)")
-        sys.exit()
+        raise ValueError('Storm time to peak must be greater than or equal to '
+                    '0, and less than', day_length,
+                    '(i.e. the end of a day)')
 
     return dur, t_pk
