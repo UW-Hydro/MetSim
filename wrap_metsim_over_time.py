@@ -236,7 +236,7 @@ def main():
         else:
             # output concatenated dataset
             outfile = (outfile_directory + '/' + outfile_prefix +
-                       ".%04d_" % (year) + 'total.nc')
+                       ".%04d" % (year) + '.nc')
             print('Saving yearly datasets to outfile:', outfile)
             try:
                 os.remove(outfile)
