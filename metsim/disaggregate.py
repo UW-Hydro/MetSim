@@ -54,14 +54,6 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         of `df_daily`. None indicates no extension of
         the record.
 
-    Dynamic optional variables (kwargs)
-    -----------------
-    dur: pd.DataFrame
-        Daily timeseries of storm durations for given month of year. [minutes]
-    t_pk: pd.DataFrame
-        Daily timeseries of time to storm peaks for given month of year.
-        [minutes]
-
     Returns
     -------
     df_disagg:
@@ -104,15 +96,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         df_disagg['temp'], df_disagg['vapor_pressure'],
         df_daily['tskc'], params)
 
-    if params['prec_type'].upper() == 'TRIANGLE':
-        dur = kwargs['dur']
-        t_pk = kwargs['t_pk']
-        df_disagg['prec'] = prec(df_daily['prec'], ts, params,
-                                 dur=dur, t_pk=t_pk,
-                                 day_of_year=df_daily.index.dayofyear,
-                                 month_of_year=df_daily.index.month)
-    else:
-        df_disagg['prec'] = prec(df_daily['prec'], ts, params)
+    df_disagg['prec'] = prec(df_daily['prec'], ts, params,
+                             df_daily.index.month)
 
     if 'wind' in df_daily:
         df_disagg['wind'] = wind(df_daily['wind'], ts)
@@ -214,7 +199,7 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
     return temps
 
 
-def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
+def prec(prec: pd.Series, ts: float, params: dict, month_of_year: int):
 
     """
     Distributes sub-daily precipitation either evenly (uniform) or with a
@@ -234,35 +219,37 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
         A dictionary of parameters, which contains
         information about which precipitation disaggregation
         method to use.
-
-    Dynamic optional variables:
-    -------------------
-    dur:
-        Timeseries of climatological average monthly storm durations. [minutes]
-    t_pk:
-        Timeseries of climatological average monthly storm peak time. [minutes]
-    day_of_year:
-        Timeseries of index of days since Jan-1.
     month_of_year:
-        Timeseries of month of year.
+        Timeseries of index of month of year
 
     Returns
     -------
     prec:
         A sub-daily timeseries of precipitation. [mm]
     """
-
-    def prec_UNIFORM(prec: pd.Series, ts: float):
+    def prec_UNIFORM(prec: pd.Series, ts: float, month_of_year: int):
 
         scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
         P_return = (prec * scale).resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
         return P_return
 
-    def prec_TRIANGLE(prec: pd.Series, ts: float, **kwargs):
+    def prec_TRIANGLE(prec: pd.Series, ts: float, month_of_year: int):
 
-        dur = kwargs['dur']
-        t_pk = kwargs['t_pk']
-        month_of_year = kwargs['month_of_year']
+        def P_kernel(t_corners, m, t):
+            # calculating precipitation intensity of current time t
+            t_start = t_corners[0]
+            t_pk = t_corners[1]
+            t_end = t_corners[2]
+            if (t < t_start) | (t > t_end):
+                P = 0
+            elif t <= t_pk:
+                P = m * (t - t_start)
+            elif t >= t_pk:
+                P = m * (t_end - t)
+            return P
+
+        dur = params['dur']
+        t_pk = params['t_pk']
         n_days = len(prec)
         steps_per_day = int(cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY / int(ts))
         offset = np.ceil(steps_per_day / 2)
@@ -270,6 +257,8 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
         index = np.arange(output_length)
         steps_per_two_days = int(((np.ceil(steps_per_day / 2)) * 2) +
                                  steps_per_day)
+        # time of step on next day [minutes]
+        t_next = 2 * cnst.MIN_PER_DAY + ts + 1
         P_return = pd.Series(np.zeros(output_length, dtype='float'),
                              index=index)
 
@@ -277,123 +266,71 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
         kernels = np.zeros(shape=(12, steps_per_two_days))
 
         for month in np.arange(12, dtype=int):
-            I_pk = 2. * 1. / dur[month]
-            m = I_pk / (dur[month] / 2.)
+            # Calculating the unit hyetograph (kernels) with area of 1 mm
+
+            # Computing monthly constants
+            P_pk = 2. / dur[month]  # peak precipitation intensity
+            m = P_pk / (dur[month] / 2.)  # slope of precipitation rising limb
+            # time of storm start [minutes]
             t_start = (t_pk[month] - (dur[month] / 2.))
+            # time of storm end [minutes]
             t_end = (t_pk[month] + (dur[month] / 2.))
-            i_start = np.floor(t_start / ts) + offset
-            i_end = np.floor(t_end / ts) + offset
-            i_t_pk = np.floor(t_pk[month] / ts) + offset
+            # time step of storm start
+            i_start = int(np.floor(t_start / ts) + offset)
+            # time step of storm end
+            i_end = int(np.floor(t_end / ts) + offset)
 
-            if (i_start == i_t_pk) and (i_end != i_start):
-                for step in np.arange(steps_per_two_days, dtype=int):
-                    t_step_start = (step - offset) * ts
-                    t_step_end = t_step_start + ts
-                    if step == i_start:
-                        h1 = t_pk[month] - t_start
-                        b1 = m * h1
-                        A1 = b1 / 2 * h1
-                        b2 = -m * (t_step_end - t_end)
-                        a2 = b2 + (-m * (t_pk[month] - t_step_end))
-                        A2 = (a2 + b2) / 2 * (t_step_end - t_pk[month])
-                        kernels[month, step] = A1 + A2
-                    elif (step > i_start) and (step < i_end):
-                        b = -m * (t_step_end - t_end)
-                        a = -m * (t_step_start - t_step_end)
-                        kernels[month, step] = (a + b) / 2 * ts
-                    elif step == i_end:
-                        h = t_step_start - t_end
-                        b = -m * h
-                        kernels[month, step] = b / 2 * -h
-                    else:
-                        kernels[month, step] = 0
-            elif i_t_pk == i_end and (i_end != i_start):
-                for step in np.arange(steps_per_two_days, dtype=int):
-                    t_step_start = (step - offset) * ts
-                    t_step_end = t_step_start + ts
-                    if step == i_start:
-                        h = t_step_end - t_start
-                        b = m * h
-                        kernels[month, step] = b / 2 * h
-                    elif step == i_t_pk:
-                        h2 = t_pk[month] - t_end
-                        b2 = -m * h2
-                        A2 = b2 / 2 * -h2
-                        b1 = m * (t_step_start - t_start)
-                        a1 = b1 + (m * (t_pk[month] - t_step_start))
-                        A1 = (a1 + b1) / 2 * (t_pk[month] - t_step_start)
-                        kernels[month, step] = A1 + A2
-                    else:
-                        kernels[month, step] = 0
-            elif i_start == i_end:
-                for step in np.arange(steps_per_two_days, dtype=int):
-                    t_step_start = (step - offset) * ts
-                    t_step_end = t_step_start + ts
-                    if step == i_start:
-                        kernels[month, step] = 1
-                    else:
-                        kernels[month, step] = 0
-            else:
-                for step in np.arange(steps_per_two_days, dtype=int):
-                    t_step_start = (step - offset) * ts
-                    t_step_end = t_step_start + ts
-                    if step == i_start:
-                        h = t_step_end - t_start
-                        b = m * h
-                        kernels[month, step] = b / 2 * h
-                    elif (step > i_start) and (step < i_t_pk):
-                        a = m * (t_step_start - t_start)
-                        b = a + (m * ts)
-                        kernels[month, step] = (a + b) / 2 * ts
-                    elif i_t_pk == step:
-                        h1 = t_pk[month] - t_step_start
-                        a1 = m * (t_step_start - t_start)
-                        b1 = a1 + (m * h1)
-                        h2 = (t_step_end - t_pk[month])
-                        b2 = -m * (t_step_end - t_end)
-                        a2 = b2 + (m * h2)
-                        kernels[month, step] = ((a1 + b1) / 2 * h1) + \
-                                                ((a2 + b2) / 2 * h2)
-                    elif (step < i_end) and (step > i_t_pk):
-                        if (t_step_end != t_end):
-                            b = -m * (t_step_end - t_end)
-                        else:
-                            b = 0
-                        a = b + (m * ts)
-                        kernels[month, step] = (a + b) / 2 * ts
-                    elif (step == i_end):
-                        h = t_step_start - t_end
-                        if (t_step_start != t_end):
-                            b = -m * h
-                        else:
-                            b = 0
-                        kernels[month, step] = b / 2 * -h
-                    else:
-                        P_return[step] = 0
+            # Initializing timestep variables
+            i = i_start  # current timestep
+            t = i_start * ts  # current time [minutes]
+            t_0 = t     # start time of current timestep [minutes]
+            # times of key corners of unit hyetograph
+            t_corners = [t_start, t_pk[month], t_end, t_next] + offset * ts
+            c = 0   # current corner index
+                    # end time of current timestep [minutes]
+            t_1 = min(t_0 + ts, t_corners[c])
+            area = 0  # area under curve for current timestep
 
-        # Loop through each day of the timeseries and apply the kernel for the
-        # appropriate month of year
-        tmp = np.asarray(np.where(prec > 0))[0]
-        if len(tmp) > 0:
-            for d in tmp:
+            # Looping through kernel timesteps
+            while i <= i_end:
+                P_0 = P_kernel(t_corners, m, t_0)
+                P_1 = P_kernel(t_corners, m, t_1)
+                area += 0.5 * (P_0 + P_1) * (t_1 - t_0)
+                if t_1 == (t + ts):  # end of timestep check
+                    kernels[month, i] = area
+                    area = 0
+                    t += ts
+                    i += 1
+                if t_1 == t_corners[c]:
+                    c += 1
+                t_0 = t_1
+                t_1 = min(t + ts, t_corners[c])
+
+        # Loop through each rain day of the timeseries and apply the kernel for
+        # the appropriate month of year
+        rain_days = np.asarray(np.where(prec > 0))[0]
+        if len(rain_days) > 0:
+            for d in rain_days:
+                mon = month_of_year[d] - 1
                 if d == 0:
+                    # beginning of kernel is clipped;
+                    # rescale so that clipped kernel sums to original total
+                    k0 = int(np.ceil(steps_per_day / 2))
                     i1 = int(np.ceil(steps_per_day * 1.5))
-                    P_return[:i1] += (1 / sum(kernels[month_of_year[d] - 1,
-                                      int(np.ceil(steps_per_day / 2)):])) * \
-                                          prec[d] * kernels[month_of_year[d] -
-                                          1,
-                                      int(np.ceil(steps_per_day / 2)):]
+                    P_return[:i1] += prec[d] / sum(kernels[mon, k0:]) \
+                                     * kernels[mon, k0:]
                 elif d == (n_days - 1):
+                    # end of kernel is clipped;
+                    # rescale so that clipped kernel sums to original total
+                    k1 = int(np.ceil(steps_per_day * 1.5))
                     i0 = int(np.floor((d - 0.5) * steps_per_day))
-                    P_return[i0:] += (1 / sum(kernels[month_of_year[d] - 1,
-                                      :int(np.ceil(steps_per_day * 1.5))])) * \
-                                           prec[d] * kernels[month_of_year[d] -
-                                           1,
-                                      :int(np.ceil(steps_per_day * 1.5))]
+                    P_return[i0:] += prec[d] / sum(kernels[mon, :k1]) \
+                                     * kernels[mon, :k1]
                 else:
                     i0 = int(np.floor((d - 0.5) * steps_per_day))
                     i1 = int(i0 + (2 * steps_per_day))
-                    P_return[i0:i1] += prec[d]*kernels[month_of_year[d] - 1, :]
+                    P_return[i0:i1] += prec[d] * kernels[mon]
+
         P_return = np.around(P_return, decimals=5)
         return P_return.values
 
@@ -402,7 +339,8 @@ def prec(prec: pd.Series, ts: float, params: dict, **kwargs):
         'TRIANGLE': prec_TRIANGLE,
     }
 
-    P_return = prec_function[params['prec_type'].upper()](prec, ts, **kwargs)
+    P_return = prec_function[params['prec_type'].upper()](prec, ts,
+                                                          month_of_year)
     return P_return
 
 
