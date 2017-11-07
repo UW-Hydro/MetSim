@@ -138,7 +138,7 @@ class MetSim(object):
         "lapse_rate": 0.0065,
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'vapor_pressure', 'rel_humid'],
+                     'vapor_pressure', 'rel_humid', 'wind', 'air_pressure'],
         "prec_type": 'uniform'
     }
 
