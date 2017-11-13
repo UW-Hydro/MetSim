@@ -145,6 +145,10 @@ class MetSim(object):
         """
         # Record parameters
         self.params.update(params)
+
+        self._need_initial_swe = (self.params['mtclim_swe_corr'] or
+                                  'swe' in self.params['out_vars'])
+
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
@@ -197,6 +201,10 @@ class MetSim(object):
                 self.params[p] = pd.Timestamp(
                     force_times.values[i]).to_pydatetime()
 
+        # update calendar from input data (fall back to params version)
+        self.params['calendar'] = self.met_data['time'].encoding.get(
+            'calendar', self.params['calendar'])
+
         assert self.params['start'] >= pd.Timestamp(
             force_times.values[0]).to_pydatetime()
         assert self.params['stop'] <= pd.Timestamp(
@@ -216,6 +224,8 @@ class MetSim(object):
 
         logger.info('state start {}'.format(self.params['state_start']))
         logger.info('state stop {}'.format(self.params['state_stop']))
+
+        logger.info('calendar {}'.format(self.params['calendar']))
 
     def load_inputs(self, close=True):
         self.domain = self.domain.load()
@@ -352,10 +362,11 @@ class MetSim(object):
         self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
         self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
         self.state['prec'].sel(**locs).values[:] = prec[-90:]
-        self.state['swe'].sel(**locs).values = result['swe'].values[-1]
+        if self._need_initial_swe:
+            self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
-        self.state.time.values = date_range(state_start, result.index[-1],
-                                            calendar=self.params['calendar'])
+        self.state['time'].values = date_range(
+            state_start, result.index[-1], calendar=self.params['calendar'])
 
     def setup_output(self, prototype: xr.Dataset=None):
         if not prototype:
@@ -368,8 +379,8 @@ class MetSim(object):
         else:
             delta = pd.Timedelta('0 days')
 
-        start = pd.Timestamp(prototype.time.values[0]).to_pydatetime()
-        stop = pd.Timestamp(prototype.time.values[-1]).to_pydatetime()
+        start = pd.Timestamp(prototype['time'].values[0]).to_pydatetime()
+        stop = pd.Timestamp(prototype['time'].values[-1]).to_pydatetime()
         times = date_range(start, stop + delta,
                            freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
@@ -377,8 +388,9 @@ class MetSim(object):
 
         shape = (n_ts, ) + self.domain['mask'].shape
         dims = ('time', ) + self.domain['mask'].dims
-        coords = {'time': times, **self.domain.mask.coords}
+        coords = {'time': times, **self.domain['mask'].coords}
         self.output = xr.Dataset(coords=coords)
+        self.output['time'].encoding['calendar'] = self.params['calendar']
         if 'elev' in self.params:
             self.params.pop('elev')
         for k, v in self.params.items():
@@ -402,13 +414,13 @@ class MetSim(object):
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding={'dtype': self.params['out_precision'],
                           '_FillValue': cnst.FILL_VALUES['f8']})
-        self.output.time.attrs.update(attrs['time'])
+        self.output['time'].attrs.update(attrs['time'])
 
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
 
-        assert self.state.dims['time'] == 90
+        assert self.state.dims['time'] == 90, self.state['time']
 
         record_dates = date_range(self.params['state_start'],
                                   self.params['state_stop'],
@@ -432,12 +444,13 @@ class MetSim(object):
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
-        if 'time' in self.state['swe'].dims:
-            self.state['swe'] = self.state['swe'].sel(
-                time=self.params['state_stop']).drop('time')
-        else:
-            self.state['swe'] = self.state['swe']
-        self.met_data['swe'] = self.state['swe'].copy()
+        if self._need_initial_swe:
+            if 'time' in self.state['swe'].dims:
+                self.state['swe'] = self.state['swe'].sel(
+                    time=self.params['state_stop']).drop('time')
+            else:
+                self.state['swe'] = self.state['swe']
+            self.met_data['swe'] = self.state['swe'].copy()
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
@@ -469,6 +482,19 @@ class MetSim(object):
         # Make sure that we are going to write out some data
         if not len(self.params['out_vars']):
             errs.append("Output variable list must not be empty")
+
+        # Check output variables are valid
+        daily_out_vars = ['t_min', 't_max', 'prec', 'swe', 'vapor_pressure',
+                          'shortwave', 'tskc', 'pet', 'wind']
+        out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
+                         'air_pressure', 'rel_humid', 'spec_humid',
+                         'longwave', 'tsck', 'wind']
+        if int(self.params['time_step']) == 1440:
+            out_var_check = daily_out_vars
+        for var in self.params['out_vars']:
+            if var not in out_var_check:
+                errs.append('Cannot output variable {} at timestep {}'.format(
+                    var, self.params['time_step']))
 
         # Check that the parameters specified are available
         opts = {'mtclim_swe_corr': [True, False],
@@ -510,9 +536,10 @@ class MetSim(object):
             os.makedirs(dirname, exist_ok=True)
 
         # all state variables are written as doubles
-        state_encoding = {'time': {'dtype': 'f8'}}
+        state_encoding = {}
         for v in self.state:
             state_encoding[v] = {'dtype': 'f8'}
+        state_encoding['time']['calendar'] = self.params['calendar']
         # write state file
         self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
 
@@ -520,9 +547,14 @@ class MetSim(object):
         suffix = self.get_nc_output_suffix()
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
+        logger.info(output_filename)
+        out_encoding = {'time': {'dtype': 'f8',
+                                 'calendar': self.params['calendar']}}
+        for v in self.output.data_vars:
+            out_encoding[v] = {'dtype': 'f8'}
         self.output.to_netcdf(output_filename,
                               unlimited_dims=['time'],
-                              encoding={'time': {'dtype': 'f8'}})
+                              encoding=out_encoding)
 
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
@@ -593,7 +625,10 @@ def wrap_run(func: callable, loc: dict, params: dict,
     logger.info("Processing {}".format(loc))
     lat = ds['lat'].values
     elev = ds['elev'].values
-    swe = ds['swe'].values
+    if 'swe' in ds:
+        swe = ds['swe'].values
+    else:
+        swe = None
     params['elev'] = elev
     df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba

@@ -145,6 +145,9 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
     """Read in a NetCDF file"""
     ds = xr.open_dataset(data_handle)
 
+    if 'time' in ds.coords:
+        ds['time'] = ds.indexes['time'].round('D')
+
     if var_dict is not None:
         var_list = list(var_dict.keys())
         ds = ds[var_list]

@@ -51,7 +51,8 @@ def run(forcing: pd.DataFrame, params: dict, sg: dict,
     """
     params['n_days'] = len(forcing)
     calc_t_air(forcing, elev, params)
-    calc_snowpack(forcing, params, swe)
+    if swe is not None:
+        calc_snowpack(forcing, params, swe)
     calc_srad_hum(forcing, sg, elev, params)
 
     return forcing
@@ -182,8 +183,8 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
     df['tfinal'] = t_final
 
     # Snowpack contribution
-    sc = np.zeros_like(df['swe'])
-    if (params['mtclim_swe_corr']):
+    sc = np.zeros_like(df['tfmax'])
+    if params['mtclim_swe_corr']:
         inds = np.logical_and(df['swe'] > 0.,  daylength[yday] > 0.)
         sc[inds] = ((1.32 + 0.096 * df['swe'][inds]) *
                     1.0e6 / daylength[yday][inds])
