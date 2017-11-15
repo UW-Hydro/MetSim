@@ -107,6 +107,7 @@ class MetSim(object):
     """
 
     # Class variables
+    met_data = None
     methods = {'mtclim': mtclim}
     params = {
         "method": '',
@@ -117,7 +118,7 @@ class MetSim(object):
         "out_prefix": 'forcing',
         "start": '',
         "stop": '',
-        "time_step": '',
+        "time_step": -1,
         "calendar": 'standard',
         "out_fmt": '',
         "out_precision": 'f8',
@@ -152,6 +153,7 @@ class MetSim(object):
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
+        self._validate_setup()
         logger.info("read_domain")
         self.domain = io.read_domain(self.params)
         self._normalize_times()
@@ -457,7 +459,7 @@ class MetSim(object):
         errs = [""]
 
         # Make sure there's some input
-        if not len(self.params['forcing']):
+        if not len(self.params.get('forcing', [])):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
@@ -465,22 +467,23 @@ class MetSim(object):
                      'stop', 'time_step', 'out_fmt',
                      'forcing_fmt', 'domain_fmt', 'state_fmt']
         for each in non_empty:
-            if self.params[each] is None or self.params[each] == '':
+            if self.params.get(each, None) is None or self.params[each] == '':
                 errs.append("Cannot have empty value for {}".format(each))
 
         # Make sure time step divides evenly into a day
-        if cnst.MIN_PER_DAY % int(self.params['time_step']):
+        if cnst.MIN_PER_DAY % int(self.params.get('time_step', -1)):
             errs.append("Time step must divide 1440 evenly.  Got {}"
                         .format(self.params['time_step']))
 
         # Check for required input variable specification
-        required_in = ['t_min', 't_max', 'prec']
-        for each in required_in:
-            if each not in self.met_data.variables:
-                errs.append("Input requires {}".format(each))
+        if self.met_data is not None:
+            required_in = ['t_min', 't_max', 'prec']
+            for each in required_in:
+                if each not in self.met_data.variables:
+                    errs.append("Input requires {}".format(each))
 
         # Make sure that we are going to write out some data
-        if not len(self.params['out_vars']):
+        if not len(self.params.get('out_vars', [])):
             errs.append("Output variable list must not be empty")
 
         # Check output variables are valid
@@ -489,9 +492,9 @@ class MetSim(object):
         out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
                          'air_pressure', 'rel_humid', 'spec_humid',
                          'longwave', 'tsck', 'wind']
-        if int(self.params['time_step']) == 1440:
+        if int(self.params.get('time_step', -1)) == 1440:
             out_var_check = daily_out_vars
-        for var in self.params['out_vars']:
+        for var in self.params.get('out_vars', []):
             if var not in out_var_check:
                 errs.append('Cannot output variable {} at timestep {}'.format(
                     var, self.params['time_step']))
@@ -504,7 +507,7 @@ class MetSim(object):
                             'brutsaert', 'satterlund',
                             'idso', 'prata']}
         for k, v in opts.items():
-            if not self.params[k] in v:
+            if not self.params.get(k, None) in v:
                 errs.append("Invalid option given for {}".format(k))
 
         # If any errors, raise and give a summary
