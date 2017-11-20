@@ -139,7 +139,7 @@ class MetSim(object):
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid', 'wind', 'air_pressure'],
-        "prec_type": 'uniform'
+        "prec_type": 'triangle'
     }
 
     def __init__(self, params: dict):

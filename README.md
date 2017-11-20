@@ -8,9 +8,9 @@ METSIM: Meteorology Simulator
 | Current Release DOI    | [![DOI](https://zenodo.org/badge/69834400.svg)](https://zenodo.org/badge/latestdoi/69834400) |
 
 MetSim is a meteorological simulator and forcing disaggregator for
-hydrologic modeling and climate applications. Metsim is based on 
+hydrologic modeling and climate applications. Metsim is based on
 [MtClim](http://www.ntsg.umt.edu/project/mtclim)
-and the preprocessor from version 4 of the [VIC hydrologic 
+and the preprocessor from version 4 of the [VIC hydrologic
 model](https://github.com/UW-Hydro/VIC).
 
 MetSim consists of 3 main modules that govern the operation of 3 major
@@ -31,11 +31,19 @@ specified during the setup of the MetSim object. The default
 implementation allows for the daily simulation of:
 
 -   Mean daily temperature
--   Snow Water Equivalent (SWE)
+-   Incoming longwave radiation
 -   Incoming shortwave radiation
--   Cloud cover fraction
+-   Relative humidity
 -   Potential evapotranspiration
 -   Vapor pressure
+-   Wind speed
+-   Air Pressure
+
+Other variables that can be simulated include:
+
+-   Snow Water Equivalent (SWE)
+-   Cloud cover fraction
+-   Specific humidity
 
 **3. Disaggregation of daily simulation values to sub-daily timesteps**
 
@@ -129,5 +137,3 @@ References
     estimating incident daily solar radiation from measurements of
     temperature, humidity, and precipitation. Agricultural and Forest
     Meteorology, 93:211-228.
-
-
