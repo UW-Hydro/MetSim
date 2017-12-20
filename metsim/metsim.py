@@ -136,8 +136,7 @@ class MetSim(object):
         "lapse_rate": 0.0065,
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'vapor_pressure', 'rel_humid'],
-        "prec_type": 'uniform'
+                     'vapor_pressure', 'rel_humid']
     }
 
     def __init__(self, params: dict):
@@ -308,6 +307,7 @@ class MetSim(object):
                     continue
 
                 if self.params['prec_type'].upper() == 'TRIANGLE':
+                    print('prec type is triangle')
                     # add variables for triangle precipitation disgregation
                     # method to parameters
                     self.params['dur'], self.params['t_pk'] = add_prec_tri_vars(self.domain.sel(**locs))
