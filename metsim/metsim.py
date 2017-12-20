@@ -388,7 +388,7 @@ class MetSim(object):
             # Need to convert some parameters to strings
             if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
                 v = str(v)
-            elif k in ['state_start', 'state_stop']:
+            elif k in ['state_start', 'state_stop', 't_pk', 'dur']:
                 # skip
                 continue
             # Don't include complex types
