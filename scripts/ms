@@ -55,11 +55,8 @@ def init(opts):
     if out_state is None:
         out_state = os.path.join(out_dir, 'state.nc')
 
-    method = conf['method']
-
-    prec_type = conf.get('prec_type', None)
-    if prec_type is None:
-        prec_type = 'uniform'
+    method = conf.get('method', 'mtclim')
+    prec_type = conf.get('prec_type', 'uniform')
 
     # If the forcing variable is a directory, scan it for files
     if os.path.isdir(conf['forcing']):
