@@ -88,6 +88,8 @@ def init(opts):
                  "prec_type": prec_type})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
+    print('conf',conf)
+    exit()
     conf = {k: v for k, v in conf.items() if v != []}
     return conf
 

@@ -7,120 +7,128 @@ import sys, getopt
 import pandas as pd
 from collections import OrderedDict
 import datetime
+from configparser import SafeConfigParser
+import json
 
+def str_to_bool(s):
+    if s == 'True' or s == '1':
+         return True
+    elif s == 'False' or s == '0':
+         return False
+    else:
+         raise ValueError('spinup must be set to True, 1, False, or 0')
+
+def init(config_file):
+    """Initialize some information based on the options & config"""
+    if not os.path.isfile(config_file):
+        exit("Configuration file {} does not exist.".format(config_file)
+             + "Use `python wrap_metsim_over_time.py -h` "
+               "for more information.")
+    config = SafeConfigParser()
+    config.optionxform = str
+    config.read(config_file)
+    conf = OrderedDict(config['MetSim'])
+    conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
+    conf['domain_vars'] = OrderedDict(config['domain_vars'])
+    conf['state_vars'] = OrderedDict(config['state_vars'])
+
+    method = conf['method']
+    startdate = conf.get('start')
+    stopdate = conf.get('stop')
+    forcing_fmt = conf.get('forcing_fmt',None)
+    domain_fmt = conf.get('domain_fmt',None)
+    state_fmt = conf.get('state_fmt',None)
+    in_fmt = conf.get('in_fmt',None)
+    out_fmt = conf.get('out_fmt',None)
+    out_dir = conf['out_dir']
+    time_step = conf.get('time_step',None)
+    out_prefix = conf.get('out_prefix', None)
+    out_state_tmp = out_dir + '/' + out_prefix + '.state_tmp.nc'
+    out_state = conf['out_state']
+    spinup = str_to_bool(conf['spinup'])
+    in_dir = conf['in_dir']
+    in_prefix = conf['in_prefix']
+
+    prec_type = conf.get('prec_type', None)
+    if prec_type is None:
+        prec_type = 'uniform'
+
+    domain = conf['domain']
+    state_initial = conf['state']
+
+    def to_list(s):
+        return json.loads(s.replace("'", '"'))
+
+    conf.update({"calendar": conf.get('calendar', 'standard'),
+                 "method": method,
+                 "start": startdate,
+                 "stop": stopdate,
+                 "out_dir": out_dir,
+                 "out_state": out_state_tmp,
+                 "out_prefix": out_prefix + '.forcing_tmp',
+                 "state": state_initial,
+                 "domain": domain,
+                 "prec_type": prec_type,
+                 "time_step": time_step,
+                 "forcing_fmt": forcing_fmt,
+                 "domain_fmt": domain_fmt,
+                 "state_fmt": state_fmt,
+                 "out_fmt": out_fmt,
+                 "annual": False})
+
+    conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
+    conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
+    conf = {k: v for k, v in conf.items() if v != []}
+    return conf, startdate, stopdate, out_dir, out_prefix, spinup, in_dir, \
+           in_prefix, state_initial, out_state, out_state_tmp
 
 def main():
     computation_start = datetime.datetime.now()
-    infile_directory = ''
-    spinup = ''
-    domainfile = ''
-    statefile_initial = ''
-    infile_prefix = ''
-    outfile_prefix = ''
-    outfile_directory = ''
-    startdate = ''
-    enddate = ''
+    config_file = ''
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hi:p:d:s:f:o:u:a:b:",
-                                                 ["infile_directory=",
-                                                  "spinup="
-                                                  "domainfile=",
-                                                  "statefile_initial=",
-                                                  "infile_prefix=",
-                                                  "outfile_prefix=",
-                                                  "outfile_directory=",
-                                                  "startdate",
-                                                  "enddate="])
+        opts, args = getopt.getopt(sys.argv[1:], "hc:",
+                                                 ["config_file="])
     except getopt.GetoptError:
-        print(sys.argv[0], '-i <infile_directory> -p <spinup>'
-                           '-d <domainfile> -f <infile_prefix> '
-                           '-s <statefile_initial> -o <outfile_prefix> -u '
-                           '<outfile_directory> -a <startdate> -b <enddate>')
+        print(sys.argv[0], '-c <config_file>')
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print(sys.argv[0], ' -i <infile_directory> -p <spinup> '
-                               '-d <domainfile> -s <statefile_initial> '
-                               '-f <infile_prefix> -o <outfile_prefix> -u '
-                               '<outfile_directory> -a <startdate>'
-                               ' -b <enddate>')
+            print(sys.argv[0], '-c <config_file>')
             sys.exit()
-        elif opt in ("-i", "--infile_directory"):
-            infile_directory = arg
-        elif opt in ("-p", "--spinup"):
-            spinup = int(arg)
-        elif opt in ("-d", "--domainfile"):
-            domainfile = arg
-        elif opt in ("-s", "--statefile_initial"):
-            statefile_initial = arg
-        elif opt in ("-f", "--infile_prefix"):
-            infile_prefix = arg
-        elif opt in ("-o", "--outfile_prefix"):
-            outfile_prefix = arg
-        elif opt in ("-u", "--outfile_directory"):
-            outfile_directory = arg
-        elif opt in ("-a", "--startdate"):
-            startdate = arg
-        elif opt in ("-b", "--enddate"):
-            enddate = arg
+        elif opt in ("-c", "--config_file"):
+            config_file = arg
 
-    # infiles = os.listdir(infile_directory)
-    outfile_directory = outfile_directory + '/'
-    state = xr.open_dataset(statefile_initial)
-    domain = xr.open_dataset(domainfile)
+    params, startdate, stopdate, out_dir, out_prefix, spinup, in_dir, \
+    in_prefix, state_initial, out_state, out_state_tmp = init(config_file)
 
-    dates = pd.date_range(start=startdate, end=enddate, freq='MS')
-    first_year, first_month, first_day = startdate.split('-')
+    try:
+        startdate, junk = startdate.split(':')
+    except:
+        pass
+    try:
+        stopdate, junk = stopdate.split(':')
+    except:
+        pass
+    dates = pd.date_range(start=startdate, end=stopdate, freq='MS')
+    first_year, first_month, first_day = startdate.split('/')
     first_month = int(first_month)
     first_day = int(first_day)
     first_year = int(first_year)
-    last_year, last_month, last_day = enddate.split('-')
+    last_year, last_month, last_day = stopdate.split('/')
     last_month = int(last_month)
     last_day = int(last_day)
     last_year = int(last_year)
 
-    forcing_file = infile_directory + '/' + \
-                   infile_prefix + ".%04d%02d" % (first_year, first_month) + \
+    forcing_file = in_dir + '/' + \
+                   in_prefix + ".%04d%02d" % (first_year, first_month) + \
                    '.nc'
-    forcing_initial = xr.open_dataset(forcing_file)
 
+    params['forcing'] = forcing_file
     year = first_year
     date_i = 0
 
-    params = {
-        "method": 'mtclim',
-        "domain": domainfile,
-        "state": statefile_initial,
-        "forcing_fmt": 'netcdf',
-        "domain_fmt": 'netcdf',
-        "state_fmt": 'netcdf',
-        "out_dir": outfile_directory,
-        "out_state": outfile_directory + outfile_prefix + '.state_tmp.nc',
-        "out_prefix": outfile_prefix + '.forcing_tmp',
-        "time_step": '60',
-        "out_fmt": 'netcdf',
-        "annual": False,
-        'forcing': forcing_file,
-        'state_vars': OrderedDict({'prec': 'prec',
-                                   't_max': 't_max',
-                                   't_min': 't_min',
-                                   'swe': 'swe'}),
-        'forcing_vars': OrderedDict({'Prec': 'prec',
-                                     'Tmax': 't_max',
-                                     'Tmin': 't_min',
-                                     'wind': 'wind'}),
-        'domain_vars': OrderedDict({'lat': 'lat',
-                                    'lon': 'lon',
-                                    'mask': 'mask',
-                                    'elev': 'elev',
-                                    't_pk': 't_pk',
-                                    'dur': 'dur'})
-    }
-
-    forcing_outfile_tmp = outfile_directory + outfile_prefix + \
-                          '.forcing_tmp' + '_total.nc'
-    state_outfile = outfile_directory + outfile_prefix + '.state.nc'
+    forcing_outfile_tmp = out_dir + '/' + out_prefix + '.forcing_tmp_total.nc'
 
     if spinup:
         print('Doing spinup year')
@@ -130,11 +138,11 @@ def main():
             month_current = startdate.month
             year_current = startdate.year
             if month_current < 12:
-                enddate = pd.to_datetime(("%04d%02d%02d" % (year_current,
+                stopdate = pd.to_datetime(("%04d%02d%02d" % (year_current,
                                                             month_current +
                                                             1, 1)), format='%Y%m%d') - pd.Timedelta('1 days')
             else:
-                enddate = pd.to_datetime(("%04d%02d%02d" % (year_current +
+                stopdate = pd.to_datetime(("%04d%02d%02d" % (year_current +
                                                             1, 1, 1)), format='%Y%m%d') - pd.Timedelta('1 days')
 
             if year == first_year and month_i == 0:
@@ -142,56 +150,54 @@ def main():
                 # delete any previous temporary state files created with
                 # ms.run()
                 try:
-                    os.remove(outfile_directory + outfile_prefix +
-                              '.state_tmp.nc')
+                    os.remove(out_state_tmp)
                 except:
                     pass
                 params["forcing"] = forcing_file
                 params["start"] = startdate
-                params["stop"] = enddate
+                params["stop"] = stopdate
                 print('Running forcings from start and stop dates:', startdate,
-                      enddate)
+                      stopdate)
                 ms = MetSim(params)
                 ms.run()
 
                 # delete any previous temporary state files created in wrapper
                 # script and save the current
                 try:
-                    os.remove(state_outfile)
+                    os.remove(out_state)
                 except:
                     pass
-                ms.state.to_netcdf(state_outfile)
+                ms.state.to_netcdf(out_state)
             else:
-                forcing_filename = (infile_prefix +
+                forcing_filename = (in_prefix +
                                     ".%04d%02d" % (year_current,
                                                    month_current) + '.nc')
-                infile = (infile_directory + '/' + forcing_filename)
+                infile = (in_dir + '/' + forcing_filename)
 
                 # delete any previous temporary state files created with
                 # ms.run()
                 try:
-                    os.remove(outfile_directory + outfile_prefix +
-                              'state_tmp.nc')
+                    os.remove(out_state_tmp)
                 except:
                     pass
 
                 ms = []
-                params['state'] = state_outfile
+                params['state'] = out_state
                 params['start'] = startdate
-                params['stop'] = enddate
+                params['stop'] = stopdate
                 params['forcing'] = infile
                 ms = MetSim(params)
                 print('Running forcings from start and stop dates:', startdate,
-                      enddate)
+                      stopdate)
                 ms.run()
 
                 # delete any previous temporary state files created in wrapper
                 # script and save the current
                 try:
-                    os.remove(state_outfile)
+                    os.remove(out_state)
                 except:
                     pass
-                ms.state.to_netcdf(state_outfile)
+                ms.state.to_netcdf(out_state)
 
             if not spinup:
 
@@ -204,7 +210,7 @@ def main():
                 else:
                     forcing_concat = xr.concat([forcing_concat,
                                                 forcing_current], dim='time')
-
+                #forcing_current.close()
             # delete the current month's forcing files
             try:
                 os.remove(forcing_outfile_tmp)
@@ -213,16 +219,17 @@ def main():
 
             date_i += 1
             print('Completed forcings from start and stop dates:',
-                  startdate, enddate)
+                  startdate, stopdate)
             if date_i > len(dates) - 1:
                 break
 
         if spinup:
             # save the state file at the end of spinup
-            print('Saving spinup month 12 state file')
-            ds = xr.open_dataset(statefile_initial)
+            print('Saving state file at end of spinup periodnc')
+            ds = xr.open_dataset(state_initial)
             ms.state.coords['time'] = ds.coords['time']
-            state_spinup_end_file = outfile_directory + outfile_prefix + \
+            ds.close()
+            state_spinup_end_file = out_dir + '/' + out_prefix + \
                                     '.state_spinup_end.nc'
             try:
                 os.remove(state_spinup_end_file)
@@ -235,8 +242,7 @@ def main():
 
         else:
             # output concatenated dataset
-            outfile = (outfile_directory + '/' + outfile_prefix +
-                       ".%04d" % (year) + '.nc')
+            outfile = (out_dir + '/' + out_prefix + ".%04d" % (year) + '.nc')
             print('Saving yearly datasets to outfile:', outfile)
             try:
                 os.remove(outfile)
@@ -247,7 +253,7 @@ def main():
 
     # delete any previous temporary state files created with ms.run()
     try:
-        os.remove(outfile_directory + outfile_prefix + '.state_tmp.nc')
+        os.remove(out_dir + '/' + out_prefix + '.state_tmp.nc')
     except:
         pass
 
@@ -256,13 +262,10 @@ def main():
         os.remove(forcing_outfile_tmp)
     except:
         pass
-    state.close()
-    forcing_initial.close()
-    domain.close()
     computation_end = datetime.datetime.now()
     computation_total = computation_end - computation_start
     print('Total computation time:', computation_total)
-
+    forcing_current.close()
 
 if __name__ == "__main__":
     main()
