@@ -97,7 +97,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         df_daily['tskc'], params)
 
     df_disagg['prec'] = prec(df_daily['prec'], ts, params,
-                             df_daily.index.month)
+                             df_daily.index.month,
+                             df_daily.get('t_pk'), df_daily.get('dur'))
 
     if 'wind' in df_daily:
         df_disagg['wind'] = wind(df_daily['wind'], ts)
@@ -199,7 +200,8 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
     return temps
 
 
-def prec(prec: pd.Series, ts: float, params: dict, month_of_year: int):
+def prec(prec: pd.Series, ts: float, params: dict, month_of_year: int,
+         peak_time=None, duration=None):
     """
     Distributes sub-daily precipitation either evenly (uniform) or with a
     triangular (triangle) distribution, depending upon the chosen method.
@@ -248,8 +250,8 @@ def prec(prec: pd.Series, ts: float, params: dict, month_of_year: int):
             prec_day = np.zeros(ts_per_day)
 
             # Look up climatology
-            t_pk = prec_peak[t.month].values
-            t_dur = prec_dur[t.month].values
+            t_pk = prec_peak[t]
+            t_dur = prec_dur[t]
 
             # Rising and falling time
             t_start = t_pk - 0.5 * t_dur
@@ -260,10 +262,8 @@ def prec(prec: pd.Series, ts: float, params: dict, month_of_year: int):
                     np.logical_and(times_day >= t_pk, times_day <= t_stop)]
 
             # Begin with relative intensity
-            P_plus = np.linspace(0, 1.0, len(t_plus))
-            P_minus = np.linspace(1.0, 0, len(t_minus))
-            prec_day[t_plus] = P_plus
-            prec_day[t_minus] = P_minus
+            prec_day[t_plus] = np.linspace(0, 1.0, len(t_plus))
+            prec_day[t_minus] = np.linspace(1.0, 0, len(t_minus))
 
             # Scale to input precipitation
             prec_day = (P / np.sum(prec_day)) * prec_day
@@ -273,7 +273,7 @@ def prec(prec: pd.Series, ts: float, params: dict, month_of_year: int):
     if params['prec_type'].upper() == 'UNIFORM':
         disagg_prec = prec_UNIFORM(prec, ts)
     elif params['prec_type'].upper() == 'TRIANGLE':
-        disagg_prec = prec_TRIANGLE(prec, params['t_pk'], params['dur'], ts)
+        disagg_prec = prec_TRIANGLE(prec, peak_time, duration, ts)
     return disagg_prec
 
 

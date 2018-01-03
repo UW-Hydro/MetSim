@@ -159,6 +159,11 @@ class MetSim(object):
         self.state = io.read_state(self.params, self.domain)
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
+        if self.params['prec_type'].upper() == 'TRIANGLE':
+            self.convert_monthly_param('dur')
+            self.convert_monthly_param('t_pk')
+            #self.met_data['dur'] = self.domain['dur']
+            #self.met_data['t_pk'] = self.domain['t_pk']
         logger.info("_aggregate_state")
 
         self._aggregate_state()
@@ -192,7 +197,6 @@ class MetSim(object):
         logger.info('stop {}'.format(self.params['stop']))
 
     def _validate_force_times(self, force_times):
-
         for p, i in [('start', 0), ('stop', -1)]:
             # infer times from force_times
             if self.params[p] is None:
@@ -227,6 +231,14 @@ class MetSim(object):
             self.domain.close()
             self.met_data.close()
             self.state.close()
+
+    def convert_monthly_param(self, name):
+        self.met_data[name] = self.met_data['prec'].copy()
+        months = self.met_data['time'].dt.month
+        for m in range(12):
+            param = self.domain[name].sel(month=m)
+            locations = {'time': self.met_data['time'].isel(time=months == m)}
+            self.met_data[name].loc[locations] = param
 
     def launch(self):
         """Farm out the jobs to separate processes"""
@@ -306,11 +318,6 @@ class MetSim(object):
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
-
-                if self.params['prec_type'].upper() == 'TRIANGLE':
-                    # add variables for triangle precipitation disgregation
-                    # method to parameters
-                    self.params['dur'], self.params['t_pk'] = add_prec_tri_vars(self.domain.sel(**locs))
 
                 wrap_results = wrap_run(
                     self.method.run, locs, self.params, data.sel(**locs),
@@ -649,47 +656,3 @@ def wrap_run(func: callable, loc: dict, params: dict,
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)
-
-
-def add_prec_tri_vars(domain):
-    """
-    Check that variables for triangle precipitation method exist and have
-    values that are within allowable ranges. Return these variables.
-
-    Parameters
-    ----------
-    domain:
-        Dataset of domain variables for given location.
-
-    Returns
-    -------
-    dur
-        Array of climatological monthly storm durations. [minutes]
-    t_pk
-        Array of climatological monthly times to storm peaks. [minutes]
-    """
-    # Check that variables exist
-    try:
-        dur = domain['dur']
-        t_pk = domain['t_pk']
-    except:
-        logger.error("Storm duration and time to peak values are "
-                     "required in the domain file for the triangle "
-                     "preciptation disagregation method.")
-        raise
-
-    # Check that variable values are within allowable ranges.
-    day_length = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
-    dur_zero_test = dur <= 0
-    dur_day_test = dur > day_length
-    if dur_zero_test.any() or dur_day_test.any():
-        raise ValueError('Storm duration must be greater than 0 and less than',
-                         day_length, '(i.e. the day length in minutes)')
-
-    t_pk_zero_test = t_pk < 0
-    t_pk_day_test = t_pk > day_length
-    if t_pk_zero_test.any() or t_pk_day_test.any():
-        raise ValueError('Storm time to peak must be greater than or equal to '
-                         '0, and less than', day_length, '(the end of a day)')
-
-    return dur, t_pk
