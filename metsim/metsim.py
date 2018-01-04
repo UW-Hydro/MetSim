@@ -443,6 +443,7 @@ class MetSim(object):
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         sm_dtr = xr.concat([trailing, dtr], dim='time')
         sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
+        self.met_data['dtr'] = dtr
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data

@@ -121,11 +121,7 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
         return t_fmax
 
     # Calculate the diurnal temperature range
-    df['t_max'] = np.maximum(df['t_max'], df['t_min'])
-    dtr = df['t_max'] - df['t_min']
-    df['dtr'] = dtr
-    sm_dtr = df['smoothed_dtr']
-    df['tfmax'] = _calc_tfmax(df['prec'], dtr, sm_dtr)
+    df['tfmax'] = _calc_tfmax(df['prec'], df['dtr'], df['smoothed_dtr'])
     tdew = df.get('tdew', df['t_min'])
     pva = df.get('hum', svp(tdew.values))
     pa = atm_pres(elev, params['lapse_rate'])
@@ -135,15 +131,15 @@ def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
     # Calculation of tdew and shortwave. tdew is iterated on until
     # it converges sufficiently
     tdew_old = tdew
-    tdew, pva = sw_hum_iter(df, sg, pa, pva, dtr, params)
+    tdew, pva = sw_hum_iter(df, sg, pa, pva, params)
     while(np.sqrt(np.mean((tdew-tdew_old)**2)) > params['tdew_tol']):
         tdew_old = np.copy(tdew)
-        tdew, pva = sw_hum_iter(df, sg, pa, pva, dtr, params)
+        tdew, pva = sw_hum_iter(df, sg, pa, pva, params)
     df['vapor_pressure'] = pva
 
 
 def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
-                dtr: pd.Series, params: dict):
+                params: dict):
     """
     Calculated updated values for dewpoint temperature
     and saturation vapor pressure.
@@ -209,7 +205,7 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
     ratio = pet / parray.where(parray > 8.0, 8.0)
     df['pet'] = pet * cnst.MM_PER_CM
     tmink = df['t_min'] + cnst.KELVIN
-    tdew = tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio +
-                    12.312 * np.power(ratio, 2) -
-                    32.766 * np.power(ratio, 3)) + 0.0006 * dtr) - cnst.KELVIN
+    tdew = (tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio
+            + 12.312 * np.power(ratio, 2) - 32.766 * np.power(ratio, 3))
+            + 0.0006 * df['dtr']) - cnst.KELVIN)
     return tdew, svp(tdew.values)
