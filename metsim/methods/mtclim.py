@@ -25,8 +25,7 @@ import metsim.constants as cnst
 from metsim.physics import svp, calc_pet, atm_pres
 
 
-def run(forcing: pd.DataFrame, params: dict, sg: dict,
-        elev: float, swe: float):
+def run(forcing: pd.DataFrame, params: dict, sg: dict):
     """
     Run all of the mtclim forcing generation
 
@@ -38,11 +37,6 @@ def run(forcing: pd.DataFrame, params: dict, sg: dict,
         Dictionary of parameters from a MetSim object
     solar_geom: dict
         Solar geometry of the site
-    elev: float
-        Elevation of the site being simulated
-    swe: float
-        Initial snow water equivalent (SWE) for
-        the site being simulated
 
     Returns
     -------
@@ -50,96 +44,33 @@ def run(forcing: pd.DataFrame, params: dict, sg: dict,
         Dataframe of daily or subdaily forcings
     """
     params['n_days'] = len(forcing)
-    calc_t_air(forcing, elev, params)
-    if swe is not None:
-        calc_snowpack(forcing, params, swe)
-    calc_srad_hum(forcing, sg, elev, params)
+    t_mean = (forcing['t_min'] + forcing['t_max']) / 2
+    forcing['t_day'] = (
+            (forcing['t_max'] - t_mean) * params['tday_coef']) + t_mean
+    b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * forcing['smoothed_dtr'])
+    forcing['tfmax'] = (
+            1.0 - 0.9 * np.exp(-b * np.power(forcing['dtr'], cnst.C)))
+    inds = np.array(forcing['prec'] > params['sw_prec_thresh'])
+    forcing['tfmax'][inds] *= params['rain_scalar']
 
-    return forcing
-
-
-def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
-    """
-    Calculate mean daily temperature
-
-    Parameters
-    ----------
-    df:
-        Dataframe with daily max and min temperatures
-    elev:
-        Elevation in meters
-    params:
-        Dictionary containing parameters from a
-        MetSim object.
-    """
-    t_mean = (df['t_min'] + df['t_max']) / 2
-    df['t_day'] = ((df['t_max'] - t_mean) * params['tday_coef']) + t_mean
-
-
-def calc_snowpack(df: pd.DataFrame, params: dict, snowpack: float=0.0):
-    """
-    Estimate snowpack as swe.
-
-    Parameters
-    ----------
-    df:
-        Dataframe with daily timeseries of precipitation
-        and minimum temperature.
-    snowpack:
-        (Optional - defaults to 0) Initial snowpack
-    """
-    swe = pd.Series(snowpack, index=df.index)
-    accum = (df['t_min'] <= params['snow_crit_temp'])
-    melt = (df['t_min'] > params['snow_crit_temp'])
-    swe[accum] += df['prec'][accum]
-    swe[melt] -= (params['snow_melt_rate']
-                  * (df['t_min'][melt] - params['snow_crit_temp']))
-    df['swe'] = np.maximum(np.cumsum(swe), 0.0)
-
-
-def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
-                  params: dict):
-    """
-    Calculate shortwave, humidity
-
-    Parameters
-    ----------
-    df:
-        Dataframe containing daily timeseries
-    elev:
-        Elevation in meters
-    params:
-        A dictionary of parameters from the
-        MetSim object
-    """
-    def _calc_tfmax(prec, dtr, sm_dtr):
-        """Estimate cloudy day transmittance"""
-        b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
-        t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
-        inds = np.array(prec > params['sw_prec_thresh'])
-        t_fmax[inds] *= params['rain_scalar']
-        return t_fmax
-
-    # Calculate the diurnal temperature range
-    df['tfmax'] = _calc_tfmax(df['prec'], df['dtr'], df['smoothed_dtr'])
-    tdew = df.get('tdew', df['t_min'])
-    pva = df.get('hum', svp(tdew.values))
-    pa = atm_pres(elev, params['lapse_rate'])
-    yday = df.index.dayofyear - 1
-    df['dayl'] = sg['daylength'][yday]
+    tdew = forcing.get('tdew', forcing['t_min'])
+    forcing['vapor_pressure'] = forcing.get('vapor_pressure', svp(tdew.values))
+    pa = atm_pres(params['elev'], params['lapse_rate'])
+    yday = forcing.index.dayofyear - 1
+    forcing['dayl'] = sg['daylength'][yday]
 
     # Calculation of tdew and shortwave. tdew is iterated on until
     # it converges sufficiently
     tdew_old = tdew
-    tdew, pva = sw_hum_iter(df, sg, pa, pva, params)
+    tdew = sw_hum_iter(forcing, sg, pa, params)
     while(np.sqrt(np.mean((tdew-tdew_old)**2)) > params['tdew_tol']):
         tdew_old = np.copy(tdew)
-        tdew, pva = sw_hum_iter(df, sg, pa, pva, params)
-    df['vapor_pressure'] = pva
+        tdew = sw_hum_iter(forcing, sg, pa, params)
+    forcing['vapor_pressure'] = svp(tdew.values)
+    return forcing
 
 
-def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
-                params: dict):
+def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, params: dict):
     """
     Calculated updated values for dewpoint temperature
     and saturation vapor pressure.
@@ -155,41 +86,17 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
         `metsim.physics.solar_geom`.
     pa:
         Air pressure in Pascals
-    pva:
-        Vapor presure in Pascals
-    dtr:
-        Daily temperature range
     params:
         A dictionary of parameters from a MetSim object
 
     Returns
     -------
-    (tdew, svp):
-        A tuple of dewpoint temperature and saturation
-        vapor pressure
+    Dewpoint temperature
     """
-    tt_max0 = sg['tt_max0']
-    potrad = sg['potrad']
-    daylength = sg['daylength']
     yday = df.index.dayofyear - 1
-
-    t_tmax = np.maximum(tt_max0[yday] + (cnst.ABASE * pva), 0.0001)
-    t_final = t_tmax * df['tfmax']
-    df['pva'] = pva
-    df['tfinal'] = t_final
-
-    # Snowpack contribution
-    sc = np.zeros_like(df['tfmax'])
-    if params['mtclim_swe_corr']:
-        inds = np.logical_and(df['swe'] > 0.,  daylength[yday] > 0.)
-        sc[inds] = ((1.32 + 0.096 * df['swe'][inds]) *
-                    1.0e6 / daylength[yday][inds])
-        sc = np.maximum(sc, 100.)
-
-    # Calculation of shortwave is split into 2 components:
-    # 1. Radiation from incident light
-    # 2. Influence of snowpack - optionally set by MTCLIM_SWE_CORR
-    df['shortwave'] = potrad[yday] * t_final + sc
+    t_tmax = np.maximum(sg['tt_max0'][yday]
+                        + (cnst.ABASE * df['vapor_pressure']), 0.0001)
+    df['shortwave'] = sg['potrad'][yday] * t_tmax * df['tfmax']
 
     # Calculate cloud effect
     if (params['lw_cloud'].upper() == 'CLOUD_DEARDORFF'):
@@ -208,4 +115,4 @@ def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
     tdew = (tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio
             + 12.312 * np.power(ratio, 2) - 32.766 * np.power(ratio, 3))
             + 0.0006 * df['dtr']) - cnst.KELVIN)
-    return tdew, svp(tdew.values)
+    return tdew

@@ -124,7 +124,6 @@ class MetSim(object):
         "out_precision": 'f8',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
-        "mtclim_swe_corr": False,
         "time_grouper": None,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
@@ -146,9 +145,6 @@ class MetSim(object):
         """
         # Record parameters
         self.params.update(params)
-
-        self._need_initial_swe = (self.params['mtclim_swe_corr'] or
-                                  'swe' in self.params['out_vars'])
 
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
@@ -364,8 +360,6 @@ class MetSim(object):
         self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
         self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
         self.state['prec'].sel(**locs).values[:] = prec[-90:]
-        if self._need_initial_swe:
-            self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
         self.state['time'].values = date_range(
             state_start, result.index[-1], calendar=self.params['calendar'])
@@ -397,7 +391,7 @@ class MetSim(object):
             self.params.pop('elev')
         for k, v in self.params.items():
             # Need to convert some parameters to strings
-            if k in ['start', 'stop', 'time_grouper', 'mtclim_swe_corr']:
+            if k in ['start', 'stop', 'time_grouper']:
                 v = str(v)
             elif k in ['state_start', 'state_stop']:
                 # skip
@@ -446,15 +440,6 @@ class MetSim(object):
         self.met_data['dtr'] = dtr
         self.met_data['smoothed_dtr'] = sm_dtr
 
-        # Put in SWE data
-        if self._need_initial_swe:
-            if 'time' in self.state['swe'].dims:
-                self.state['swe'] = self.state['swe'].sel(
-                    time=self.params['state_stop']).drop('time')
-            else:
-                self.state['swe'] = self.state['swe']
-            self.met_data['swe'] = self.state['swe'].copy()
-
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
         errs = [""]
@@ -488,7 +473,7 @@ class MetSim(object):
             errs.append("Output variable list must not be empty")
 
         # Check output variables are valid
-        daily_out_vars = ['t_min', 't_max', 'prec', 'swe', 'vapor_pressure',
+        daily_out_vars = ['t_min', 't_max', 'prec', 'vapor_pressure',
                           'shortwave', 'tskc', 'pet', 'wind']
         out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
                          'air_pressure', 'rel_humid', 'spec_humid',
@@ -501,8 +486,7 @@ class MetSim(object):
                     var, self.params['time_step']))
 
         # Check that the parameters specified are available
-        opts = {'mtclim_swe_corr': [True, False],
-                'out_precision': ['f4', 'f8'],
+        opts = {'out_precision': ['f4', 'f8'],
                 'lw_cloud': ['default', 'cloud_deardorff'],
                 'lw_type': ['default', 'tva', 'anderson',
                             'brutsaert', 'satterlund',
@@ -629,10 +613,6 @@ def wrap_run(func: callable, loc: dict, params: dict,
     logger.info("Processing {}".format(loc))
     lat = ds['lat'].values
     elev = ds['elev'].values
-    if 'swe' in ds:
-        swe = ds['swe'].values
-    else:
-        swe = None
     params['elev'] = elev
     df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
@@ -644,7 +624,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
     # Generate the daily values - these are saved
     # so that we can use a subset of them to write
     # out the state file later
-    df_base = func(df, params, sg, elev=elev, swe=swe)
+    df_base = func(df, params, sg)
 
     if disagg:
         # Get some values for padding the time list,
