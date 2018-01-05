@@ -331,7 +331,6 @@ def prec(prec: pd.Series, ts: float, params: dict, month_of_year: int):
                     i1 = int(i0 + (2 * steps_per_day))
                     P_return[i0:i1] += prec[d] * kernels[mon]
 
-        P_return = np.around(P_return, decimals=5)
         return P_return.values
 
     prec_function = {

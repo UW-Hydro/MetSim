@@ -262,6 +262,12 @@ class MetSim(object):
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
+
+                if self.params['prec_type'].upper() == 'TRIANGLE':
+                    # add variables for triangle precipitation disgregation
+                    # method to parameters
+                    self.params['dur'], self.params['t_pk'] = add_prec_tri_vars(self.domain.sel(**locs))    
+
                 stat = self.pool.apply_async(
                     wrap_run,
                     args=(self.method.run, locs, self.params,
