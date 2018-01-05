@@ -307,7 +307,6 @@ class MetSim(object):
                     continue
 
                 if self.params['prec_type'].upper() == 'TRIANGLE':
-                    print('prec type is triangle')
                     # add variables for triangle precipitation disgregation
                     # method to parameters
                     self.params['dur'], self.params['t_pk'] = add_prec_tri_vars(self.domain.sel(**locs))
