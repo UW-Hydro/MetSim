@@ -31,11 +31,23 @@ def run(df, params, sg):
     df['tskc'] = tskc(df['tfmax'].values, params)
     yday = df.index.dayofyear.values - 1
     df['dayl'] = dayl(yday, sg)
+
+    tdew_old = df['t_min'].values
     vp_temp = vapor_pressure(df['t_min'].values)
     sw_temp = shortwave(yday, df['tfmax'].values, vp_temp, sg)
     pet_temp = pet(sw_temp, df['t_day'].values, df['dayl'].values, params)
-    df['tdew'] = tdew(pet_temp, df['t_min'].values, df['seasonal_prec'].values,
-                      df['dtr'].values)
+    tdew_temp = tdew(pet_temp, df['t_min'].values, df['seasonal_prec'].values,
+                     df['dtr'].values)
+
+    while(np.sqrt(np.mean((tdew_temp-tdew_old)**2)) > params['tdew_tol']):
+        tdew_old = tdew_temp.copy()
+        vp_temp = vapor_pressure(tdew_temp)
+        sw_temp = shortwave(yday, df['tfmax'].values, vp_temp, sg)
+        pet_temp = pet(sw_temp, df['t_day'].values, df['dayl'].values, params)
+        tdew_temp = tdew(pet_temp, df['t_min'].values,
+                         df['seasonal_prec'].values, df['dtr'].values)
+
+    df['tdew'] = tdew_temp
     df['vapor_pressure'] = vapor_pressure(df['tdew'].values)
     df['shortwave'] = shortwave(yday, df['tfmax'].values,
                                 df['vapor_pressure'].values, sg)
