@@ -19,8 +19,11 @@ physics
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
-import pandas as pd
 from numba import jit
+
+import xarray as xr
+import xarray.ufuncs as xu
+
 import metsim.constants as cnst
 
 
@@ -32,20 +35,20 @@ def calc_pet(rad: np.array, ta: np.array, dayl: np.array,
 
     Parameters
     ----------
-    rad:
+    rad : array-like
         daylight average incident shortwave radiation (W/m2)
-    ta:
+    ta : array-like
         daylight average air temperature (deg C)
-    dayl:
+    dayl : array-like
         daylength (s)
-    pa:
+    pa : float
         air pressure (Pa)
-    dt:
+    dt : float
         offset for saturation vapor pressure calculation
 
     Returns
     -------
-    pet
+    pet : xr.DataArray
         Potential evapotranspiration (cm/day)
     '''
     # Definition of parameters:
@@ -105,14 +108,14 @@ def atm_pres(elev: float, lr: float) -> float:
 
     Parameters
     ----------
-    elev:
+    elev : float
         Elevation in meters
-    lr:
+    lr : float
         Lapse rate (K/m)
 
     Returns
     -------
-    pressure:
+    pressure : float
         Atmospheric pressure (Pa)
     '''
     t1 = 1.0 - (lr * elev) / cnst.T_STD
@@ -120,8 +123,7 @@ def atm_pres(elev: float, lr: float) -> float:
     return cnst.P_STD * np.power(t1, t2)
 
 
-@jit(nopython=True)
-def svp(temp: np.array, a: float=0.61078, b: float=17.269, c: float=237.3):
+def svp(temp: xr.DataArray, a: float=0.61078, b: float=17.269, c: float=237.3):
     '''
     Compute the saturated vapor pressure.
 
@@ -130,27 +132,28 @@ def svp(temp: np.array, a: float=0.61078, b: float=17.269, c: float=237.3):
 
     Parameters
     ----------
-    temp:
+    temp : xr.DataArray
         Temperature (degrees Celsius)
-    a:
+    a : float
         (optional) parameter
-    b:
+    b : float
         (optional) parameter
-    c:
+    c : float
         (optional) parameter
 
     Returns
     -------
-    svp:
+    svp: xr.DataArray
         Saturated vapor pressure (Pa)
     '''
-    svp = a * np.exp((b * temp) / (c + temp))
-    inds = np.nonzero(temp < 0.)[0]
-    svp[inds] *= 1.0 + .00972 * temp[inds] + .000042 * np.power(temp[inds], 2)
+    svp = a * xu.exp((b * temp) / (c + temp))
+    svp = svp.where(temp >= 0,
+                    svp * 1.0 + 0.00972 * temp + 0.000042 * xu.power(temp, 2))
+
     return svp * 1000.
 
 
-def svp_slope(temp: pd.Series, a: float=0.61078,
+def svp_slope(temp: xr.DataArray, a: float=0.61078,
               b: float=17.269, c: float=237.3):
     '''
     Compute the gradient of the saturated vapor pressure as a function of
@@ -161,12 +164,12 @@ def svp_slope(temp: pd.Series, a: float=0.61078,
 
     Parameters
     ----------
-    temp:
+    temp : xr.DataArray
         Temperature (degrees Celsius)
 
     Returns
     -------
-    dsvp_dT:
+    dsvp_dT : xr.DataArray
         Gradient of d(svp)/dT.
     '''
     return (b * c) / ((c + temp) * (c + temp)) * svp(temp, a=a, b=b, c=c)

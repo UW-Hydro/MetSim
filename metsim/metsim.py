@@ -124,7 +124,6 @@ class MetSim(object):
         "out_precision": 'f8',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
-        "mtclim_swe_corr": False,
         "time_grouper": None,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
@@ -146,9 +145,6 @@ class MetSim(object):
         """
         # Record parameters
         self.params.update(params)
-
-        self._need_initial_swe = (self.params['mtclim_swe_corr'] or
-                                  'swe' in self.params['out_vars'])
 
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
@@ -257,80 +253,15 @@ class MetSim(object):
         """Farm out the jobs to separate processes"""
         # Do the forcing generation and disaggregation if required
         self._validate_setup()
-        nprocs = self.params['nprocs']
-        iter_list = [self.met_data[dim].values
-                     for dim in self.params['iter_dims']]
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
-        time_dim, groups = self._get_time_dim_and_time_dim()
+        out = self.method.run(self.met_data)
 
-        for label, times in groups.items():
-            self.pool = Pool(processes=nprocs)
-            self.site_generator = itertools.product(*iter_list)
-            logger.info("Beginning {}".format(label))
-            status = []
-
-            # Add in some end point data for continuity in chunking
-            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
-                                     times[-1] + pd.Timedelta("1 days")]
-                                    ).intersection(time_dim)
-            data = self.met_data.sel(time=times_ext)
-            self.setup_output(self.met_data.sel(time=times))
-            for site in self.site_generator:
-                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
-                # Don't run masked cells
-                if not self.domain['mask'].sel(**locs).values > 0:
-                    continue
-                stat = self.pool.apply_async(
-                    wrap_run,
-                    args=(self.method.run, locs, self.params,
-                          data.sel(**locs),
-                          self.state.sel(**locs),
-                          self.disagg, times, label),
-                    callback=self._unpack_results)
-                status.append(stat)
-            self.pool.close()
-            # Check that everything worked
-            [stat.get() for stat in status]
-            self.pool.join()
-            self.write(label)
-
-    def run(self):
-        """
-        Kicks off the disaggregation and queues up data for IO
-        """
-        self._validate_setup()
-        iter_list = [self.met_data[dim].values
-                     for dim in self.params['iter_dims']]
-        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        self.method = MetSim.methods[self.params['method']]
-
-        time_dim, groups = self._get_time_dim_and_time_dim()
-
-        for label, times in groups.items():
-            logger.info("Beginning {}".format(label))
-            self.site_generator = itertools.product(*iter_list)
-            # Add in some end point data for continuity
-            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
-                                     times[-1] + pd.Timedelta("1 days")]
-                                    ).intersection(time_dim)
-            data = self.met_data.sel(time=times_ext)
-            self.setup_output(self.met_data.sel(time=times))
-
-            for site in self.site_generator:
-                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
-                # Don't run masked cells
-                if not self.domain['mask'].sel(**locs).values > 0:
-                    continue
-                wrap_results = wrap_run(
-                    self.method.run, locs, self.params, data.sel(**locs),
-                    self.state.sel(**locs), self.disagg, times, label)
-
-                # Cut the returned data down to the correct time index
-                self._unpack_results(wrap_results)
-
-            self.write(label)
+        if self.disagg:
+            self.output = disaggregate(out)
+        else:
+            self.output = out
 
     def _unpack_results(self, result: tuple):
         """Put results into the master dataset"""
@@ -364,8 +295,6 @@ class MetSim(object):
         self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
         self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
         self.state['prec'].sel(**locs).values[:] = prec[-90:]
-        if self._need_initial_swe:
-            self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
         self.state['time'].values = date_range(
             state_start, result.index[-1], calendar=self.params['calendar'])
@@ -397,7 +326,7 @@ class MetSim(object):
             self.params.pop('elev')
         for k, v in self.params.items():
             # Need to convert some parameters to strings
-            if k in ['start', 'stop', 'time_grouper', 'mtclim_swe_corr']:
+            if k in ['start', 'stop', 'time_grouper']:
                 v = str(v)
             elif k in ['state_start', 'state_stop']:
                 # skip
@@ -443,16 +372,8 @@ class MetSim(object):
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         sm_dtr = xr.concat([trailing, dtr], dim='time')
         sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
+        self.met_data['dtr'] = dtr
         self.met_data['smoothed_dtr'] = sm_dtr
-
-        # Put in SWE data
-        if self._need_initial_swe:
-            if 'time' in self.state['swe'].dims:
-                self.state['swe'] = self.state['swe'].sel(
-                    time=self.params['state_stop']).drop('time')
-            else:
-                self.state['swe'] = self.state['swe']
-            self.met_data['swe'] = self.state['swe'].copy()
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
@@ -487,7 +408,7 @@ class MetSim(object):
             errs.append("Output variable list must not be empty")
 
         # Check output variables are valid
-        daily_out_vars = ['t_min', 't_max', 'prec', 'swe', 'vapor_pressure',
+        daily_out_vars = ['t_min', 't_max', 'prec', 'vapor_pressure',
                           'shortwave', 'tskc', 'pet', 'wind']
         out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
                          'air_pressure', 'rel_humid', 'spec_humid',
@@ -500,8 +421,7 @@ class MetSim(object):
                     var, self.params['time_step']))
 
         # Check that the parameters specified are available
-        opts = {'mtclim_swe_corr': [True, False],
-                'out_precision': ['f4', 'f8'],
+        opts = {'out_precision': ['f4', 'f8'],
                 'lw_cloud': ['default', 'cloud_deardorff'],
                 'lw_type': ['default', 'tva', 'anderson',
                             'brutsaert', 'satterlund',
@@ -588,104 +508,3 @@ class MetSim(object):
 
     def write_data(self, suffix):
         pass
-
-
-def wrap_run(func: callable, loc: dict, params: dict,
-             ds: xr.Dataset, state: xr.Dataset, disagg: bool,
-             out_times: pd.DatetimeIndex, group: str):
-    """
-    Iterate over a chunk of the domain. This is wrapped
-    so we can return a tuple of locs and df.
-
-    Parameters
-    ----------
-    func: callable
-        The function to call to do the work
-    loc: dict
-        Some subset of the domain to do work on
-    params: dict
-        Parameters from a MetSim object
-    ds: xr.Dataset
-        Input forcings and domain
-    state: xr.Dataset
-        State variables at the point of interest
-    disagg: bool
-        Whether or not we should run a disagg routine
-    out_times: pd.DatetimeIndex
-        Times to return (should be trimmed 1 day at
-        each end from the given index)
-    group: str
-        The year being run. This is used to add on
-        extra times to make output smooth at endpoints
-        if the run is chunked in time.
-
-    Returns
-    -------
-    results
-        A list of tuples arranged as
-        (location, hourly_output, daily_output)
-    """
-    logger.info("Processing {}".format(loc))
-    lat = ds['lat'].values
-    elev = ds['elev'].values
-    if 'swe' in ds:
-        swe = ds['swe'].values
-    else:
-        swe = None
-    params['elev'] = elev
-    df = ds.to_dataframe()
-    # solar_geom returns a tuple due to restrictions of numba
-    # for clarity we convert it to a dictionary here
-    sg = solar_geom(elev, lat, params['lapse_rate'])
-    sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
-          'potrad': sg[2], 'tt_max0': sg[3]}
-
-    # Generate the daily values - these are saved
-    # so that we can use a subset of them to write
-    # out the state file later
-    df_base = func(df, params, sg, elev=elev, swe=swe)
-
-    if disagg:
-        # Get some values for padding the time list,
-        # so that when interpolating in the disaggregation
-        # functions we can match endpoints with adjoining
-        # chunks - if no data is available, just repeat some
-        # default values (this case is used at the very
-        # beginning and end of the record)
-        try:
-            prevday = out_times[0] - pd.Timedelta('1 days')
-            t_begin = [ds['t_min'].sel(time=prevday),
-                       ds['t_max'].sel(time=prevday)]
-        except (KeyError, ValueError):
-            t_begin = [state['t_min'].values[-1],
-                       state['t_max'].values[-1]]
-        try:
-            nextday = out_times[-1] + pd.Timedelta('1 days')
-            t_end = [ds['t_min'].sel(time=nextday),
-                     ds['t_max'].sel(time=nextday)]
-        except (KeyError, ValueError):
-            # None so that we don't extend the record
-            t_end = None
-
-        # Disaggregate to subdaily values
-        df_complete = disaggregate(df, params, sg, t_begin, t_end)
-        # Calculate the times that we want to get out by chopping
-        # off the endpoints that were added on previously
-        start = out_times[0]
-        stop = (out_times[-1] + pd.Timedelta('1 days')
-                - pd.Timedelta("{} minutes".format(params['time_step'])))
-        new_times = date_range(
-            start, stop, freq='{}T'.format(params['time_step']),
-            calendar=params['calendar'])
-    else:
-        # convert srad to daily average flux from daytime flux
-        df_base['shortwave'] *= df_base['dayl'] / cnst.SEC_PER_DAY
-        # If we're outputting daily values, we dont' need to
-        # change the output dates - see inside of `if` condition
-        # above for more explanation
-        new_times = out_times
-        df_complete = df_base
-
-    # Cut the returned data down to the correct time index
-    df_complete = df_complete.loc[new_times[0]:new_times[-1]]
-    return (loc, df_complete, df_base)
