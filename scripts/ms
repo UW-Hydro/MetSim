@@ -41,8 +41,13 @@ def parse(args):
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=lambda x: _is_valid_file(parser, x),
                         help='Input configuration file')
-    parser.add_argument('-n', '--n-processes', default=1, type=int,
-                        help='Parallel mode: number of processes to use')
+    parser.add_argument('--nprocs', default=1, type=int,
+                        help='Number of worker processes.  Defaults to one.')
+    parser.add_argument('--nthreads', default=1, type=int,
+                        help='Number of threads per process.')
+    parser.add_argument('--scheduler_file', default=None, type=str,
+                        help='Filename to JSON encoded scheduler information. '
+                             'Use with dask-scheduler --scheduler-file')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Increase the verbosity of MetSim')
     parser.add_argument('-tg', '--time_grouper', nargs='?',
@@ -53,6 +58,19 @@ def parse(args):
 
 def init(opts):
     """Initialize some information based on the options & config"""
+
+    # setup dask
+    if opts.scheduler_file is not None:
+        from dask.distributed import Client
+        client = Client(scheduler_file=opts.scheduler_file)
+        print(client)
+    elif opts.nthreads > 1 or opts.n_procs > 0:
+        from dask.distributed import Client
+        client = Client(n_workers=opts.nprocs, n_threads=opts.nthreads)
+        print(client)
+    else:
+        client = None
+
     config = SafeConfigParser()
     config.optionxform = str
     config.read(opts.config)
@@ -82,7 +100,7 @@ def init(opts):
         return json.loads(s.replace("'", '"'))
 
     conf.update({"calendar": conf.get('calendar', 'standard'),
-                 "nprocs": opts.n_processes,
+                 "client": client,
                  "method": method,
                  "out_dir": out_dir,
                  "out_state": out_state,
