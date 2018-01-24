@@ -67,36 +67,52 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     n_days = len(df_daily)
     n_disagg = len(df_disagg)
     ts = float(params['time_step'])
-    df_disagg['shortwave'] = shortwave(df_daily['shortwave'],
-                                       df_daily['dayl'],
-                                       df_daily.index.dayofyear,
+    # DONE
+    df_disagg['shortwave'] = shortwave(df_daily['shortwave'].values,
+                                       df_daily['dayl'].values,
+                                       df_daily.index.dayofyear.values,
                                        solar_geom['tiny_rad_fract'],
                                        params)
 
-    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'],
+    # DONE
+    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'].values,
                                       n_days, ts, params)
 
-    df_disagg['temp'] = temp(df_daily, df_disagg, t_Tmin, t_Tmax, ts,
-                             t_begin, t_end)
+    # DONE
+    df_disagg['temp'] = temp(
+            df_daily['t_min'].values, df_daily['t_max'].values,
+            n_disagg, t_Tmin, t_Tmax, ts, t_begin, t_end)
 
-    df_disagg['vapor_pressure'] = vapor_pressure(df_daily['vapor_pressure'],
-                                                 df_disagg['temp'],
-                                                 t_Tmin, n_disagg, ts)
+    # DONE
+    df_disagg['vapor_pressure'] = vapor_pressure(
+            df_daily['vapor_pressure'].values, df_disagg['temp'].values,
+            t_Tmin, n_disagg, ts)
 
-    df_disagg['rel_humid'] = relative_humidity(df_disagg['vapor_pressure'],
-                                               df_disagg['temp'])
+    # DONE
+    df_disagg['rel_humid'] = relative_humidity(
+            df_disagg['vapor_pressure'].values, df_disagg['temp'].values)
 
-    df_disagg['air_pressure'] = pressure(df_disagg['temp'],
+    # DONE
+    df_disagg['air_pressure'] = pressure(df_disagg['temp'].values,
                                          params['elev'], params['lapse_rate'])
 
-    df_disagg['spec_humid'] = specific_humidity(df_disagg['vapor_pressure'],
-                                                df_disagg['air_pressure'])
+    # DONE
+    df_disagg['spec_humid'] = specific_humidity(
+            df_disagg['vapor_pressure'].values,
+            df_disagg['air_pressure'].values)
 
-    df_disagg['longwave'], df_disagg['tskc'] = longwave(
-        df_disagg['temp'], df_disagg['vapor_pressure'],
-        df_daily['tskc'], params)
+    # TODO
+    df_disagg['tskc'] = tskc(df_daily['tskc'], df_disagg['temp'])
 
+    # DONE
+    df_disagg['longwave'] = longwave(
+        df_disagg['temp'].values, df_disagg['vapor_pressure'].values,
+        df_disagg['tskc'].values, params)
+
+    # TODO
     df_disagg['prec'] = prec(df_daily['prec'], ts)
+
+    # TODO
     if 'wind' in df_daily:
         df_disagg['wind'] = wind(df_daily['wind'], ts)
 
@@ -138,7 +154,7 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
     return t_t_min, t_t_max
 
 
-def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
+def temp(t_min: np.array, t_max: np.array, out_len,
          t_t_min: np.array, t_t_max: np.array, ts: float,
          t_begin: list=None, t_end: list=None):
     """
@@ -147,6 +163,7 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
 
     Parameters
     ----------
+    TODO: FIXME
     df_daily:
         A dataframe of daily values.
     df_disagg:
@@ -177,7 +194,7 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
     time = np.array(list(next(it) for it in itertools.cycle(
                 [iter(t_t_min), iter(t_t_max)])))
     temp = np.array(list(next(it) for it in itertools.cycle(
-                [iter(df_daily['t_min']), iter(df_daily['t_max'])])))
+                [iter(t_min), iter(t_max)])))
     # Account for end points
     ts_ends = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
     time = np.append(np.insert(time, 0, time[0:2]-ts_ends), time[-2:]+ts_ends)
@@ -193,7 +210,7 @@ def temp(df_daily: pd.DataFrame, df_disagg: pd.DataFrame,
 
     # Interpolate the values
     interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
-    temps = interp(ts * np.arange(0, len(df_disagg.index)))
+    temps = interp(ts * np.arange(0, out_len))
     return temps
 
 
@@ -303,7 +320,7 @@ def relative_humidity(vapor_pressure, temp):
     rh:
         A sub-daily timeseries of relative humidity
     """
-    rh = (cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure / svp(temp.values)))
+    rh = (cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure / svp(temp)))
     rh[rh > cnst.MAX_PERCENT] = cnst.MAX_PERCENT
     return rh
 
@@ -344,7 +361,7 @@ def vapor_pressure(vp_daily: pd.Series, temp: pd.Series,
 
     # Account for situations where vapor pressure is higher than
     # saturation point
-    vp_sat = svp(temp.values) / cnst.MBAR_PER_BAR
+    vp_sat = svp(temp) / cnst.MBAR_PER_BAR
     vp_disagg = np.where(vp_sat < vp_disagg, vp_sat, vp_disagg)
     return vp_disagg
 
@@ -425,15 +442,14 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
         }
     cloud_calc = {
         # TVA 1972 (see above)
-        'TVA': lambda emis: (1.0 + (0.17 * tskc ** 2)) * emis,
+        'TVA': lambda emis, tskc: (1.0 + (0.17 * tskc ** 2)) * emis,
         # Deardorff 1978
         # Deardorff, J.W., 1978. Efficient prediction of ground surface
         # temperature and moisture, with an inclusion of a layer of vegetation.
         # J. Geophys. Res. 83 (N64), 1889–1903, doi:10.1029/JC083iC04p01889.
-        'CLOUD_DEARDORFF': lambda emis: tskc + (1 - tskc) * emis
+        'CLOUD_DEARDORFF': lambda emis, tskc: tskc + (1 - tskc) * emis
         }
     # Re-index and fill cloud cover, then convert temps to K
-    tskc = tskc.reindex_like(air_temp).fillna(method='ffill')
     air_temp = air_temp + cnst.KELVIN
     vapor_pressure = vapor_pressure * 10
 
@@ -441,9 +457,13 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
     emiss_func = emissivity_calc[params['lw_type'].upper()]
     emissivity_clear = emiss_func(vapor_pressure)
     emiss_func = cloud_calc[params['lw_cloud'].upper()]
-    emissivity = emiss_func(emissivity_clear)
+    emissivity = emiss_func(emissivity_clear, tskc)
     lwrad = emissivity * cnst.STEFAN_B * np.power(air_temp, 4)
-    return lwrad, tskc
+    return lwrad
+
+
+def tskc(tskc, air_temp):
+    return tskc.reindex_like(air_temp).fillna(method='ffill')
 
 
 def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
