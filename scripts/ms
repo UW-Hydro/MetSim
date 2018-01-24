@@ -64,7 +64,7 @@ def init(opts):
         from dask.distributed import Client
         client = Client(scheduler_file=opts.scheduler_file)
         print(client)
-    elif opts.nthreads > 1 or opts.n_procs > 0:
+    elif opts.nthreads > 1 or opts.nprocs > 1:
         from dask.distributed import Client
         client = Client(n_workers=opts.nprocs, n_threads=opts.nthreads)
         print(client)
