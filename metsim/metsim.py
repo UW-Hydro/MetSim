@@ -477,7 +477,7 @@ class MetSim(object):
                           'shortwave', 'tskc', 'pet', 'wind']
         out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
                          'air_pressure', 'rel_humid', 'spec_humid',
-                         'longwave', 'tsck', 'wind']
+                         'longwave', 'tskc', 'wind']
         if int(self.params.get('time_step', -1)) == 1440:
             out_var_check = daily_out_vars
         for var in self.params.get('out_vars', []):

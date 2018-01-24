@@ -67,54 +67,43 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     n_days = len(df_daily)
     n_disagg = len(df_disagg)
     ts = float(params['time_step'])
-    # DONE
     df_disagg['shortwave'] = shortwave(df_daily['shortwave'].values,
                                        df_daily['dayl'].values,
                                        df_daily.index.dayofyear.values,
                                        solar_geom['tiny_rad_fract'],
                                        params)
 
-    # DONE
     t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'].values,
                                       n_days, ts, params)
 
-    # DONE
     df_disagg['temp'] = temp(
             df_daily['t_min'].values, df_daily['t_max'].values,
             n_disagg, t_Tmin, t_Tmax, ts, t_begin, t_end)
 
-    # DONE
     df_disagg['vapor_pressure'] = vapor_pressure(
             df_daily['vapor_pressure'].values, df_disagg['temp'].values,
             t_Tmin, n_disagg, ts)
 
-    # DONE
     df_disagg['rel_humid'] = relative_humidity(
             df_disagg['vapor_pressure'].values, df_disagg['temp'].values)
 
-    # DONE
     df_disagg['air_pressure'] = pressure(df_disagg['temp'].values,
                                          params['elev'], params['lapse_rate'])
 
-    # DONE
     df_disagg['spec_humid'] = specific_humidity(
             df_disagg['vapor_pressure'].values,
             df_disagg['air_pressure'].values)
 
-    # TODO
-    df_disagg['tskc'] = tskc(df_daily['tskc'], df_disagg['temp'])
+    df_disagg['tskc'] = tskc(df_daily['tskc'].values, ts)
 
-    # DONE
     df_disagg['longwave'] = longwave(
         df_disagg['temp'].values, df_disagg['vapor_pressure'].values,
         df_disagg['tskc'].values, params)
 
-    # TODO
-    df_disagg['prec'] = prec(df_daily['prec'], ts)
+    df_disagg['prec'] = prec(df_daily['prec'].values, ts)
 
-    # TODO
     if 'wind' in df_daily:
-        df_disagg['wind'] = wind(df_daily['wind'], ts)
+        df_disagg['wind'] = wind(df_daily['wind'].values, ts)
 
     return df_disagg.fillna(method='ffill')
 
@@ -234,8 +223,8 @@ def prec(prec: pd.Series, ts: float):
         A sub-daily timeseries of precipitation
     """
     scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
-    return (prec * scale).resample(
-        '{:0.0f}T'.format(ts)).fillna(method='ffill')
+    n_repeats = 1/scale
+    return np.repeat(prec * scale, n_repeats)
 
 
 def wind(wind: pd.Series, ts: float):
@@ -257,7 +246,8 @@ def wind(wind: pd.Series, ts: float):
     wind:
         A sub-daily timeseries of wind
     """
-    return wind.resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
+    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / int(ts)
+    return np.repeat(wind, n_repeats)
 
 
 def pressure(temp, elev: float, lr: float):
@@ -462,8 +452,9 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
     return lwrad
 
 
-def tskc(tskc, air_temp):
-    return tskc.reindex_like(air_temp).fillna(method='ffill')
+def tskc(tskc, ts):
+    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / int(ts)
+    return np.repeat(tskc, n_repeats)
 
 
 def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
