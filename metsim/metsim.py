@@ -393,7 +393,7 @@ class MetSim(object):
                 self.params.pop(p)
         for k, v in self.params.items():
             # Need to convert some parameters to strings
-            if k in ['start', 'stop', 'time_grouper']:
+            if k in ['start', 'stop', 'time_grouper', 'utc_offset']:
                 v = str(v)
             elif k in ['state_start', 'state_stop']:
                 # skip
@@ -542,7 +542,6 @@ class MetSim(object):
                                  'calendar': self.params['calendar']}}
         for v in self.output.data_vars:
             out_encoding[v] = {'dtype': 'f8'}
-        print(self.output)
         self.output.to_netcdf(output_filename,
                               unlimited_dims=['time'],
                               encoding=out_encoding)

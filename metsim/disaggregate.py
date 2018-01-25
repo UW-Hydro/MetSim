@@ -134,10 +134,9 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
         to time of min and max temp, respectively
     """
     rad_mask = 1*(disagg_rad > 0)
-    set_mask = np.diff(rad_mask)
-    rise_mask = np.diff(rad_mask[::-1])[::-1]
-    rise_times = np.where(rise_mask > 0)[0] * ts
-    set_times = np.where(set_mask < 0)[0] * ts
+    mask = np.diff(rad_mask)
+    rise_times = np.where(mask > 0)[0] * ts
+    set_times = np.where(mask < 0)[0] * ts
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
                rise_times) + ts
     t_t_min = rise_times
