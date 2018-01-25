@@ -24,35 +24,35 @@ import metsim.constants as cnst
 from metsim.physics import svp, calc_pet, atm_pres
 
 
-def run(df, params, sg):
+def run(df, params):
     df['t_day'] = t_day(df['t_min'].values, df['t_max'].values, params)
     df['tfmax'] = tfmax(df['dtr'].values, df['smoothed_dtr'].values,
                         df['prec'].values, params)
     df['tskc'] = tskc(df['tfmax'].values, params)
-    yday = df.index.dayofyear.values - 1
-    df['dayl'] = dayl(yday, sg)
 
     tdew_old = df['t_min'].values
     vp_temp = vapor_pressure(df['t_min'].values)
-    sw_temp = shortwave(yday, df['tfmax'].values, vp_temp, sg)
-    pet_temp = pet(sw_temp, df['t_day'].values, df['dayl'].values, params)
+    sw_temp = shortwave(df['tfmax'].values, vp_temp,
+                        df['tt_max'], df['potrad'].values)
+    pet_temp = pet(sw_temp, df['t_day'].values, df['daylength'].values, params)
     tdew_temp = tdew(pet_temp, df['t_min'].values, df['seasonal_prec'].values,
                      df['dtr'].values)
 
     while(np.sqrt(np.mean((tdew_temp-tdew_old)**2)) > params['tdew_tol']):
         tdew_old = tdew_temp.copy()
         vp_temp = vapor_pressure(tdew_temp)
-        sw_temp = shortwave(yday, df['tfmax'].values, vp_temp, sg)
-        pet_temp = pet(sw_temp, df['t_day'].values, df['dayl'].values, params)
+        sw_temp = shortwave(df['tfmax'].values, vp_temp,
+                            df['tt_max'].values, df['potrad'].values)
+        pet_temp = pet(sw_temp, df['t_day'].values, df['daylength'].values, params)
         tdew_temp = tdew(pet_temp, df['t_min'].values,
                          df['seasonal_prec'].values, df['dtr'].values)
 
     df['tdew'] = tdew_temp
     df['vapor_pressure'] = vapor_pressure(df['tdew'].values)
-    df['shortwave'] = shortwave(yday, df['tfmax'].values,
-                                df['vapor_pressure'].values, sg)
+    df['shortwave'] = shortwave(df['tfmax'].values, df['vapor_pressure'].values,
+                                df['tt_max'].values, df['potrad'].values)
     df['pet'] = pet(df['shortwave'].values, df['t_day'].values,
-                    df['dayl'].values, params)
+                    df['daylength'].values, params)
     return df
 
 
@@ -69,13 +69,9 @@ def tfmax(dtr, sm_dtr, prec, params):
     return tfmax
 
 
-def dayl(yday, sg):
-    return sg['daylength'][yday]
-
-
-def pet(shortwave, t_day, dayl, params):
+def pet(shortwave, t_day, daylength, params):
     pa = atm_pres(params['elev'], params['lapse_rate'])
-    return calc_pet(shortwave, t_day, dayl, pa) * cnst.MM_PER_CM
+    return calc_pet(shortwave, t_day, daylength, pa) * cnst.MM_PER_CM
 
 
 def tdew(pet, t_min, seasonal_prec, dtr):
@@ -91,10 +87,9 @@ def vapor_pressure(tdew):
     return svp(tdew)
 
 
-def shortwave(yday, tfmax, vapor_pressure, sg):
-    t_tmax = np.maximum(sg['tt_max0'][yday]
-                        + (cnst.ABASE * vapor_pressure), 0.0001)
-    return sg['potrad'][yday] * t_tmax * tfmax
+def shortwave(tfmax, vapor_pressure, tt_max, potrad):
+    t_tmax = np.maximum(tt_max + (cnst.ABASE * vapor_pressure), 0.0001)
+    return potrad * t_tmax * tfmax
 
 
 def tskc(tfmax, params):

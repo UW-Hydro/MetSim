@@ -68,7 +68,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     n_disagg = len(df_disagg)
     ts = float(params['time_step'])
     df_disagg['shortwave'] = shortwave(df_daily['shortwave'].values,
-                                       df_daily['dayl'].values,
+                                       df_daily['daylength'].values,
                                        df_daily.index.dayofyear.values,
                                        solar_geom['tiny_rad_fract'],
                                        params)
@@ -134,9 +134,10 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
         to time of min and max temp, respectively
     """
     rad_mask = 1*(disagg_rad > 0)
-    diff_mask = np.diff(rad_mask)
-    rise_times = np.where(diff_mask > 0)[0] * ts
-    set_times = np.where(diff_mask < 0)[0] * ts
+    set_mask = np.diff(rad_mask)
+    rise_mask = np.diff(rad_mask[::-1])[::-1]
+    rise_times = np.where(rise_mask > 0)[0] * ts
+    set_times = np.where(set_mask < 0)[0] * ts
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
                rise_times) + ts
     t_t_min = rise_times
@@ -483,34 +484,24 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     """
     ts = int(params['time_step'])
     ts_hourly = float(ts) / cnst.MIN_PER_HOUR
-    tiny_step_per_hour = cnst.SEC_PER_HOUR / cnst.SW_RAD_DT
     tmp_rad = (sw_rad * daylength) / (cnst.SEC_PER_HOUR * ts_hourly)
     n_days = len(tmp_rad)
-    ts_per_day = (cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
+    ts_per_day = int(cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
     disaggrad = np.zeros(int(n_days*ts_per_day))
-    tiny_offset = ((params.get("theta_l", 0) - params.get("theta_s", 0)
-                   / (cnst.HOURS_PER_DAY / cnst.DEG_PER_REV)))
-
-    # Tinystep represents a daily set of values - but is constant across days
-    tinystep = np.arange(cnst.HOURS_PER_DAY * tiny_step_per_hour) - tiny_offset
-    inds = np.asarray(tinystep < 0)
-    tinystep[inds] += cnst.HOURS_PER_DAY * tiny_step_per_hour
-    inds = np.asarray(tinystep > (cnst.HOURS_PER_DAY * tiny_step_per_hour-1))
-    tinystep[inds] -= (cnst.HOURS_PER_DAY * tiny_step_per_hour)
-    tinystep = np.asarray(tinystep, dtype=np.int32)
-
-    # Chunk sum takes in the distribution of radiation throughout the day
-    # and collapses it into chunks that correspond to the desired timestep
+    rad_fract_per_day = int(cnst.SEC_PER_DAY/cnst.SW_RAD_DT)
+    if params['utc_offset']:
+        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0))
+                         / cnst.DEG_PER_REV) * rad_fract_per_day)
+        tiny_rad_fract = np.roll(tiny_rad_fract.flatten(), utc_offset)
+    else:
+        tiny_rad_fract = tiny_rad_fract.flatten()
     chunk_size = int(ts * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
-
-    # Chunk sum takes in the distribution of radiation throughout the day
-    # and collapses it into chunks that correspond to the desired timestep
-    def chunk_sum(x):
-        return np.sum(x.reshape((int(len(x)/chunk_size), chunk_size)), axis=1)
-
+    ts_id = np.repeat(np.arange(ts_per_day), chunk_size)
     for day in range(n_days):
-        rad = tiny_rad_fract[day_of_year[day] - 1]
+        radslice = slice((day_of_year[day] - 1)*rad_fract_per_day,
+                         (day_of_year[day])*rad_fract_per_day)
+        rad = tiny_rad_fract[radslice]
         dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
-        rad_chunk = rad[np.asarray(tinystep, dtype=np.int32)]
-        disaggrad[dslice] = chunk_sum(rad_chunk) * tmp_rad[day]
+        rad_chunk = np.bincount(ts_id, weights=rad)
+        disaggrad[dslice] = rad_chunk * tmp_rad[day]
     return disaggrad
