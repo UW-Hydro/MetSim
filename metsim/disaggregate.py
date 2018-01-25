@@ -137,6 +137,14 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
     mask = np.diff(rad_mask)
     rise_times = np.where(mask > 0)[0] * ts
     set_times = np.where(mask < 0)[0] * ts
+    if len(rise_times) != len(set_times):
+        if rise_times[0] > set_times[0]:
+            first_rise = rise_times[0] - int(np.mean(np.diff(rise_times)))
+            rise_times = np.insert(rise_times, 0, first_rise)
+        elif rise_times[-1] < set_times[-1]:
+            final_set = set_times[-1] + int(np.mean(np.diff(set_times)))
+            set_times = np.insert(set_times, -1, final_set)
+
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
                rise_times) + ts
     t_t_min = rise_times
