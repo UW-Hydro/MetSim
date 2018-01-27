@@ -146,7 +146,8 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
     ds = xr.open_dataset(data_handle)
 
     if 'time' in ds.coords:
-        ds['time'] = ds.indexes['time'].round('D')
+         ds['time'] = (ds.indexes['time']
+                       - pd.Timedelta('11H59M59S')).round('D')
 
     if var_dict is not None:
         var_list = list(var_dict.keys())

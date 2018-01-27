@@ -137,13 +137,34 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
     mask = np.diff(rad_mask)
     rise_times = np.where(mask > 0)[0] * ts
     set_times = np.where(mask < 0)[0] * ts
-    if len(rise_times) != len(set_times):
-        if rise_times[0] > set_times[0]:
-            first_rise = rise_times[0] - int(np.mean(np.diff(rise_times)))
-            rise_times = np.insert(rise_times, 0, first_rise)
-        elif rise_times[-1] < set_times[-1]:
+
+    # Account for UTC offset in the case where the shift in
+    # shortwave ends up providing a set-time at the beginning
+    # of the timeseries
+    if set_times[0] < rise_times[0]:
+        set_times = set_times[1:]
+        if len(rise_times) == len(set_times):
             final_set = set_times[-1] + int(np.mean(np.diff(set_times)))
-            set_times = np.insert(set_times, -1, final_set)
+            final_rise = rise_times[-1] + int(np.mean(np.diff(rise_times)))
+            rise_times = np.insert(rise_times, len(rise_times), final_rise)
+            set_times = np.insert(set_times, len(set_times), final_set)
+        else:
+            final_set = set_times[-1] + int(np.mean(np.diff(set_times)))
+            set_times = np.insert(set_times, len(set_times), final_set)
+
+    # Account for UTC offset in the case where the shift in
+    # shortwave ends up providing a rise-time at the end
+    # of the timeseries
+    if rise_times[-1] > set_times[-1]:
+        rise_times = rise_times[:-1]
+        if len(rise_times) == len(set_times):
+            new_set = set_times[0] - int(np.mean(np.diff(set_times)))
+            new_rise = rise_times[0] - int(np.mean(np.diff(rise_times)))
+            rise_times = np.insert(rise_times, 0, new_rise)
+            set_times = np.insert(set_times, 0, new_set)
+        else:
+            new_rise = rise_times[0] - int(np.mean(np.diff(rise_times)))
+            rise_times = np.insert(rise_times, 0, new_rise)
 
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
                rise_times) + ts
@@ -206,8 +227,12 @@ def temp(t_min: np.array, t_max: np.array, out_len,
     temp = np.append(np.insert(temp, 0, t_begin), t_end)
 
     # Interpolate the values
-    interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
-    temps = interp(ts * np.arange(0, out_len))
+    try:
+        interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
+        temps = interp(ts * np.arange(0, out_len))
+    except Exception as e:
+        #print(time)
+        raise e
     return temps
 
 
@@ -499,7 +524,7 @@ def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
     if params['utc_offset']:
         utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0))
                          / cnst.DEG_PER_REV) * rad_fract_per_day)
-        tiny_rad_fract = np.roll(tiny_rad_fract.flatten(), utc_offset)
+        tiny_rad_fract = np.roll(tiny_rad_fract.flatten(), -utc_offset)
     else:
         tiny_rad_fract = tiny_rad_fract.flatten()
     chunk_size = int(ts * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
