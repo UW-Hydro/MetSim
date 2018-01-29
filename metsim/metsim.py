@@ -436,6 +436,8 @@ class MetSim(object):
         trailing = self.state['t_max'] - self.state['t_min']
 
         trailing['time'] = record_dates
+        self.met_data['t_max'], self.met_data['t_min'] = (self.met_data['t_max'].where(self.met_data['t_min']<self.met_data['t_max'], self.met_data['t_min']),
+                                                self.met_data['t_min'].where(self.met_data['t_max']>self.met_data['t_min'], self.met_data['t_max']))
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         sm_dtr = xr.concat([trailing, dtr], dim='time')
         sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
