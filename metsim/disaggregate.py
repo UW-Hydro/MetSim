@@ -73,7 +73,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
                                        solar_geom['tiny_rad_fract'],
                                        params)
 
-    t_Tmin, t_Tmax = set_min_max_hour(df_disagg['shortwave'].values,
+    t_Tmin, t_Tmax = set_min_max_hour(solar_geom['tiny_rad_fract'],
+                                      df_daily.index.dayofyear.values,
                                       n_days, ts, params)
 
     df_disagg['temp'] = temp(
@@ -108,7 +109,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     return df_disagg.fillna(method='ffill')
 
 
-def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
+def set_min_max_hour(tiny_rad_fract, yday, n_days: int,
                      ts: float, params: dict):
     """
     Determine the time at which min and max temp
@@ -133,39 +134,29 @@ def set_min_max_hour(disagg_rad: pd.Series, n_days: int,
         A tuple containing 2 timeseries, corresponding
         to time of min and max temp, respectively
     """
-    rad_mask = 1*(disagg_rad > 0)
+
+    # calculate minute of sunrise and sunset for each day of the year
+    rad_mask = 1*(tiny_rad_fract > 0)
     mask = np.diff(rad_mask)
-    rise_times = np.where(mask > 0)[0] * ts
-    set_times = np.where(mask < 0)[0] * ts
+    rise_times = np.where(mask > 0)[1] * (cnst.SW_RAD_DT/cnst.SEC_PER_MIN)
+    set_times = np.where(mask < 0)[1] * (cnst.SW_RAD_DT/cnst.SEC_PER_MIN)
+    #print(rise_times[0:5])
 
-    # Account for UTC offset in the case where the shift in
-    # shortwave ends up providing a set-time at the beginning
-    # of the timeseries
-    if set_times[0] < rise_times[0]:
-        set_times = set_times[1:]
-        if len(rise_times) == len(set_times):
-            final_set = set_times[-1] + int(np.mean(np.diff(set_times)))
-            final_rise = rise_times[-1] + int(np.mean(np.diff(rise_times)))
-            rise_times = np.insert(rise_times, len(rise_times), final_rise)
-            set_times = np.insert(set_times, len(set_times), final_set)
-        else:
-            final_set = set_times[-1] + int(np.mean(np.diff(set_times)))
-            set_times = np.insert(set_times, len(set_times), final_set)
+    if params['utc_offset']:
+        rad_fract_per_day = int(cnst.SEC_PER_DAY/cnst.SW_RAD_DT)
+        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0))
+                         / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
+        rise_times -= utc_offset
+        set_times -= utc_offset
+    #print(rise_times[0:5])
 
-    # Account for UTC offset in the case where the shift in
-    # shortwave ends up providing a rise-time at the end
-    # of the timeseries
-    if rise_times[-1] > set_times[-1]:
-        rise_times = rise_times[:-1]
-        if len(rise_times) == len(set_times):
-            new_set = set_times[0] - int(np.mean(np.diff(set_times)))
-            new_rise = rise_times[0] - int(np.mean(np.diff(rise_times)))
-            rise_times = np.insert(rise_times, 0, new_rise)
-            set_times = np.insert(set_times, 0, new_set)
-        else:
-            new_rise = rise_times[0] - int(np.mean(np.diff(rise_times)))
-            rise_times = np.insert(rise_times, 0, new_rise)
+    # map the daily sunrise and sunset to a monotonic timseries (in minutes)
+    offset = np.arange(0, n_days * cnst.MIN_PER_HOUR*cnst.HOURS_PER_DAY,
+                       cnst.MIN_PER_HOUR*cnst.HOURS_PER_DAY)
+    rise_times = rise_times[yday] + offset
+    set_times = set_times[yday] + offset
 
+    # time of maximum and minimum temperature calculated thusly
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
                rise_times) + ts
     t_t_min = rise_times
