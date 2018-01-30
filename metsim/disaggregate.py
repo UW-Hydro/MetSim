@@ -74,7 +74,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
                                        params)
 
     t_Tmin, t_Tmax = set_min_max_hour(solar_geom['tiny_rad_fract'],
-                                      df_daily.index.dayofyear.values,
+                                      df_daily.index.dayofyear.values-1,
                                       n_days, ts, params)
 
     df_disagg['temp'] = temp(
