@@ -365,7 +365,7 @@ class MetSim(object):
             state_start, result.index[-1], calendar=self.params['calendar'])
 
     def setup_output(self, prototype: xr.Dataset=None):
-        if not prototype:
+        if not prototype.variables:
             prototype = self.met_data
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         # Number of timesteps
@@ -525,7 +525,7 @@ class MetSim(object):
 
         # all state variables are written as doubles
         state_encoding = {}
-        for v in self.state:
+        for v in self.state.variables:
             state_encoding[v] = {'dtype': 'f8'}
         state_encoding['time']['calendar'] = self.params['calendar']
         # write state file
@@ -552,7 +552,7 @@ class MetSim(object):
             os.makedirs(dirname, exist_ok=True)
         # all state variables are written as doubles
         state_encoding = {'time': {'dtype': 'f8'}}
-        for v in self.state:
+        for v in self.state.variables:
             state_encoding[v] = {'dtype': 'f8'}
         # write state file
         self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
