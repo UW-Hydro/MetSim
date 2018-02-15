@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import itertools
 import scipy.interpolate
+from typing import Tuple
 
 import metsim.constants as cnst
 from metsim.physics import svp
@@ -29,7 +30,7 @@ from metsim.datetime import date_range
 
 def disaggregate(df_daily: pd.DataFrame, params: dict,
                  solar_geom: dict, t_begin: list=None,
-                 t_end: list=None):
+                 t_end: list=None) -> pd.DataFrame:
     """
     Take a daily timeseries and scale it down to a finer
     time scale.
@@ -66,7 +67,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg = pd.DataFrame(index=dates_disagg)
     n_days = len(df_daily)
     n_disagg = len(df_disagg)
-    ts = float(params['time_step'])
+    ts = int(params['time_step'])
     df_disagg['shortwave'] = shortwave(df_daily['shortwave'].values,
                                        df_daily['daylength'].values,
                                        df_daily.index.dayofyear.values,
@@ -109,8 +110,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     return df_disagg.fillna(method='ffill')
 
 
-def set_min_max_hour(tiny_rad_fract, yday, n_days: int,
-                     ts: float, params: dict):
+def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
+                     ts: int, params: dict) -> Tuple[np.array]:
     """
     Determine the time at which min and max temp
     is reached for each day.
@@ -140,7 +141,6 @@ def set_min_max_hour(tiny_rad_fract, yday, n_days: int,
     mask = np.diff(rad_mask)
     rise_times = np.where(mask > 0)[1] * (cnst.SW_RAD_DT/cnst.SEC_PER_MIN)
     set_times = np.where(mask < 0)[1] * (cnst.SW_RAD_DT/cnst.SEC_PER_MIN)
-    #print(rise_times[0:5])
 
     if params['utc_offset']:
         rad_fract_per_day = int(cnst.SEC_PER_DAY/cnst.SW_RAD_DT)
@@ -148,7 +148,6 @@ def set_min_max_hour(tiny_rad_fract, yday, n_days: int,
                          / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
         rise_times -= utc_offset
         set_times -= utc_offset
-    #print(rise_times[0:5])
 
     # map the daily sunrise and sunset to a monotonic timseries (in minutes)
     offset = np.arange(0, n_days * cnst.MIN_PER_HOUR*cnst.HOURS_PER_DAY,
@@ -163,9 +162,9 @@ def set_min_max_hour(tiny_rad_fract, yday, n_days: int,
     return t_t_min, t_t_max
 
 
-def temp(t_min: np.array, t_max: np.array, out_len,
-         t_t_min: np.array, t_t_max: np.array, ts: float,
-         t_begin: list=None, t_end: list=None):
+def temp(t_min: np.array, t_max: np.array, out_len: int,
+         t_t_min: np.array, t_t_max: np.array, ts: int,
+         t_begin: list=None, t_end: list=None) -> np.array:
     """
     Disaggregate temperature using a Hermite polynomial
     interpolation scheme.
@@ -218,16 +217,12 @@ def temp(t_min: np.array, t_max: np.array, out_len,
     temp = np.append(np.insert(temp, 0, t_begin), t_end)
 
     # Interpolate the values
-    try:
-        interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
-        temps = interp(ts * np.arange(0, out_len))
-    except Exception as e:
-        #print(time)
-        raise e
+    interp = scipy.interpolate.PchipInterpolator(time, temp, extrapolate=True)
+    temps = interp(ts * np.arange(0, out_len))
     return temps
 
 
-def prec(prec: pd.Series, ts: float):
+def prec(prec: np.array, ts: int) -> np.array:
     """
     Splits the daily precipitation evenly throughout the day
     Note: this returns only through to the beginning of the
@@ -246,12 +241,12 @@ def prec(prec: pd.Series, ts: float):
     prec:
         A sub-daily timeseries of precipitation
     """
-    scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
+    scale = ts / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
     n_repeats = 1/scale
     return np.repeat(prec * scale, n_repeats)
 
 
-def wind(wind: pd.Series, ts: float):
+def wind(wind: np.array, ts: int) -> np.array:
     """
     Wind is assumed constant throughout the day
     Note: this returns only through to the beginning of the
@@ -270,11 +265,11 @@ def wind(wind: pd.Series, ts: float):
     wind:
         A sub-daily timeseries of wind
     """
-    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / int(ts)
+    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / ts
     return np.repeat(wind, n_repeats)
 
 
-def pressure(temp, elev: float, lr: float):
+def pressure(temp: np.array, elev: float, lr: float) -> np.array:
     """
     Calculates air pressure.
 
@@ -297,7 +292,8 @@ def pressure(temp, elev: float, lr: float):
     return cnst.P_STD * np.exp(ratio) / cnst.MBAR_PER_BAR
 
 
-def specific_humidity(vapor_pressure, air_pressure):
+def specific_humidity(vapor_pressure: np.array,
+                      air_pressure: np.array) -> np.array:
     """
     Calculates specific humidity
 
@@ -317,7 +313,8 @@ def specific_humidity(vapor_pressure, air_pressure):
     return mix_rat / (1 + mix_rat)
 
 
-def relative_humidity(vapor_pressure, temp):
+def relative_humidity(vapor_pressure: np.array,
+                      temp: np.array) -> np.array:
     """
     Calculate relative humidity from vapor pressure
     and temperature.
@@ -339,8 +336,8 @@ def relative_humidity(vapor_pressure, temp):
     return rh
 
 
-def vapor_pressure(vp_daily: pd.Series, temp: pd.Series,
-                   t_t_min: np.array, n_out: int, ts: float):
+def vapor_pressure(vp_daily: np.array, temp: np.array, t_t_min: np.array,
+                   n_out: int, ts: int) -> np.array:
     """
     Calculate vapor pressure.  First a linear interpolation
     of the daily values is calculated.  Then this is compared
@@ -380,8 +377,8 @@ def vapor_pressure(vp_daily: pd.Series, temp: pd.Series,
     return vp_disagg
 
 
-def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
-             tskc: pd.Series, params: dict):
+def longwave(air_temp: np.array, vapor_pressure: np.array,
+             tskc: np.array, params: dict) -> np.array:
     """
     Calculate longwave. This calculation can be performed
     using a variety of parameterizations for both the
@@ -413,10 +410,8 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
 
     Returns
     -------
-    (lwrad, tskc):
+    lwrad:
         A sub-daily timeseries of the longwave radiation
-        as well as a sub-daily timeseries of the cloud
-        cover fraction.
     """
     emissivity_calc = {
         # TVA 1972
@@ -476,13 +471,28 @@ def longwave(air_temp: pd.Series, vapor_pressure: pd.Series,
     return lwrad
 
 
-def tskc(tskc, ts):
-    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / int(ts)
+def tskc(tskc: np.array, ts: int) -> np.array:
+    """
+    Disaggregate cloud fraction with uniform interpolation
+
+    Parameters
+    ----------
+    tskc:
+        Daily cloud fraction
+    ts:
+        Time step to disaggregate to (in minutes)
+
+    Returns
+    -------
+    tskc:
+        Sub-daily timeseries of cloud fraction
+    """
+    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / ts
     return np.repeat(tskc, n_repeats)
 
 
-def shortwave(sw_rad: pd.Series, daylength: pd.Series, day_of_year: pd.Series,
-              tiny_rad_fract: np.array, params: dict):
+def shortwave(sw_rad: np.array, daylength: np.array, day_of_year: np.array,
+              tiny_rad_fract: np.array, params: dict) -> np.array:
     """
     Disaggregate shortwave radiation down to a subdaily timeseries.
 
