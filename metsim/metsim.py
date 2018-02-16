@@ -125,6 +125,7 @@ class MetSim(object):
         "verbose": 0,
         "sw_prec_thresh": 0.0,
         "time_grouper": None,
+        "utc_offset": False,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
@@ -387,11 +388,12 @@ class MetSim(object):
         coords = {'time': times, **self.domain['mask'].coords}
         self.output = xr.Dataset(coords=coords)
         self.output['time'].encoding['calendar'] = self.params['calendar']
-        if 'elev' in self.params:
-            self.params.pop('elev')
+        for p in ['elev', 'lat', 'lon']:
+            if p in self.params:
+                self.params.pop(p)
         for k, v in self.params.items():
             # Need to convert some parameters to strings
-            if k in ['start', 'stop', 'time_grouper']:
+            if k in ['start', 'stop', 'time_grouper', 'utc_offset']:
                 v = str(v)
             elif k in ['state_start', 'state_stop']:
                 # skip
@@ -435,6 +437,9 @@ class MetSim(object):
 
         trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
+        if (dtr < 0).any():
+            raise ValueError("Daily maximum temperature lower"
+                             " than daily minimum temperature!")
         sm_dtr = xr.concat([trailing, dtr], dim='time')
         sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
         self.met_data['dtr'] = dtr
@@ -477,7 +482,7 @@ class MetSim(object):
                           'shortwave', 'tskc', 'pet', 'wind']
         out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
                          'air_pressure', 'rel_humid', 'spec_humid',
-                         'longwave', 'tsck', 'wind']
+                         'longwave', 'tskc', 'wind']
         if int(self.params.get('time_step', -1)) == 1440:
             out_var_check = daily_out_vars
         for var in self.params.get('out_vars', []):
@@ -612,19 +617,26 @@ def wrap_run(func: callable, loc: dict, params: dict,
     """
     logger.info("Processing {}".format(loc))
     lat = ds['lat'].values
+    lon = ds['lon'].values
     elev = ds['elev'].values
     params['elev'] = elev
+    params['lat'] = lat
+    params['lon'] = lon
     df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
     sg = solar_geom(elev, lat, params['lapse_rate'])
     sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
           'potrad': sg[2], 'tt_max0': sg[3]}
+    yday = df.index.dayofyear.values - 1
+    df['daylength'] = sg['daylength'][yday]
+    df['potrad'] = sg['potrad'][yday]
+    df['tt_max'] = sg['tt_max0'][yday]
 
     # Generate the daily values - these are saved
     # so that we can use a subset of them to write
     # out the state file later
-    df_base = func(df, params, sg)
+    df_base = func(df, params)
 
     if disagg:
         # Get some values for padding the time list,
@@ -660,7 +672,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
             calendar=params['calendar'])
     else:
         # convert srad to daily average flux from daytime flux
-        df_base['shortwave'] *= df_base['dayl'] / cnst.SEC_PER_DAY
+        df_base['shortwave'] *= df_base['daylength'] / cnst.SEC_PER_DAY
         # If we're outputting daily values, we dont' need to
         # change the output dates - see inside of `if` condition
         # above for more explanation

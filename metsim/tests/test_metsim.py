@@ -224,7 +224,7 @@ def test_disaggregation_values():
     # The location we will test against
     loc = (1, 4)
 
-    def check_data(out, good, tol=0.02):
+    def check_data(out, good, tol=0.1):
         assert type(out) is pd.DataFrame
         for var in ms.params['out_vars']:
             # Check to make sure each variable has normalized
@@ -257,7 +257,7 @@ def test_disaggregation_values():
     good.index = out.index
 
     # Make sure the data comes out right
-    check_data(out, good, tol=0.1)
+    check_data(out, good, tol=0.2)
 
 
 @pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc'])
