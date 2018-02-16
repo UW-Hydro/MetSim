@@ -34,10 +34,15 @@ sys.path.insert(0, os.path.abspath('../'))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = ['sphinx.ext.autodoc',
+              'sphinx.ext.extlinks',
               'sphinx.ext.mathjax',
               'sphinx.ext.viewcode',
               'sphinx.ext.napoleon',
               'sphinx.ext.autosummary']
+
+extlinks = {'issue': ('https://github.com/UW-Hydro/MetSim/issues/%s', 'GH'),
+            'pull': ('https://github.com/UW-Hydro/MetSim/pull/%s', 'PR'),
+            }
 
 napoleon_google_docstring = False
 napoleon_use_param = False
