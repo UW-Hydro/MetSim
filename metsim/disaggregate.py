@@ -243,7 +243,7 @@ def wind(wind: pd.Series, ts: float):
     return wind.resample('{:0.0f}T'.format(ts)).fillna(method='ffill')
 
 
-def pressure(temp: pd.Series, elev: float, lr: float):
+def pressure(temp, elev: float, lr: float):
     """
     Calculates air pressure.
 
@@ -266,7 +266,7 @@ def pressure(temp: pd.Series, elev: float, lr: float):
     return cnst.P_STD * np.exp(ratio) / cnst.MBAR_PER_BAR
 
 
-def specific_humidity(vapor_pressure: pd.Series, air_pressure: pd.Series):
+def specific_humidity(vapor_pressure, air_pressure):
     """
     Calculates specific humidity
 
@@ -286,7 +286,7 @@ def specific_humidity(vapor_pressure: pd.Series, air_pressure: pd.Series):
     return mix_rat / (1 + mix_rat)
 
 
-def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
+def relative_humidity(vapor_pressure, temp):
     """
     Calculate relative humidity from vapor pressure
     and temperature.
@@ -303,9 +303,9 @@ def relative_humidity(vapor_pressure: pd.Series, temp: pd.Series):
     rh:
         A sub-daily timeseries of relative humidity
     """
-    rh = (cnst.MAX_PERCENT * cnst.MBAR_PER_BAR
-          * (vapor_pressure / svp(temp.values)))
-    return rh.where(rh < cnst.MAX_PERCENT, cnst.MAX_PERCENT)
+    rh = (cnst.MAX_PERCENT * cnst.MBAR_PER_BAR * (vapor_pressure / svp(temp.values)))
+    rh[rh > cnst.MAX_PERCENT] = cnst.MAX_PERCENT
+    return rh
 
 
 def vapor_pressure(vp_daily: pd.Series, temp: pd.Series,
