@@ -25,3 +25,7 @@ Bug fixes
 - Fixed bug where output files were not written with the appropriate calendar
   encoding attribute (:issue:`97`).
   By `Joe Hamman <https://github.com/jhamman>`_.
+- Fixed a bug where invalid timesteps were used in subdaily disaggregation.
+  Added a clear error message explaining that subdaily timesteps must be evenly
+  divisible into 24 hours and less than 6 hours in length. (:issue:`110`).
+  By `Joe Hamman <https://github.com/jhamman>`_.

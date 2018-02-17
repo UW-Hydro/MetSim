@@ -462,9 +462,12 @@ class MetSim(object):
                 errs.append("Cannot have empty value for {}".format(each))
 
         # Make sure time step divides evenly into a day
-        if cnst.MIN_PER_DAY % int(self.params.get('time_step', -1)):
-            errs.append("Time step must divide 1440 evenly.  Got {}"
-                        .format(self.params['time_step']))
+        if (cnst.MIN_PER_DAY % int(self.params.get('time_step', -1)) or
+                (int(self.params['time_step']) > (6 * cnst.MIN_PER_HOUR) and
+                 int(self.params['time_step']) != cnst.MIN_PER_DAY)):
+            errs.append("Time step must be evenly divisible into 1440 "
+                        "minutes (24 hours) and less than 360 minutes "
+                        "(6 hours). Got {}.".format(self.params['time_step']))
 
         # Check for required input variable specification
         if self.met_data is not None:
