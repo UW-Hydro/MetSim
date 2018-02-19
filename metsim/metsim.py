@@ -107,6 +107,7 @@ class MetSim(object):
     """
 
     # Class variables
+    met_data = None
     methods = {'mtclim': mtclim}
     params = {
         "method": '',
@@ -117,14 +118,14 @@ class MetSim(object):
         "out_prefix": 'forcing',
         "start": '',
         "stop": '',
-        "time_step": '',
+        "time_step": -1,
         "calendar": 'standard',
         "out_fmt": '',
         "out_precision": 'f8',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
         "mtclim_swe_corr": False,
-        "annual": False,
+        "time_grouper": None,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
@@ -145,9 +146,14 @@ class MetSim(object):
         """
         # Record parameters
         self.params.update(params)
+
+        self._need_initial_swe = (self.params['mtclim_swe_corr'] or
+                                  'swe' in self.params['out_vars'])
+
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
+        self._validate_setup()
         logger.info("read_domain")
         self.domain = io.read_domain(self.params)
         self._normalize_times()
@@ -198,6 +204,10 @@ class MetSim(object):
                 self.params[p] = pd.Timestamp(
                     force_times.values[i]).to_pydatetime()
 
+        # update calendar from input data (fall back to params version)
+        self.params['calendar'] = self.met_data['time'].encoding.get(
+            'calendar', self.params['calendar'])
+
         assert self.params['start'] >= pd.Timestamp(
             force_times.values[0]).to_pydatetime()
         assert self.params['stop'] <= pd.Timestamp(
@@ -210,13 +220,15 @@ class MetSim(object):
         logger.info('start {}'.format(self.params['start']))
         logger.info('stop {}'.format(self.params['stop']))
 
-        logger.info('force start {}', pd.Timestamp(
-            force_times.values[0]).to_pydatetime())
-        logger.info('force stop {}', pd.Timestamp(
-            force_times.values[-1]).to_pydatetime())
+        logger.info('force start {}'.format(pd.Timestamp(
+            force_times.values[0]).to_pydatetime()))
+        logger.info('force stop {}'.format(pd.Timestamp(
+            force_times.values[-1]).to_pydatetime()))
 
         logger.info('state start {}'.format(self.params['state_start']))
         logger.info('state stop {}'.format(self.params['state_stop']))
+
+        logger.info('calendar {}'.format(self.params['calendar']))
 
     def load_inputs(self, close=True):
         self.domain = self.domain.load()
@@ -227,21 +239,32 @@ class MetSim(object):
             self.met_data.close()
             self.state.close()
 
+    def _get_time_dim_and_time_dim(self):
+
+        index = self.met_data.indexes['time']
+
+        groups = OrderedDict()
+        if self.params['time_grouper'] is not None:
+            time_dim = pd.Series(index=index)
+            grouper = pd.TimeGrouper(self.params['time_grouper'])
+            for key, vals in time_dim.groupby(grouper):
+                groups[key] = vals.index
+        else:
+            groups['total'] = index
+
+        return index, groups
+
     def launch(self):
         """Farm out the jobs to separate processes"""
         # Do the forcing generation and disaggregation if required
         self._validate_setup()
         nprocs = self.params['nprocs']
-        time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
-        if self.params['annual']:
-            groups = time_dim.groupby(time_dim.year)
-        else:
-            groups = {'total': time_dim}
+        time_dim, groups = self._get_time_dim_and_time_dim()
 
         for label, times in groups.items():
             self.pool = Pool(processes=nprocs)
@@ -285,16 +308,12 @@ class MetSim(object):
         Kicks off the disaggregation and queues up data for IO
         """
         self._validate_setup()
-        time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
-        if self.params['annual']:
-            groups = time_dim.groupby(time_dim.year)
-        else:
-            groups = {'total': time_dim}
+        time_dim, groups = self._get_time_dim_and_time_dim()
 
         for label, times in groups.items():
             logger.info("Beginning {}".format(label))
@@ -359,10 +378,11 @@ class MetSim(object):
         self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
         self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
         self.state['prec'].sel(**locs).values[:] = prec[-90:]
-        self.state['swe'].sel(**locs).values = result['swe'].values[-1]
+        if self._need_initial_swe:
+            self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
-        self.state.time.values = date_range(state_start, result.index[-1],
-                                            calendar=self.params['calendar'])
+        self.state['time'].values = date_range(
+            state_start, result.index[-1], calendar=self.params['calendar'])
 
     def setup_output(self, prototype: xr.Dataset=None):
         if not prototype:
@@ -375,8 +395,8 @@ class MetSim(object):
         else:
             delta = pd.Timedelta('0 days')
 
-        start = pd.Timestamp(prototype.time.values[0]).to_pydatetime()
-        stop = pd.Timestamp(prototype.time.values[-1]).to_pydatetime()
+        start = pd.Timestamp(prototype['time'].values[0]).to_pydatetime()
+        stop = pd.Timestamp(prototype['time'].values[-1]).to_pydatetime()
         times = date_range(start, stop + delta,
                            freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
@@ -384,13 +404,14 @@ class MetSim(object):
 
         shape = (n_ts, ) + self.domain['mask'].shape
         dims = ('time', ) + self.domain['mask'].dims
-        coords = {'time': times, **self.domain.mask.coords}
+        coords = {'time': times, **self.domain['mask'].coords}
         self.output = xr.Dataset(coords=coords)
+        self.output['time'].encoding['calendar'] = self.params['calendar']
         if 'elev' in self.params:
             self.params.pop('elev')
         for k, v in self.params.items():
             # Need to convert some parameters to strings
-            if k in ['start', 'stop', 'annual', 'mtclim_swe_corr']:
+            if k in ['start', 'stop', 'time_grouper', 'mtclim_swe_corr']:
                 v = str(v)
             elif k in ['state_start', 'state_stop']:
                 # skip
@@ -409,13 +430,13 @@ class MetSim(object):
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding={'dtype': self.params['out_precision'],
                           '_FillValue': cnst.FILL_VALUES['f8']})
-        self.output.time.attrs.update(attrs['time'])
+        self.output['time'].attrs.update(attrs['time'])
 
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
 
-        assert self.state.dims['time'] == 90
+        assert self.state.dims['time'] == 90, self.state['time']
 
         record_dates = date_range(self.params['state_start'],
                                   self.params['state_stop'],
@@ -439,19 +460,20 @@ class MetSim(object):
         self.met_data['smoothed_dtr'] = sm_dtr
 
         # Put in SWE data
-        if 'time' in self.state['swe'].dims:
-            self.state['swe'] = self.state['swe'].sel(
-                time=self.params['state_stop']).drop('time')
-        else:
-            self.state['swe'] = self.state['swe']
-        self.met_data['swe'] = self.state['swe'].copy()
+        if self._need_initial_swe:
+            if 'time' in self.state['swe'].dims:
+                self.state['swe'] = self.state['swe'].sel(
+                    time=self.params['state_stop']).drop('time')
+            else:
+                self.state['swe'] = self.state['swe']
+            self.met_data['swe'] = self.state['swe'].copy()
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
         errs = [""]
 
         # Make sure there's some input
-        if not len(self.params['forcing']):
+        if not len(self.params.get('forcing', [])):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
@@ -459,23 +481,37 @@ class MetSim(object):
                      'stop', 'time_step', 'out_fmt',
                      'forcing_fmt', 'domain_fmt', 'state_fmt']
         for each in non_empty:
-            if self.params[each] is None or self.params[each] == '':
+            if self.params.get(each, None) is None or self.params[each] == '':
                 errs.append("Cannot have empty value for {}".format(each))
 
         # Make sure time step divides evenly into a day
-        if cnst.MIN_PER_DAY % int(self.params['time_step']):
+        if cnst.MIN_PER_DAY % int(self.params.get('time_step', -1)):
             errs.append("Time step must divide 1440 evenly.  Got {}"
                         .format(self.params['time_step']))
 
         # Check for required input variable specification
-        required_in = ['t_min', 't_max', 'prec']
-        for each in required_in:
-            if each not in self.met_data.variables:
-                errs.append("Input requires {}".format(each))
+        if self.met_data is not None:
+            required_in = ['t_min', 't_max', 'prec']
+            for each in required_in:
+                if each not in self.met_data.variables:
+                    errs.append("Input requires {}".format(each))
 
         # Make sure that we are going to write out some data
-        if not len(self.params['out_vars']):
+        if not len(self.params.get('out_vars', [])):
             errs.append("Output variable list must not be empty")
+
+        # Check output variables are valid
+        daily_out_vars = ['t_min', 't_max', 'prec', 'swe', 'vapor_pressure',
+                          'shortwave', 'tskc', 'pet', 'wind']
+        out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
+                         'air_pressure', 'rel_humid', 'spec_humid',
+                         'longwave', 'tsck', 'wind']
+        if int(self.params.get('time_step', -1)) == 1440:
+            out_var_check = daily_out_vars
+        for var in self.params.get('out_vars', []):
+            if var not in out_var_check:
+                errs.append('Cannot output variable {} at timestep {}'.format(
+                    var, self.params['time_step']))
 
         # Check that the parameters specified are available
         opts = {'mtclim_swe_corr': [True, False],
@@ -485,7 +521,7 @@ class MetSim(object):
                             'brutsaert', 'satterlund',
                             'idso', 'prata']}
         for k, v in opts.items():
-            if not self.params[k] in v:
+            if not self.params.get(k, None) in v:
                 errs.append("Invalid option given for {}".format(k))
 
         # If any errors, raise and give a summary
@@ -503,6 +539,12 @@ class MetSim(object):
                 }
         dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
 
+    def get_nc_output_suffix(self):
+        s, e = self.output.indexes['time'][[0, -1]]
+        template = '{:04d}{:02d}{:02d}-{:04d}{:02d}{:02d}'
+        return template.format(s.year, s.month, s.day,
+                               e.year, e.month, e.day,)
+
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
         logger.info("Writing netcdf...")
@@ -511,18 +553,25 @@ class MetSim(object):
             os.makedirs(dirname, exist_ok=True)
 
         # all state variables are written as doubles
-        state_encoding = {'time': {'dtype': 'f8'}}
+        state_encoding = {}
         for v in self.state:
             state_encoding[v] = {'dtype': 'f8'}
+        state_encoding['time']['calendar'] = self.params['calendar']
         # write state file
-
         self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
+
         # write output file
+        suffix = self.get_nc_output_suffix()
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
+        logger.info(output_filename)
+        out_encoding = {'time': {'dtype': 'f8',
+                                 'calendar': self.params['calendar']}}
+        for v in self.output.data_vars:
+            out_encoding[v] = {'dtype': 'f8'}
         self.output.to_netcdf(output_filename,
                               unlimited_dims=['time'],
-                              encoding={'time': {'dtype': 'f8'}})
+                              encoding=out_encoding)
 
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
@@ -557,7 +606,7 @@ class MetSim(object):
 
 def wrap_run(func: callable, loc: dict, params: dict,
              ds: xr.Dataset, state: xr.Dataset, disagg: bool,
-             out_times: pd.DatetimeIndex, year: str):
+             out_times: pd.DatetimeIndex, group: str):
     """
     Iterate over a chunk of the domain. This is wrapped
     so we can return a tuple of locs and df.
@@ -579,7 +628,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
     out_times: pd.DatetimeIndex
         Times to return (should be trimmed 1 day at
         each end from the given index)
-    year: str
+    group: str
         The year being run. This is used to add on
         extra times to make output smooth at endpoints
         if the run is chunked in time.
@@ -593,8 +642,10 @@ def wrap_run(func: callable, loc: dict, params: dict,
     logger.info("Processing {}".format(loc))
     lat = ds['lat'].values
     elev = ds['elev'].values
-    swe = ds['swe'].values
-
+    if 'swe' in ds:
+        swe = ds['swe'].values
+    else:
+        swe = None
     params['elev'] = elev
 
     df = ds.to_dataframe()
@@ -625,7 +676,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
             t_begin = [state['t_min'].values[-1],
                        state['t_max'].values[-1]]
         try:
-            nextday = pd.datetime(int(year)+1, 1, 1)
+            nextday = out_times[-1] + pd.Timedelta('1 days')
             t_end = [ds['t_min'].sel(time=nextday),
                      ds['t_max'].sel(time=nextday)]
         except (KeyError, ValueError):

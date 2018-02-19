@@ -57,10 +57,11 @@ current implementation only supports ``mtclim``.
 ``out_precision :: str``: Precision to use when writing output.  Defaults to
 ``f8``.  Can be either ``f4`` or ``f8``.
 
-``annual :: bool``: Whether to chunk up the timeseries into years for
+``time_grouper :: str``: Whether to chunk up the timeseries into pieces for
 processing. This option is useful to set for when you are limited on
-memory.  Each year of output is written as ``{out_prefix}_{year}`` when
-active.
+memory.  Each chunk of output is written as ``{out_prefix}_{date_range}`` when
+active. Any valid ``pandas.TimeGrouper`` string may be used (e.g. use '10AS'
+for 10 year chunks).
 
 ``iter_dims :: list``: The dimensions of input data to iterate over to
 accumulate sites.  Defaults to ``['lat', 'lon']``.
