@@ -35,12 +35,12 @@ import logging
 import itertools
 import time as tm
 from getpass import getuser
-from multiprocessing import Pool
+from collections import OrderedDict, Iterable
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from collections import OrderedDict, Iterable
+import dask
 
 from metsim import io
 from metsim.methods import mtclim
@@ -159,7 +159,6 @@ class MetSim(object):
         """Farm out the jobs to separate processes"""
         # Do the forcing generation and disaggregation if required
         self._validate_setup()
-        nprocs = self.params['nprocs']
         time_dim = pd.DatetimeIndex(self.met_data.time.values)
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
@@ -172,10 +171,8 @@ class MetSim(object):
             groups = {'total': time_dim}
 
         for label, times in groups.items():
-            self.pool = Pool(processes=nprocs)
             self.site_generator = itertools.product(*iter_list)
             logger.info("Beginning {}".format(label))
-            status = []
 
             # Add in some end point data for continuity in chunking
             times_ext = times.union([times[0] - pd.Timedelta("1 days"),
@@ -183,24 +180,32 @@ class MetSim(object):
                                     ).intersection(time_dim)
             data = self.met_data.sel(time=times_ext)
             self.setup_output(self.met_data.sel(time=times))
+
+            run = dask.delayed(wrap_run, name='metsim_run', pure=True, nout=3)
+            delayed = []
+
             for site in self.site_generator:
                 locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
-                stat = self.pool.apply_async(
-                    wrap_run,
-                    args=(self.method.run, locs, self.params,
-                          data.sel(**locs),
-                          self.state.sel(**locs),
-                          self.disagg, times, label),
-                    callback=self._unpack_results)
-                status.append(stat)
-            self.pool.close()
-            # Check that everything worked
-            [stat.get() for stat in status]
-            self.pool.join()
+                print('doing the delayed thing for %s' % locs)
+                delayed.append(run(self.method.run, locs, self.params,
+                                   data.sel(**locs),
+                                   self.state.sel(**locs),
+                                   self.disagg, times, label))
+
+            # now do the computation
+            # in the future we may do this in some sort of chunked fashion
+            computed = dask.compute(*delayed)
+
+            # put the data where it goes
+            for loc, df_complete, df_base in computed:
+                for varname in self.params['out_vars']:
+                    self.output[varname].loc[loc] = df_complete[varname]
+
             self.write(label)
+
 
     def run(self):
         """

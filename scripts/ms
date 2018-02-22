@@ -87,7 +87,6 @@ def init(opts):
     conf.update({"stop": stop,
                  "start": start,
                  "calendar": conf.get('calendar', 'standard'),
-                 "nprocs": opts.n_processes,
                  "method": method,
                  "out_dir": out_dir,
                  "out_state": out_state,
@@ -105,10 +104,17 @@ def init(opts):
 def main():
     """Runs MetSim"""
     from metsim.metsim import MetSim
+    from distributed import Client
+    import dask.multiprocessing
+    import dask.threaded
+
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    if ms.params['nprocs'] > 1:
-        ms.launch()
+    if True:  # rethink how to do this.
+        # c = Client()
+        # print(c)
+        with dask.set_options(get=dask.multiprocessing.get):
+            ms.launch()
     else:
         ms.run()
 
