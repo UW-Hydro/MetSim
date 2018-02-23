@@ -93,7 +93,6 @@ attrs = {'pet': {'units': 'mm timestep-1', 'long_name': 'potential evaporation',
                      'source': 'metsim.py',
                      'history': 'Created: {0} by {1}'.format(now, user),
                      'references': references,
-                     'documentation': 'Times given are local to their locations.',
                      'comment': 'no comment at this time'}}
 
 attrs = {k: OrderedDict(v) for k, v in attrs.items()}
@@ -225,6 +224,9 @@ class MetSim(object):
         logger.info('state stop {}'.format(self.params['state_stop']))
 
         logger.info('calendar {}'.format(self.params['calendar']))
+        if self.params['utc_offset']:
+            attrs['time'] = {'long_name': 'UTC time',
+                  'standard_name': 'utc_time'}
 
     def load_inputs(self, close=True):
         self.domain = self.domain.load()
