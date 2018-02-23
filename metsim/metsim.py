@@ -86,8 +86,6 @@ attrs = {'pet': {'units': 'mm timestep-1', 'long_name': 'potential evaporation',
                        'standard_name': 'relative_humidity'},
          'spec_humid': {'units': '', 'long_name': 'specific humidity',
                         'standard_name': 'specific_humidity'},
-         'time': {'long_name': 'local time at grid location',
-                  'standard_name': 'local_time'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
@@ -226,7 +224,10 @@ class MetSim(object):
         logger.info('calendar {}'.format(self.params['calendar']))
         if self.params['utc_offset']:
             attrs['time'] = {'long_name': 'UTC time',
-                  'standard_name': 'utc_time'}
+                             'standard_name': 'utc_time'}
+        else:
+            attrs['time'] = {'long_name': 'local time at grid location',
+                             'standard_name': 'local_time'}
 
     def load_inputs(self, close=True):
         self.domain = self.domain.load()
