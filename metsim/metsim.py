@@ -124,8 +124,8 @@ class MetSim(object):
         "out_precision": 'f8',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
-        "mtclim_swe_corr": False,
         "time_grouper": None,
+        "utc_offset": False,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
@@ -146,9 +146,6 @@ class MetSim(object):
         """
         # Record parameters
         self.params.update(params)
-
-        self._need_initial_swe = (self.params['mtclim_swe_corr'] or
-                                  'swe' in self.params['out_vars'])
 
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
@@ -364,8 +361,6 @@ class MetSim(object):
         self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
         self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
         self.state['prec'].sel(**locs).values[:] = prec[-90:]
-        if self._need_initial_swe:
-            self.state['swe'].sel(**locs).values = result['swe'].values[-1]
         state_start = result.index[-1] - pd.Timedelta('89 days')
         self.state['time'].values = date_range(
             state_start, result.index[-1], calendar=self.params['calendar'])
@@ -393,11 +388,12 @@ class MetSim(object):
         coords = {'time': times, **self.domain['mask'].coords}
         self.output = xr.Dataset(coords=coords)
         self.output['time'].encoding['calendar'] = self.params['calendar']
-        if 'elev' in self.params:
-            self.params.pop('elev')
+        for p in ['elev', 'lat', 'lon']:
+            if p in self.params:
+                self.params.pop(p)
         for k, v in self.params.items():
             # Need to convert some parameters to strings
-            if k in ['start', 'stop', 'time_grouper', 'mtclim_swe_corr']:
+            if k in ['start', 'stop', 'time_grouper', 'utc_offset']:
                 v = str(v)
             elif k in ['state_start', 'state_stop']:
                 # skip
@@ -441,18 +437,13 @@ class MetSim(object):
 
         trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
+        if (dtr < 0).any():
+            raise ValueError("Daily maximum temperature lower"
+                             " than daily minimum temperature!")
         sm_dtr = xr.concat([trailing, dtr], dim='time')
         sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
+        self.met_data['dtr'] = dtr
         self.met_data['smoothed_dtr'] = sm_dtr
-
-        # Put in SWE data
-        if self._need_initial_swe:
-            if 'time' in self.state['swe'].dims:
-                self.state['swe'] = self.state['swe'].sel(
-                    time=self.params['state_stop']).drop('time')
-            else:
-                self.state['swe'] = self.state['swe']
-            self.met_data['swe'] = self.state['swe'].copy()
 
     def _validate_setup(self):
         """Updates the global parameters dictionary"""
@@ -471,9 +462,12 @@ class MetSim(object):
                 errs.append("Cannot have empty value for {}".format(each))
 
         # Make sure time step divides evenly into a day
-        if cnst.MIN_PER_DAY % int(self.params.get('time_step', -1)):
-            errs.append("Time step must divide 1440 evenly.  Got {}"
-                        .format(self.params['time_step']))
+        if (cnst.MIN_PER_DAY % int(self.params.get('time_step', -1)) or
+                (int(self.params['time_step']) > (6 * cnst.MIN_PER_HOUR) and
+                 int(self.params['time_step']) != cnst.MIN_PER_DAY)):
+            errs.append("Time step must be evenly divisible into 1440 "
+                        "minutes (24 hours) and less than 360 minutes "
+                        "(6 hours). Got {}.".format(self.params['time_step']))
 
         # Check for required input variable specification
         if self.met_data is not None:
@@ -487,11 +481,11 @@ class MetSim(object):
             errs.append("Output variable list must not be empty")
 
         # Check output variables are valid
-        daily_out_vars = ['t_min', 't_max', 'prec', 'swe', 'vapor_pressure',
+        daily_out_vars = ['t_min', 't_max', 'prec', 'vapor_pressure',
                           'shortwave', 'tskc', 'pet', 'wind']
         out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
                          'air_pressure', 'rel_humid', 'spec_humid',
-                         'longwave', 'tsck', 'wind']
+                         'longwave', 'tskc', 'wind']
         if int(self.params.get('time_step', -1)) == 1440:
             out_var_check = daily_out_vars
         for var in self.params.get('out_vars', []):
@@ -500,8 +494,7 @@ class MetSim(object):
                     var, self.params['time_step']))
 
         # Check that the parameters specified are available
-        opts = {'mtclim_swe_corr': [True, False],
-                'out_precision': ['f4', 'f8'],
+        opts = {'out_precision': ['f4', 'f8'],
                 'lw_cloud': ['default', 'cloud_deardorff'],
                 'lw_type': ['default', 'tva', 'anderson',
                             'brutsaert', 'satterlund',
@@ -627,23 +620,26 @@ def wrap_run(func: callable, loc: dict, params: dict,
     """
     logger.info("Processing {}".format(loc))
     lat = ds['lat'].values
+    lon = ds['lon'].values
     elev = ds['elev'].values
-    if 'swe' in ds:
-        swe = ds['swe'].values
-    else:
-        swe = None
     params['elev'] = elev
+    params['lat'] = lat
+    params['lon'] = lon
     df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
     sg = solar_geom(elev, lat, params['lapse_rate'])
     sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
           'potrad': sg[2], 'tt_max0': sg[3]}
+    yday = df.index.dayofyear.values - 1
+    df['daylength'] = sg['daylength'][yday]
+    df['potrad'] = sg['potrad'][yday]
+    df['tt_max'] = sg['tt_max0'][yday]
 
     # Generate the daily values - these are saved
     # so that we can use a subset of them to write
     # out the state file later
-    df_base = func(df, params, sg, elev=elev, swe=swe)
+    df_base = func(df, params)
 
     if disagg:
         # Get some values for padding the time list,
@@ -679,7 +675,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
             calendar=params['calendar'])
     else:
         # convert srad to daily average flux from daytime flux
-        df_base['shortwave'] *= df_base['dayl'] / cnst.SEC_PER_DAY
+        df_base['shortwave'] *= df_base['daylength'] / cnst.SEC_PER_DAY
         # If we're outputting daily values, we dont' need to
         # change the output dates - see inside of `if` condition
         # above for more explanation

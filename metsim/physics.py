@@ -120,7 +120,6 @@ def atm_pres(elev: float, lr: float) -> float:
     return cnst.P_STD * np.power(t1, t2)
 
 
-@jit(nopython=True)
 def svp(temp: np.array, a: float=0.61078, b: float=17.269, c: float=237.3):
     '''
     Compute the saturated vapor pressure.
