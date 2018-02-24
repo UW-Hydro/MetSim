@@ -20,42 +20,23 @@ Command line tool for MetSim
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
-import sys
 import json
 import logging
-import argparse
-from configparser import SafeConfigParser
+from configparser import ConfigParser
 from collections import OrderedDict
 
+import click
 
-def _is_valid_file(parser, arg):
-    if not os.path.isfile(arg):
-        message = "Configuration file {} does not exist.\n".format(arg)
-        parser.print_help()
-        parser.exit(status=1, message=message)
-    return arg
+from metsim.metsim import MetSim
+
+logger = logging.getLogger(__name__)
 
 
-def parse(args):
-    """Parse the command line arguments"""
-    parser = argparse.ArgumentParser()
-    parser.add_argument('config', type=lambda x: _is_valid_file(parser, x),
-                        help='Input configuration file')
-    parser.add_argument('-n', '--n-processes', default=1, type=int,
-                        help='Parallel mode: number of processes to use')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Increase the verbosity of MetSim')
-    parser.add_argument('-tg', '--time_grouper', nargs='?',
-                        const='1AS', default=None, type=str,
-                        help='Pandas TimeGrouper string (e.g. `1AS`)')
-    return parser.parse_args()
-
-
-def init(opts):
+def init(config_file, verbose, time_grouper):
     """Initialize some information based on the options & config"""
-    config = SafeConfigParser()
+    config = ConfigParser()
     config.optionxform = str
-    config.read(opts.config)
+    config.read(config_file)
     conf = OrderedDict(config['MetSim'])
     conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
     conf['domain_vars'] = OrderedDict(config['domain_vars'])
@@ -81,38 +62,81 @@ def init(opts):
     def to_list(s):
         return json.loads(s.replace("'", '"'))
 
-    conf.update({"stop": stop,
-                 "start": start,
-                 "calendar": conf.get('calendar', 'standard'),
+    conf.update({"calendar": conf.get('calendar', 'standard'),
                  "method": method,
                  "out_dir": out_dir,
                  "out_state": out_state,
                  "state": state_file,
                  "domain": domain_file,
                  "forcing": forcing_files,
-                 "verbose": opts.verbose * logging.INFO})
+                 "verbose": verbose * logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
-    if opts.time_grouper is not None:
-        conf['time_grouper'] = opts.time_grouper
+    conf['time_grouper'] = time_grouper if time_grouper else None
     conf = {k: v for k, v in conf.items() if v != []}
     return conf
 
 
-def main():
-    """Runs MetSim"""
-    from metsim.metsim import MetSim
-    from distributed import Client
-    import dask.multiprocessing
-    import dask.threaded
+def setup_dask(scheduler, num_workers):
 
-    setup = init(parse(sys.argv[1:]))
+    if scheduler is None and num_workers is None:
+        return None
+
+    if scheduler is None and num_workers:
+        scheduler = 'multiprocessing'  # default when num_workers is not None
+
+    import dask
+    options = {}
+    if os.path.isfile(scheduler):
+        from dask.distributed import Client
+        client = Client(scheduler_file=scheduler)
+        options['get'] = client.get
+        scheduler = 'distributed'
+    elif scheduler == 'distributed':
+        from dask.distributed import Client
+        client = Client(n_workers=num_workers, diagnostics_port=8787)
+        logger.info('Dask Client: \n %s \n ' % client)
+        options['get'] = client.get
+    elif scheduler == 'multiprocessing':
+        from multiprocessing import Pool
+        import dask.multiprocessing
+        options['get'] = dask.multiprocessing.get
+        if num_workers is not None:
+            options['pool'] = Pool(num_workers)
+    elif scheduler == 'threaded':
+        from multiprocessing.pool import ThreadPool
+        import dask.threaded
+        options['get'] = dask.threaded.get
+        if num_workers is not None:
+            options['pool'] = ThreadPool(num_workers)
+    elif scheduler == 'synchronous':
+        options['get'] = dask.get
+    else:
+        raise ValueError('unknown scheduler %s' % scheduler)
+
+    return dask.set_options(**options)
+
+
+@click.command(context_settings=dict(help_option_names=['-h', '--help']))
+@click.argument('config', type=click.Path(exists=True))
+@click.option('--scheduler', type=str, default=None,
+              help='Parallel dask scheduler to use, defaults to '
+                   'multiprocessing when num_workers is set.')
+@click.option('-n', '--num_workers', default=None, type=int,
+              help='Number of workers to use during parallel computations')
+@click.option('-tg', '--time_grouper', default=None, type=str, multiple=True,
+              help='Pandas TimeGrouper string (e.g. `1AS`)')
+@click.option('-v', '--verbose', count=True,
+              help='Set the Verbosity of MetSim')
+def main(config, scheduler, num_workers, time_grouper, verbose):
+    """Runs MetSim"""
+
+    dask_info = setup_dask(scheduler, num_workers)
+
+    setup = init(config, verbose, time_grouper)
     ms = MetSim(setup)
-    if True:  # rethink how to do this.
-        # c = Client()
-        # print(c)
-        with dask.set_options(get=dask.multiprocessing.get):
-            ms.launch()
+    if dask_info is not None:
+        ms.launch()
     else:
         ms.run()
 

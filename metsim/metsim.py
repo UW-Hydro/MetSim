@@ -263,7 +263,7 @@ class MetSim(object):
         time_dim, groups = self._get_time_dim_and_time_dim()
 
         for label, times in groups.items():
-            self.site_generator = itertools.product(*iter_list)
+            self.site_generator = list(itertools.product(*iter_list))
             logger.info("Beginning {}".format(label))
 
             # Add in some end point data for continuity in chunking
@@ -273,31 +273,32 @@ class MetSim(object):
             data = self.met_data.sel(time=times_ext)
             self.setup_output(self.met_data.sel(time=times))
 
-            run = dask.delayed(wrap_run, name='metsim_run', pure=True, nout=3)
-            delayed = []
+            run_func = dask.delayed(wrap_run, name='metsim_run', pure=True,
+                                    traverse=False, nout=3)
+            delayed_objs = []
 
-            for site in self.site_generator:
+            for site in progress(self.site_generator):
                 locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
-                print('doing the delayed thing for %s' % locs)
-                delayed.append(run(self.method.run, locs, self.params,
-                                   data.sel(**locs),
-                                   self.state.sel(**locs),
-                                   self.disagg, times, label))
+                delayed_objs.append(run_func(self.method.run, locs,
+                                             self.params,
+                                             data.sel(**locs),
+                                             self.state.sel(**locs),
+                                             self.disagg,
+                                             times, label).persist())
 
-            # now do the computation
-            # in the future we may do this in some sort of chunked fashion
-            computed = dask.compute(*delayed)
+            logger.info("Computing results")
+            computed = dask.compute(*delayed_objs)
 
             # put the data where it goes
-            for loc, df_complete, df_base in computed:
+            logger.info("Unpacking computed results")
+            for loc, df_complete, df_base in progress(computed):
                 for varname in self.params['out_vars']:
                     self.output[varname].loc[loc] = df_complete[varname]
 
             self.write(label)
-
 
     def run(self):
         """
@@ -691,3 +692,12 @@ def wrap_run(func: callable, loc: dict, params: dict,
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)
+
+
+def progress(x):
+    """ wrapper to give a progress bar when tqdm is installed"""
+    try:
+        from tqdm import tqdm
+        return tqdm(x)
+    except:
+        return x
