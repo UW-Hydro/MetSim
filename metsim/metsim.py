@@ -699,5 +699,5 @@ def progress(x):
     try:
         from tqdm import tqdm
         return tqdm(x)
-    except:
+    except ImportError:
         return x
