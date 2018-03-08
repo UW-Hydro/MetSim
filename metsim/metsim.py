@@ -428,7 +428,8 @@ class MetSim(object):
                                   calendar=self.params['calendar'])
         trailing = self.state['prec']
         trailing['time'] = record_dates
-        total_precip = xr.concat([trailing, self.met_data['prec']], dim='time').load()
+        total_precip = xr.concat([trailing, self.met_data['prec']],
+                                 dim='time').load()
         total_precip = (cnst.DAYS_PER_YEAR * total_precip.rolling(
             time=90).mean().sel(time=slice(self.params['start'],
                                            self.params['stop'])))
