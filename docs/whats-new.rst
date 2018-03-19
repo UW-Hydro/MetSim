@@ -18,7 +18,9 @@ Enhancements
 - Improved configuration validation by checking for correctness of output variables (:issue:`96`)
   By `Andrew Bennett <https://github.com/arbennett>`
 - Added option to skip reading ``swe`` variable from state file if it is not
-  going to be used by MtClim. (:issue:`XX`). By `Joe Hamman <https://github.com/jhamman>`_.
+  going to be used by MtClim. (:issue:`103`). By `Joe Hamman <https://github.com/jhamman>`_.
+- Added support for supplying a glob-like file path or multiple input forcing
+  files (netCDF) (:issue:`126`). By `Joe Hamman <https://github.com/jhamman>`_.
 
 Bug fixes
 ~~~~~~~~~
