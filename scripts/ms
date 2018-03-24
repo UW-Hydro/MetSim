@@ -83,7 +83,10 @@ def init(config_file, verbose, time_grouper):
 @click.argument('config', type=click.Path(exists=True))
 @click.option('--scheduler', type=str, default=None,
               help='Parallel dask scheduler to use, defaults to '
-                   'multiprocessing when num_workers is set.')
+                   'multiprocessing when num_workers is set.'
+                   'Valid options include `distributed`, `multiprocessing`, '
+                   '`threaded`, `synchronous` or a path to a dask scheduler '
+                   'file.')
 @click.option('-n', '--num_workers', default=None, type=int,
               help='Number of workers to use during parallel computations')
 @click.option('-tg', '--time_grouper', default=None, type=str, multiple=True,
