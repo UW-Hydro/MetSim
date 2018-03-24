@@ -263,7 +263,7 @@ class MetSim(object):
         time_dim, groups = self._get_time_dim_and_time_dim()
 
         for label, times in groups.items():
-            self.site_generator = list(itertools.product(*iter_list))
+            self.site_generator = itertools.product(*iter_list)
             logger.info("Beginning {}".format(label))
 
             # Add in some end point data for continuity in chunking
@@ -294,9 +294,10 @@ class MetSim(object):
 
             # put the data where it goes
             logger.info("Unpacking computed results")
-            for loc, df_complete, df_base in progress(computed):
+            for (loc, df, state) in progress(computed):
+                self._unpack_state(state, locs)
                 for varname in self.params['out_vars']:
-                    self.output[varname].loc[loc] = df_complete[varname]
+                    self.output[varname].loc[loc] = df[varname]
 
             self.write(label)
 
@@ -327,33 +328,16 @@ class MetSim(object):
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
-                wrap_results = wrap_run(
-                    self.method.run, locs, self.params, data.sel(**locs),
-                    self.state.sel(**locs), self.disagg, times, label)
+                (loc, df, state) = wrap_run(self.method.run, locs,
+                                            self.params, data.sel(**locs),
+                                            self.state.sel(**locs),
+                                            self.disagg, times, label)
 
-                # Cut the returned data down to the correct time index
-                self._unpack_results(wrap_results)
+                self._unpack_state(state, locs)
+                for varname in self.params['out_vars']:
+                    self.output[varname].loc[locs] = df[varname]
 
             self.write(label)
-
-    def _unpack_results(self, result: tuple):
-        """Put results into the master dataset"""
-        if len(result) == 3:
-            locs, df, state = result
-            self._unpack_state(state, locs)
-        else:
-            locs, df = result
-        for varname in self.params['out_vars']:
-            try:
-                self.output[varname].loc[locs] = df[varname]
-            except ValueError as e:
-                logger.error(e)
-                logger.error("This error is probably indicitive of a mismatch "
-                             "between the domain and input data. Check that "
-                             "all of your cells inside of the mask have both "
-                             "elevation in the domain as well as all of the "
-                             "required input forcings.")
-                raise
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""

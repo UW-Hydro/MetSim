@@ -12,13 +12,20 @@ import xarray as xr
 from collections import OrderedDict
 import subprocess
 
+import dask
+
 from metsim.metsim import MetSim
+from metsim.utils import setup_dask
 import metsim.constants as const
+
+# default to synchronous scheduler
+dask.set_options(get=dask.get)
 
 # Parameters to test over
 in_fmts = ['ascii', 'binary', 'netcdf']
 out_fmts = ['ascii', 'netcdf']
 methods = ['mtclim']
+schedulers = [(None, None), ('synchronous', 1), (None, 2), ('distributed', 2)]
 
 # Where datasets for each input type are found
 data_locations = {'netcdf': './metsim/data/test.nc',
@@ -96,6 +103,12 @@ def domain_file():
     return "./tests/data/domain.nc"
 
 
+@pytest.fixture(params=schedulers)
+def scheduler(request):
+    """Parallel schedulers - see `schedulers`"""
+    return request.param
+
+
 @pytest.fixture()
 def test_params(in_format, out_format, method):
     """Assemble the parameters for each combo"""
@@ -146,8 +159,20 @@ def test_setup(test_params, domain_file):
     return ms
 
 
-def test_mtclim(test_setup):
+def run_or_launch(obj, launch):
+    '''use the launch method if the test is going to be executed using a
+    dask scheduler'''
+    if launch:
+        obj.launch()
+    else:
+        obj.run()
+    return obj
+
+
+def test_mtclim(test_setup, scheduler):
     """Tests the ability to run successfully"""
+    dask_info = setup_dask(*scheduler)
+
     # Here we only test a single grid cell
     daily_out_vars = ['prec', 't_max', 't_min', 'wind', 'shortwave',
                       'tskc', 'pet', 'vapor_pressure']
@@ -164,7 +189,7 @@ def test_mtclim(test_setup):
     n_days = len(test_setup.met_data.time)
 
     # Run the forcing generation, but not the disaggregation
-    test_setup.run()
+    test_setup = run_or_launch(test_setup, dask_info)
     daily = test_setup.output
     assert type(test_setup.output) is xr.Dataset
     assert len(daily.time) == n_days
@@ -178,7 +203,7 @@ def test_mtclim(test_setup):
     # Check to see that the data is valid
     assert type(test_setup.met_data) is xr.Dataset
 
-    test_setup.run()
+    test_setup = run_or_launch(test_setup, dask_info)
     hourly = test_setup.output.isel(lat=2, lon=2).to_dataframe()
     assert len(hourly) == (n_days * const.HOURS_PER_DAY)
     for var in test_setup.params['out_vars']:
@@ -191,13 +216,16 @@ def test_mtclim(test_setup):
 
     # Now test sub-hourly disaggregation
     test_setup.params['time_step'] = 30
-    test_setup.run()
+    test_setup = run_or_launch(test_setup, dask_info)
     half_hourly = test_setup.output.isel(lat=1, lon=3).to_dataframe()
     assert len(half_hourly) == (2 * n_days * const.HOURS_PER_DAY)
 
 
-def test_disaggregation_values():
+def test_disaggregation_values(scheduler):
     """Tests to make sure values are being generated correctly"""
+
+    dask_info = setup_dask(*scheduler)
+
     # Set parameters
     loc = data_locations['binary']
     data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
@@ -239,7 +267,7 @@ def test_disaggregation_values():
     ms = MetSim(params)
 
     # Run MetSim and load in the validated data
-    ms.run()
+    ms = run_or_launch(ms, dask_info)
     out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
     good = pd.read_table('./metsim/data/validated_48.3125_-120.5625',
                          names=out_vars)
@@ -250,7 +278,7 @@ def test_disaggregation_values():
 
     # Now do 3 hourly
     ms.params['time_step'] = '180'
-    ms.run()
+    ms = run_or_launch(ms, dask_info)
     out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
     good = pd.read_table('./metsim/data/three_hourly_48.3125_-120.5625',
                          names=out_vars)
@@ -264,4 +292,9 @@ def test_disaggregation_values():
 def test_examples(kind):
     filename = './examples/example_{kind}.conf'.format(kind=kind)
     ret_code = subprocess.call(['ms', '-v', filename])
+    assert ret_code == 0
+
+    # same as above but with a dask scheduler
+    ret_code = subprocess.call(['ms', '-v', '--scheduler', 'synchronous',
+                                filename])
     assert ret_code == 0
