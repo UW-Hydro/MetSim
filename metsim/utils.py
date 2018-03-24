@@ -7,11 +7,11 @@ logger = logging.getLogger(__name__)
 
 def setup_dask(scheduler, num_workers):
 
-    if scheduler is None and num_workers is None:
+    if scheduler is None and not num_workers:
         return None
 
     if scheduler is None and num_workers:
-        scheduler = 'multiprocessing'  # default when num_workers is not None
+        scheduler = 'multiprocessing'  # default when num_workers is set
 
     import dask
     options = {}
@@ -29,17 +29,19 @@ def setup_dask(scheduler, num_workers):
         from multiprocessing import Pool
         import dask.multiprocessing
         options['get'] = dask.multiprocessing.get
-        if num_workers is not None:
+        if num_workers:
             options['pool'] = Pool(num_workers)
     elif scheduler == 'threaded':
         from multiprocessing.pool import ThreadPool
         import dask.threaded
         options['get'] = dask.threaded.get
-        if num_workers is not None:
+        if num_workers:
             options['pool'] = ThreadPool(num_workers)
     elif scheduler == 'synchronous':
         options['get'] = dask.get
     else:
         raise ValueError('unknown scheduler %s' % scheduler)
+
+    logger.info('setting dask options: %s' % options)
 
     return dask.set_options(**options)
