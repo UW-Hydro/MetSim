@@ -118,7 +118,7 @@ class MetSim(object):
         "time_step": -1,
         "calendar": 'standard',
         "out_fmt": '',
-        "out_precision": 'f8',
+        "out_precision": 'f4',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
         "time_grouper": None,
@@ -408,13 +408,14 @@ class MetSim(object):
                 v = ', '.join(v)
             attrs['_global'][k] = v
         self.output.attrs = attrs['_global']
+
+        dtype = self.params['out_precision']
+
         for varname in self.params['out_vars']:
             self.output[varname] = xr.DataArray(
-                data=np.full(shape, np.nan),
+                data=np.full(shape, np.nan, dtype=dtype),
                 coords=coords, dims=dims,
-                name=varname, attrs=attrs.get(varname, {}),
-                encoding={'dtype': self.params['out_precision'],
-                          '_FillValue': cnst.FILL_VALUES['f8']})
+                name=varname, attrs=attrs.get(varname, {}))
         self.output['time'].attrs.update(attrs['time'])
 
     def _aggregate_state(self):
@@ -550,8 +551,10 @@ class MetSim(object):
         logger.info(output_filename)
         out_encoding = {'time': {'dtype': 'f8',
                                  'calendar': self.params['calendar']}}
+        dtype = self.params['out_precision']
         for v in self.output.data_vars:
-            out_encoding[v] = {'dtype': 'f8'}
+            out_encoding[v] = {'dtype': dtype,
+                               '_FillValue': cnst.FILL_VALUES[dtype]}
         self.output.to_netcdf(output_filename,
                               unlimited_dims=['time'],
                               encoding=out_encoding)
