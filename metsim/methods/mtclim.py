@@ -43,13 +43,15 @@ def run(df, params):
         vp_temp = vapor_pressure(tdew_temp)
         sw_temp = shortwave(df['tfmax'].values, vp_temp,
                             df['tt_max'].values, df['potrad'].values)
-        pet_temp = pet(sw_temp, df['t_day'].values, df['daylength'].values, params)
+        pet_temp = pet(sw_temp, df['t_day'].values, df['daylength'].values,
+                       params)
         tdew_temp = tdew(pet_temp, df['t_min'].values,
                          df['seasonal_prec'].values, df['dtr'].values)
 
     df['tdew'] = tdew_temp
     df['vapor_pressure'] = vapor_pressure(df['tdew'].values)
-    df['shortwave'] = shortwave(df['tfmax'].values, df['vapor_pressure'].values,
+    df['shortwave'] = shortwave(df['tfmax'].values,
+                                df['vapor_pressure'].values,
                                 df['tt_max'].values, df['potrad'].values)
     df['pet'] = pet(df['shortwave'].values, df['t_day'].values,
                     df['daylength'].values, params)
