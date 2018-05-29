@@ -19,13 +19,13 @@ Command line tool for MetSim
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
-import sys
+import argparse
 import json
 import logging
-import argparse
-from configparser import SafeConfigParser
+import os
+import sys
 from collections import OrderedDict
+from configparser import SafeConfigParser
 
 
 def _is_valid_file(parser, arg):

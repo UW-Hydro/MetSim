@@ -28,26 +28,26 @@ output specified.
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
-import sys
+import itertools
 import json
 import logging
-import itertools
+import os
+import sys
 import time as tm
+from collections import Iterable, OrderedDict
 from getpass import getuser
 from multiprocessing import Pool
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from collections import OrderedDict, Iterable
 
-from metsim import io
-from metsim.methods import mtclim
-from metsim.disaggregate import disaggregate
-from metsim.physics import solar_geom
 import metsim.constants as cnst
+from metsim import io
 from metsim.datetime import date_range
+from metsim.disaggregate import disaggregate
+from metsim.methods import mtclim
+from metsim.physics import solar_geom
 
 references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm for estimating incident daily solar radiation from measurements of temperature, humidity, and precipitation. Agricultural and Forest Meteorology, 93:211-228.
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
@@ -62,7 +62,8 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setFormatter(formatter)
 logger = logging.getLogger("metsim")
 
-attrs = {'pet': {'units': 'mm timestep-1', 'long_name': 'potential evaporation',
+attrs = {'pet': {'units': 'mm timestep-1',
+                 'long_name': 'potential evaporation',
                  'standard_name': 'water_potential_evaporation_flux'},
          'prec': {'units': 'mm timestep-1', 'long_name': 'precipitation',
                   'standard_name': 'precipitation_flux'},
@@ -514,10 +515,10 @@ class MetSim(object):
         Dispatch to the right function based on the configuration given
         """
         dispatch = {
-                'netcdf': self.write_netcdf,
-                'ascii': self.write_ascii,
-                'data': self.write_data
-                }
+            'netcdf': self.write_netcdf,
+            'ascii': self.write_ascii,
+            'data': self.write_data
+        }
         dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
 
     def get_nc_output_suffix(self):
@@ -575,11 +576,11 @@ class MetSim(object):
             locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
             if not self.domain['mask'].sel(**locs).values > 0:
                 continue
-            fname = ("{}_" * (len(iter_list)+1) + "{}.csv").format(
+            fname = ("{}_" * (len(iter_list) + 1) + "{}.csv").format(
                 self.params['out_prefix'], *site, suffix)
             fpath = os.path.join(self.params['out_dir'], fname)
             self.output.sel(**locs)[self.params[
-                   'out_vars']].to_dataframe().to_csv(fpath)
+                'out_vars']].to_dataframe().to_csv(fpath)
 
     def write_data(self, suffix):
         pass
@@ -670,8 +671,8 @@ def wrap_run(func: callable, loc: dict, params: dict,
         # Calculate the times that we want to get out by chopping
         # off the endpoints that were added on previously
         start = out_times[0]
-        stop = (out_times[-1] + pd.Timedelta('1 days')
-                - pd.Timedelta("{} minutes".format(params['time_step'])))
+        stop = (out_times[-1] + pd.Timedelta('1 days') -
+                pd.Timedelta("{} minutes".format(params['time_step'])))
         new_times = date_range(
             start, stop, freq='{}T'.format(params['time_step']),
             calendar=params['calendar'])
