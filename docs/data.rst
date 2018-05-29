@@ -72,7 +72,7 @@ step:
 * ``shortwave`` : Shortwave radiation (W/m^2)
 * ``tskc`` : Cloud cover fraction
 * ``pet`` : Potential evapotranpiration (mm/day)
-* ``wind`` : Snow water equivalent (only if given as an input) (m/s)
+* ``wind`` : Wind speed (only if given as an input) (m/s)
 
 Sub-daily Output
 ----------------
