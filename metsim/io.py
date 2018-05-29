@@ -146,8 +146,8 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
     ds = xr.open_mfdataset(data_handle)
 
     if 'time' in ds.coords:
-        ds['time'] = (ds.indexes['time']
-                      - pd.Timedelta('11H59M59S')).round('D')
+        ds['time'] = (ds.indexes['time'] -
+                      pd.Timedelta('11H59M59S')).round('D')
 
     if var_dict is not None:
         var_list = list(var_dict.keys())
@@ -201,7 +201,7 @@ def read_binary(data_handle, domain=None, iter_dims=['lat', 'lon'],
     with open(data_handle, 'rb') as f:
         i = 0
         points_read = 0
-        points_needed = 4*n_days
+        points_needed = 4 * n_days
         while points_read != points_needed:
             bytes = f.read(2)
             if bytes:
