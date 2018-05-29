@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-import versioneer
 from setuptools import setup
+
+import versioneer
 
 setup(name='metsim',
       version=versioneer.get_version(),

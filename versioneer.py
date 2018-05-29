@@ -277,7 +277,6 @@ https://creativecommons.org/publicdomain/zero/1.0/ .
 """
 
 from __future__ import print_function
-
 import errno
 import json
 import os
@@ -289,7 +288,6 @@ try:
     import configparser
 except ImportError:
     import ConfigParser as configparser
-
 
 class VersioneerConfig:
     """Container for Versioneer configuration parameters."""
