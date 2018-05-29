@@ -127,8 +127,6 @@ class MetSim(object):
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
         "tmax_daylength_fraction": 0.67,
-        "snow_crit_temp": -6.0,
-        "snow_melt_rate": 0.042,
         "rain_scalar": 0.75,
         "tday_coef": 0.45,
         "lapse_rate": 0.0065,
