@@ -36,6 +36,7 @@ import itertools
 import time as tm
 from getpass import getuser
 from collections import OrderedDict, Iterable
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -62,7 +63,8 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setFormatter(formatter)
 logger = logging.getLogger("metsim")
 
-attrs = {'pet': {'units': 'mm timestep-1', 'long_name': 'potential evaporation',
+attrs = {'pet': {'units': 'mm timestep-1',
+                 'long_name': 'potential evaporation',
                  'standard_name': 'water_potential_evaporation_flux'},
          'prec': {'units': 'mm timestep-1', 'long_name': 'precipitation',
                   'standard_name': 'precipitation_flux'},
@@ -99,6 +101,11 @@ attrs = {'pet': {'units': 'mm timestep-1', 'long_name': 'potential evaporation',
 attrs = {k: OrderedDict(v) for k, v in attrs.items()}
 
 
+def mask_run(n_out, out_vars, n_state, state_vars):
+    data = {v: np.full(len(n_out), fill_value=np.nan) for v in out_vars}
+    return data
+
+
 class MetSim(object):
     """
     MetSim handles the distribution of jobs that write to a common file
@@ -114,7 +121,7 @@ class MetSim(object):
         "domain": '',
         "state": '',
         "out_dir": '',
-        "out_state": '',
+        # "out_state": '',
         "out_prefix": 'forcing',
         "start": '',
         "stop": '',
@@ -122,7 +129,6 @@ class MetSim(object):
         "calendar": 'standard',
         "out_fmt": '',
         "out_precision": 'f8',
-        "verbose": 0,
         "sw_prec_thresh": 0.0,
         "time_grouper": None,
         "utc_offset": False,
@@ -147,9 +153,6 @@ class MetSim(object):
         # Record parameters
         self.params.update(params)
 
-        logger.setLevel(self.params['verbose'])
-        ch.setLevel(self.params['verbose'])
-        logger.addHandler(ch)
         self._validate_setup()
         logger.info("read_domain")
         self.domain = io.read_domain(self.params)
@@ -164,7 +167,7 @@ class MetSim(object):
         logger.info("_aggregate_state")
         self._aggregate_state()
         logger.info("load_inputs")
-        self.load_inputs()
+        self.load_inputs(stack_dims={'site': self.params['iter_dims']})
 
     def _normalize_times(self):
         # handle when start/stop times are not specified
@@ -226,10 +229,12 @@ class MetSim(object):
 
         logger.info('calendar {}'.format(self.params['calendar']))
 
-    def load_inputs(self, close=True):
-        self.domain = self.domain.load()
-        self.met_data = self.met_data.load()
-        self.state = self.state.load()
+    def load_inputs(self, close=True, stack_dims=None):
+        if stack_dims is None:
+            stack_dims = {}
+        self.domain = self.domain.stack(**stack_dims).load()
+        self.met_data = self.met_data.stack(**stack_dims).load()
+        self.state = self.state.stack(**stack_dims).load()
         if close:
             self.domain.close()
             self.met_data.close()
@@ -250,20 +255,21 @@ class MetSim(object):
 
         return index, groups
 
-    def launch(self):
+    def run(self):
         """Farm out the jobs to separate processes"""
         # Do the forcing generation and disaggregation if required
         self._validate_setup()
-        time_dim = pd.DatetimeIndex(self.met_data.time.values)
-        iter_list = [self.met_data[dim].values
-                     for dim in self.params['iter_dims']]
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
         time_dim, groups = self._get_time_dim_and_time_dim()
 
+        run_func = dask.delayed(wrap_run, name='metsim_run', pure=True,
+                                traverse=False, nout=1)
+        mask_run_ = dask.delayed(mask_run, name='dummy', pure=True,
+                                 traverse=False, nout=1)
+
         for label, times in groups.items():
-            self.site_generator = itertools.product(*iter_list)
             logger.info("Beginning {}".format(label))
 
             # Add in some end point data for continuity in chunking
@@ -271,92 +277,31 @@ class MetSim(object):
                                      times[-1] + pd.Timedelta("1 days")]
                                     ).intersection(time_dim)
             data = self.met_data.sel(time=times_ext)
-            self.setup_output(self.met_data.sel(time=times))
+            self.setup_output(self.met_data.sel(time=times), parallel=True)
 
-            run_func = dask.delayed(wrap_run, name='metsim_run', pure=True,
-                                    traverse=False, nout=3)
-            delayed_objs = []
+            # TODO: Use default dict later to avoid these dict comprehensions
+            output_vars = {k: [] for k in self.params['out_vars']}
 
-            for site in progress(self.site_generator):
-                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+            for i in progress(range(data.dims['site'])):
                 # Don't run masked cells
-                if not self.domain['mask'].sel(**locs).values > 0:
-                    continue
-                delayed_objs.append(run_func(self.method.run, locs,
-                                             self.params,
-                                             data.sel(**locs),
-                                             self.state.sel(**locs),
-                                             self.disagg,
-                                             times, label).persist())
+                if not self.domain['mask'].isel(site=i).values > 0:
+                    out_delayed = mask_run_(
+                        len(times), self.params['out_vars'])
+                out_delayed = run_func(
+                    self.method.run, self.params, data.isel(site=i),
+                    self.state.isel(site=i), self.disagg, times, label)
 
-            logger.info("Computing results")
-            computed = dask.compute(*delayed_objs)
+                for k in self.params['out_vars']:
+                    output_vars[k].append(dask.array.from_delayed(
+                        out_delayed[k], shape=self.output['time'].shape,
+                        dtype=self.params['out_precision']))
 
-            # put the data where it goes
-            logger.info("Unpacking computed results")
-            for (loc, df, state) in progress(computed):
-                self._unpack_state(state, locs)
-                for varname in self.params['out_vars']:
-                    self.output[varname].loc[loc] = df[varname]
-
+            for k in self.params['out_vars']:
+                self.output[k].data = dask.array.stack(
+                    output_vars[k], axis=1)
             self.write(label)
 
-    def run(self):
-        """
-        Kicks off the disaggregation and queues up data for IO
-        """
-        self._validate_setup()
-        iter_list = [self.met_data[dim].values
-                     for dim in self.params['iter_dims']]
-        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        self.method = MetSim.methods[self.params['method']]
-
-        time_dim, groups = self._get_time_dim_and_time_dim()
-
-        for label, times in groups.items():
-            logger.info("Beginning {}".format(label))
-            self.site_generator = itertools.product(*iter_list)
-            # Add in some end point data for continuity
-            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
-                                     times[-1] + pd.Timedelta("1 days")]
-                                    ).intersection(time_dim)
-            data = self.met_data.sel(time=times_ext)
-            self.setup_output(self.met_data.sel(time=times))
-
-            for site in self.site_generator:
-                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
-                # Don't run masked cells
-                if not self.domain['mask'].sel(**locs).values > 0:
-                    continue
-                (loc, df, state) = wrap_run(self.method.run, locs,
-                                            self.params, data.sel(**locs),
-                                            self.state.sel(**locs),
-                                            self.disagg, times, label)
-
-                self._unpack_state(state, locs)
-                for varname in self.params['out_vars']:
-                    self.output[varname].loc[locs] = df[varname]
-
-            self.write(label)
-
-    def _unpack_state(self, result: pd.DataFrame, locs: dict):
-        """Put restart values in the state dataset"""
-        # We concatenate with the old state values in case we don't
-        # have 90 new days to use
-        tmin = np.concatenate((self.state['t_min'].sel(**locs).values[:],
-                               result['t_min'].values))
-        tmax = np.concatenate((self.state['t_max'].sel(**locs).values[:],
-                               result['t_max'].values))
-        prec = np.concatenate((self.state['prec'].sel(**locs).values[:],
-                               result['prec'].values))
-        self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
-        self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
-        self.state['prec'].sel(**locs).values[:] = prec[-90:]
-        state_start = result.index[-1] - pd.Timedelta('89 days')
-        self.state['time'].values = date_range(
-            state_start, result.index[-1], calendar=self.params['calendar'])
-
-    def setup_output(self, prototype: xr.Dataset=None):
+    def setup_output(self, prototype=None, parallel=False):
         if not prototype.variables:
             prototype = self.met_data
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
@@ -396,9 +341,19 @@ class MetSim(object):
                 v = ', '.join(v)
             attrs['_global'][k] = v
         self.output.attrs = attrs['_global']
+        if not parallel:
+            array_func = partial(np.full, shape, np.nan)
+        else:
+            import dask
+            # This will be overwritten later but the shape / dtype needs to
+            # get set now
+            array_func = partial(dask.array.full, shape, fill_value=np.nan,
+                                 dtype=self.params['out_precision'], chunks=1)
+
+        # when running in parallel, we'll create the arrays later
         for varname in self.params['out_vars']:
             self.output[varname] = xr.DataArray(
-                data=np.full(shape, np.nan),
+                data=array_func(),
                 coords=coords, dims=dims,
                 name=varname, attrs=attrs.get(varname, {}),
                 encoding={'dtype': self.params['out_precision'],
@@ -445,7 +400,7 @@ class MetSim(object):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
-        non_empty = ['method', 'out_dir', 'out_state', 'start',
+        non_empty = ['method', 'out_dir', 'start',
                      'stop', 'time_step', 'out_fmt',
                      'forcing_fmt', 'domain_fmt', 'state_fmt']
         for each in non_empty:
@@ -528,7 +483,7 @@ class MetSim(object):
             state_encoding[v] = {'dtype': 'f8'}
         state_encoding['time']['calendar'] = self.params['calendar']
         # write state file
-        self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
+        # self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
 
         # write output file
         suffix = self.get_nc_output_suffix()
@@ -539,6 +494,8 @@ class MetSim(object):
                                  'calendar': self.params['calendar']}}
         for v in self.output.data_vars:
             out_encoding[v] = {'dtype': 'f8'}
+        self.output = self.output.unstack('site').chunk({'lat': 5, 'lon': 5})
+        print(self.output, flush=True)
         self.output.to_netcdf(output_filename,
                               unlimited_dims=['time'],
                               encoding=out_encoding)
@@ -546,15 +503,13 @@ class MetSim(object):
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
         logger.info("Writing ascii...")
-        for dirname in [self.params['out_dir'],
-                        os.path.dirname(self.params['out_state'])]:
-            os.makedirs(dirname, exist_ok=True)
+        os.makedirs(self.params['out_dir'], exist_ok=True)
         # all state variables are written as doubles
         state_encoding = {'time': {'dtype': 'f8'}}
         for v in self.state.variables:
             state_encoding[v] = {'dtype': 'f8'}
         # write state file
-        self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
+        # self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
         # Need to create new generator to loop over
         iter_list = [self.met_data[dim].values
                      for dim in self.params['iter_dims']]
@@ -574,7 +529,7 @@ class MetSim(object):
         pass
 
 
-def wrap_run(func: callable, loc: dict, params: dict,
+def wrap_run(func: callable, params: dict,
              ds: xr.Dataset, state: xr.Dataset, disagg: bool,
              out_times: pd.DatetimeIndex, group: str):
     """
@@ -585,8 +540,6 @@ def wrap_run(func: callable, loc: dict, params: dict,
     ----------
     func: callable
         The function to call to do the work
-    loc: dict
-        Some subset of the domain to do work on
     params: dict
         Parameters from a MetSim object
     ds: xr.Dataset
@@ -609,28 +562,24 @@ def wrap_run(func: callable, loc: dict, params: dict,
         A list of tuples arranged as
         (location, hourly_output, daily_output)
     """
-    logger.info("Processing {}".format(loc))
-    lat = ds['lat'].values
-    lon = ds['lon'].values
-    elev = ds['elev'].values
-    params['elev'] = elev
-    params['lat'] = lat
-    params['lon'] = lon
+
+    params['elev'] = ds['elev'].values
+    # FIXME: this is going to break
+    params['lat'], params['lon'] = ds['site'].values.item()
+    logger.debug('doing %s-%s' % (params['lat'], params['lon']))
     df = ds.to_dataframe()
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
-    sg = solar_geom(elev, lat, params['lapse_rate'])
+    sg = solar_geom(params['elev'], params['lat'], params['lapse_rate'])
     sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
           'potrad': sg[2], 'tt_max0': sg[3]}
-    yday = df.index.dayofyear.values - 1
+    yday = df.index.dayofyear - 1
     df['daylength'] = sg['daylength'][yday]
     df['potrad'] = sg['potrad'][yday]
     df['tt_max'] = sg['tt_max0'][yday]
 
-    # Generate the daily values - these are saved
-    # so that we can use a subset of them to write
-    # out the state file later
-    df_base = func(df, params)
+    # Generate the daily values
+    df = func(df, params)
 
     if disagg:
         # Get some values for padding the time list,
@@ -666,16 +615,16 @@ def wrap_run(func: callable, loc: dict, params: dict,
             calendar=params['calendar'])
     else:
         # convert srad to daily average flux from daytime flux
-        df_base['shortwave'] *= df_base['daylength'] / cnst.SEC_PER_DAY
+        df['shortwave'] *= df['daylength'] / cnst.SEC_PER_DAY
         # If we're outputting daily values, we dont' need to
         # change the output dates - see inside of `if` condition
         # above for more explanation
         new_times = out_times
-        df_complete = df_base
+        df_complete = df
 
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
-    return (loc, df_complete, df_base)
+    return df_complete.to_records()
 
 
 def progress(x):

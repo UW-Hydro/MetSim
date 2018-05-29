@@ -22,19 +22,22 @@ Command line tool for MetSim
 import os
 import json
 import logging
+import sys
 from configparser import ConfigParser
 from collections import OrderedDict
 
 import click
 
-from metsim.metsim import MetSim
+from metsim.metsim import MetSim, formatter
 from metsim.utils import setup_dask
 
 
-logger = logging.getLogger(__name__)
+ch = logging.StreamHandler(sys.stdout)
+ch.setFormatter(formatter)
+logger = logging.getLogger("metsim")
 
 
-def init(config_file, verbose, time_grouper):
+def init(config_file, log_level, time_grouper):
     """Initialize some information based on the options & config"""
     config = ConfigParser()
     config.optionxform = str
@@ -44,9 +47,9 @@ def init(config_file, verbose, time_grouper):
     conf['domain_vars'] = OrderedDict(config['domain_vars'])
     conf['state_vars'] = OrderedDict(config['state_vars'])
     out_dir = conf['out_dir']
-    out_state = conf.get('out_state', None)
-    if out_state is None:
-        out_state = os.path.join(out_dir, 'state.nc')
+    # out_state = conf.get('out_state', None)
+    # if out_state is None:
+    #     out_state = os.path.join(out_dir, 'state.nc')
 
     method = conf['method']
 
@@ -59,7 +62,6 @@ def init(config_file, verbose, time_grouper):
 
     # We assume there is only one domain file and one state file
     domain_file = conf['domain']
-    state_file = conf['state']
 
     def to_list(s):
         return json.loads(s.replace("'", '"'))
@@ -67,11 +69,9 @@ def init(config_file, verbose, time_grouper):
     conf.update({"calendar": conf.get('calendar', 'standard'),
                  "method": method,
                  "out_dir": out_dir,
-                 "out_state": out_state,
-                 "state": state_file,
                  "domain": domain_file,
                  "forcing": forcing_files,
-                 "verbose": verbose * logging.INFO})
+                 "log_level": log_level})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
     conf['time_grouper'] = time_grouper if time_grouper else None
@@ -96,14 +96,17 @@ def init(config_file, verbose, time_grouper):
 def main(config, scheduler, num_workers, time_grouper, verbose):
     """Runs MetSim"""
 
-    dask_info = setup_dask(scheduler, num_workers)
+    log_level = max(logging.WARNING - verbose * 10, 1)
+    logger.setLevel(log_level)
+    ch.setLevel(log_level)
+    logger.addHandler(ch)
 
-    setup = init(config, verbose, time_grouper)
+    dask_info = setup_dask(scheduler, num_workers)
+    logger.debug(dask_info)
+
+    setup = init(config, log_level, time_grouper)
     ms = MetSim(setup)
-    if dask_info is not None:
-        ms.launch()
-    else:
-        ms.run()
+    ms.run()
 
 
 if __name__ == '__main__':
