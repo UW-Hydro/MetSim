@@ -143,7 +143,8 @@ def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
     set_times = np.where(mask < 0)[1] * (cnst.SW_RAD_DT/cnst.SEC_PER_MIN)
 
     if params['utc_offset']:
-        rad_fract_per_day = int(cnst.SEC_PER_DAY/cnst.SW_RAD_DT)
+        # not used elsewhere:
+        # rad_fract_per_day = int(cnst.SEC_PER_DAY/cnst.SW_RAD_DT)
         utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0))
                          / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
         rise_times -= utc_offset

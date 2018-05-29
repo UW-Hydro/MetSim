@@ -110,7 +110,7 @@ Defaults to ``0.45``, range should be between ``0`` and ``1``.
 ``out_vars :: list`` : List of variables to write to output.  Should be a list
 containing valid variables.  The list of valid variables is dependent on which
 simulation method is used, as well as whether disaggregation is used. Defaults
-to ``['temp', 'prec', 'shortwave', 'longwave', 'vapor_pressure', 'red_humid']``.
+to ``['temp', 'prec', 'shortwave', 'longwave', 'vapor_pressure', 'rel_humid']``.
 For more information about input and output variables see the :ref:`data` page.
 
 forcing_vars and state_vars section
@@ -127,7 +127,7 @@ netcdf and data
 The ``in_vars`` section for NetCDF and xarray input acts as a mapping between the variable
 names in the input dataset to the variable names expected by MetSim.  The format
 is given as ``netcdf_varname = metsim_varname``.  The minimum required variables
-given have ``metsim_varname``s corresponding to ``t_min``, ``t_max``, and
+given have ``metsim_varname``\s corresponding to ``t_min``, ``t_max``, and
 ``prec``; these variable names correspond to minimum daily temperature (Celcius),
 maximum daily temperature (Celcius), and precipitation (mm/day).
 
@@ -149,7 +149,7 @@ input style.  Each line is specified as ``varname = scale cdatatype``, where
 floating point scaling factor that should be applied after conversion from
 binary to floating point; the conversion applied by the ``scale`` is applied
 after the value in the input is converted from binary to the ``cdatatype``
-specified for each variable.  Valid ``cdatatype``s are ``signed`` and
+specified for each variable.  Valid ``cdatatype``\s are ``signed`` and
 ``unsigned``.  ``signed`` values are interpreted as values which can be positive
 or negative, whereas ``unsigned`` values are interpreted as values that can only
 be greater than or equal to zero.
@@ -160,6 +160,6 @@ The ``domain_vars`` section is where information about the domain file is given.
 Since the domain file is given as a NetCDF file this section has a similar
 format to that of the NetCDF input file format described above.  That is,
 entries should be of the form ``netcdf_varname = metsim_varname``. The minimum
-required variables have ``metsim_varname``s corresponding to ``lat``, ``lon``,
+required variables have ``metsim_varname``\s corresponding to ``lat``, ``lon``,
 ``mask``, and ``elev``; these variable names correspond to latitude, longitude,
 a mask of valid cells in the domain, and the elevation given in meters.
