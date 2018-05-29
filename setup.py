@@ -2,9 +2,12 @@
 
 from setuptools import setup
 
+import versioneer
+
 
 setup(name='metsim',
-      version='1.0.0',
+      version=versioneer.get_version(),
+      cmdclass=versioneer.get_cmdclass(),
       description='Meteorology Simulator',
       url='https://github.com/UW-Hydro/MetSim',
       download_url='https://github.com/UW-Hydro/MetSim/archive/v1.0.tar.gz',
