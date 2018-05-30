@@ -1,0 +1,2 @@
+include versioneer.py
+include metsim/_version.py

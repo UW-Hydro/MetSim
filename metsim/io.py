@@ -63,11 +63,11 @@ def read_state(params: dict, domain: xr.Dataset) -> xr.Dataset:
         "netcdf": read_netcdf,
         "data": read_data
     }
-    start = params['start'] - pd.Timedelta('90 days')
-    stop = params['start'] - pd.Timedelta('1 days')
+
     return read_funcs[params['state_fmt']](
         params['state'], domain=domain, iter_dims=params['iter_dims'],
-        start=start, stop=stop, calendar=params['calendar'],
+        start=params['state_start'], stop=params['state_stop'],
+        calendar=params['calendar'],
         var_dict=params.get('state_vars', None))
 
 
@@ -143,21 +143,25 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
                 start=None, stop=None, calendar='standard',
                 var_dict=None) -> xr.Dataset:
     """Read in a NetCDF file"""
-    ds = xr.open_dataset(data_handle)
+    ds = xr.open_mfdataset(data_handle)
+
+    if 'time' in ds.coords:
+        ds['time'] = (ds.indexes['time'] -
+                      pd.Timedelta('11H59M59S')).round('D')
 
     if var_dict is not None:
+        var_list = list(var_dict.keys())
+        ds = ds[var_list]
         ds.rename(var_dict, inplace=True)
 
-    if start is not None and stop is not None:
+    if start is not None or stop is not None:
         ds = ds.sel(time=slice(start, stop))
         dates = ds.indexes['time']
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
     if domain is not None:
         ds = ds.sel(**{d: domain[d] for d in iter_dims})
-    out = ds.load()
-    ds.close()
-    return out
+    return ds
 
 
 def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
@@ -168,17 +172,16 @@ def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
     if var_dict is not None:
         data_handle.rename(var_dict, inplace=True)
         varlist = list(var_dict.values())
+    data_handle = data_handle[varlist]
 
     if start is not None and stop is not None:
-        data_handle = data_handle[varlist].sel(time=slice(start, stop))
+        data_handle = data_handle.sel(time=slice(start, stop))
         dates = data_handle.indexes['time']
         data_handle['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
     if domain is not None:
         data_handle = data_handle.sel(**{d: domain[d] for d in iter_dims})
-    out = data_handle.load()
-    data_handle.close()
-    return out
+    return data_handle
 
 
 def read_binary(data_handle, domain=None, iter_dims=['lat', 'lon'],
@@ -198,7 +201,7 @@ def read_binary(data_handle, domain=None, iter_dims=['lat', 'lon'],
     with open(data_handle, 'rb') as f:
         i = 0
         points_read = 0
-        points_needed = 4*n_days
+        points_needed = 4 * n_days
         while points_read != points_needed:
             bytes = f.read(2)
             if bytes:
