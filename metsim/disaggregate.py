@@ -38,20 +38,20 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
 
     Parameters
     ----------
-    df_daily: pd.DataFrame
+    df_daily:
         Dataframe containing daily timeseries.
         Should be the result of one of the methods
         provided in the `methods` directory.
-    params: dict
+    params:
         A dictionary containing the class parameters
         of the MetSim object.
-    solar_geom: dict
+    solar_geom:
         A dictionary of solar geometry variables
-    t_begin: list
+    t_begin:
         List of t_min and t_max for day previous to the
         start of `df_daily`. None indicates no extension
         of the record.
-    t_end: list
+    t_end:
         List of t_min and t_max for day after the end
         of `df_daily`. None indicates no extension of
         the record.
@@ -119,16 +119,19 @@ def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
 
     Parameters
     ----------
-    disagg_rad:
-        Shortwave radiation disaggregated
-        to sub-daily timesteps.
+    tiny_rad_fract:
+        Array of fraction of shortwave radiation received
+        at a shortened timestep. This should be calculated
+        by `metsim.physics.solar_geom`.
+    yday:
+        Array of day of year for each simulated day.
     n_days:
-        The number of days being disaggregated
+        Number of days in run.
     ts:
-        Timestep used for disaggregation
+        Timestep of run.
     params:
-        A dictionary of class parameters of
-        the MetSim object.
+        Dictionary of parameters to use.  Must contain
+        `utc_offset` and `tmax_daylength_fraction`.
 
     Returns
     -------
@@ -173,11 +176,12 @@ def temp(t_min: np.array, t_max: np.array, out_len: int,
 
     Parameters
     ----------
-    TODO: FIXME
-    df_daily:
-        A dataframe of daily values.
-    df_disagg:
-        A dataframe of sub-daily values.
+    t_min:
+        Timeseries of daily minimum temperatures.
+    t_max:
+        Timeseries of daily maximum temperatures.
+    out_len:
+        Length of the required output vector.
     t_t_min:
         Times at which minimum daily
         temperatures are reached.
@@ -186,11 +190,11 @@ def temp(t_min: np.array, t_max: np.array, out_len: int,
         temperatures are reached.
     ts:
         Timestep for disaggregation
-    t_begin: list
+    t_begin:
         List of t_min and t_max for day previous to the
         start of `df_daily`. None indicates no extension
         of the record.
-    t_end: list
+    t_end:
         List of t_min and t_max for day after the end
         of `df_daily`. None indicates no extension of
         the record.

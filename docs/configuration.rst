@@ -76,6 +76,11 @@ account when simulating incoming shortwave radiation.  Defaults to ``0``.
 ``mtclim_swe_corr :: bool``: Whether to activate MtClim's SWE correction
 algorithm. Default to ``False``.
 
+``utc_offset :: bool``: Whether to use UTC timecode offsets for shifting
+timeseries. Without this option all times should be considered local to
+the gridcell being processed. Large domain runs probably want to set this
+option to ``True``.
+
 ``lw_cloud :: str``: Type of cloud correction to longwave radiation to apply.
 Can be either ``DEFAULT`` or ``CLOUD_DEARDORFF``.  Defaults to
 ``CLOUD_DEARDORFF``.  Capitalization does not matter.
