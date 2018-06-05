@@ -111,6 +111,16 @@ Defaults to ``0.45``, range should be between ``0`` and ``1``.
 containing valid variables.  The list of valid variables is dependent on which
 simulation method is used, as well as whether disaggregation is used. Defaults
 to ``['temp', 'prec', 'shortwave', 'longwave', 'vapor_pressure', 'red_humid']``.
+
+``prec_type :: str``: Type of precipitation disaggregation method to use. Can be
+one of the following: ``uniform`` or ``triangle``. Defaults to ``uniform``. 
+Capitalization does not matter. Under ``uniform`` method, precipitation is 
+disaggregated by dividing uniformly over all sub-daily timesteps. Under 
+``triangle`` the "triangle" method is employed whereby daily precipitation is 
+distributed assuming an isosceles triangle shape with peak and width determined 
+from two domain variables, ``t_pk`` and ``dur``. For more information about the 
+"triangle" method see :doc:`PtriangeMethod.pdf`.
+
 For more information about input and output variables see the :ref:`data` page.
 
 forcing_vars and state_vars section
@@ -162,4 +172,7 @@ format to that of the NetCDF input file format described above.  That is,
 entries should be of the form ``netcdf_varname = metsim_varname``. The minimum
 required variables have ``metsim_varname``s corresponding to ``lat``, ``lon``,
 ``mask``, and ``elev``; these variable names correspond to latitude, longitude,
-a mask of valid cells in the domain, and the elevation given in meters.
+a mask of valid cells in the domain, and the elevation given in meters. If 
+``prec_type`` = ``triangle``, two additonal variables are required including
+``dur`` and ``t_pk`` for disaggregating daily precipitation according to the 
+"triangle" method.
