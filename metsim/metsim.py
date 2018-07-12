@@ -118,6 +118,7 @@ class MetSim(object):
         "stop": '',
         "time_step": -1,
         "calendar": 'standard',
+        "prec_type": 'uniform',
         "out_fmt": '',
         "out_precision": 'f4',
         "verbose": 0,
@@ -158,6 +159,7 @@ class MetSim(object):
         self.met_data['elev'] = self.domain['elev']
         self.met_data['lat'] = self.domain['lat']
         logger.info("_aggregate_state")
+
         self._aggregate_state()
         logger.info("load_inputs")
         self.load_inputs()
@@ -281,6 +283,12 @@ class MetSim(object):
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
+
+                if self.params['prec_type'].upper() == 'TRIANGLE':
+                    # add variables for triangle precipitation disgregation
+                    # method to parameters
+                    self.params['dur'], self.params['t_pk'] = add_prec_tri_vars(self.domain.sel(**locs))
+
                 stat = self.pool.apply_async(
                     wrap_run,
                     args=(self.method.run, locs, self.params,
@@ -322,6 +330,13 @@ class MetSim(object):
                 # Don't run masked cells
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
+
+                if self.params['prec_type'].upper() == 'TRIANGLE':
+                    print('prec type is triangle')
+                    # add variables for triangle precipitation disgregation
+                    # method to parameters
+                    self.params['dur'], self.params['t_pk'] = add_prec_tri_vars(self.domain.sel(**locs))
+
                 wrap_results = wrap_run(
                     self.method.run, locs, self.params, data.sel(**locs),
                     self.state.sel(**locs), self.disagg, times, label)
@@ -632,6 +647,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
     params['lat'] = lat
     params['lon'] = lon
     df = ds.to_dataframe()
+
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
     sg = solar_geom(elev, lat, params['lapse_rate'])
@@ -671,6 +687,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
 
         # Disaggregate to subdaily values
         df_complete = disaggregate(df, params, sg, t_begin, t_end)
+
         # Calculate the times that we want to get out by chopping
         # off the endpoints that were added on previously
         start = out_times[0]
@@ -691,3 +708,54 @@ def wrap_run(func: callable, loc: dict, params: dict,
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)
+
+
+def add_prec_tri_vars(domain):
+    """
+    Check that variables for triangle precipitation method exist and have
+    values that are within allowable ranges. Return these variables.
+
+    Parameters
+    ----------
+    domain:
+        Dataset of domain variables for given location.
+
+    Returns
+    -------
+    dur
+        Array of climatological monthly storm durations. [minutes]
+    t_pk
+        Array of climatological monthly times to storm peaks. [minutes]
+    """
+    # Check that variables exist
+    try:
+        dur = domain['dur']
+    except:
+        logger.error("Storm duration and time to peak values are "
+                    "required in the domain file for the triangle "
+                    "preciptation disagregation method.")
+        raise
+    try:
+        t_pk = domain['t_pk']
+    except:
+        logger.error("Storm duration and time to peak values are "
+                    "required in the domain file for the triangle "
+                    "preciptation disagregation method.")
+        raise
+
+    # Check that variable values are within allowable ranges.
+    day_length = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
+    dur_zero_test = dur <= 0
+    dur_day_test = dur > day_length
+    if dur_zero_test.any() or dur_day_test.any():
+        raise ValueError('Storm duration must be greater than 0 and less than',
+                    day_length, '(i.e. the day length in minutes)')
+
+    t_pk_zero_test = t_pk < 0
+    t_pk_day_test = t_pk > day_length
+    if t_pk_zero_test.any() or t_pk_day_test.any():
+        raise ValueError('Storm time to peak must be greater than or equal to '
+                    '0, and less than', day_length,
+                    '(i.e. the end of a day)')
+
+    return dur, t_pk

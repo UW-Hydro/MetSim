@@ -24,7 +24,8 @@ Domain file
 -----------
 Specified as ``domain`` in the configuration file. The domain file provides
 information about the domain MetSim is to be run over. It is required to be a
-NetCDF file. The domain requires two variables to be valid.
+NetCDF file. The domain requires two variables to be valid, or four if
+``prec_type`` = ``triangle``.
 
 First, is the ``mask`` variable, which provides information about which grid
 cells are valid to run MetSim on. Values that specify grid cells which should be
@@ -34,6 +35,19 @@ which MetSim should ignore can be given as 0 or ``NaN``.
 Second, is the ``elev`` variable. This provides elevation data used for
 calculation of solar geometry. It should be specified in meters, and only needs
 to be given at sites which are marked to be processed via the ``mask`` variable.
+
+Third if ``prec_type`` = ``triangle``, is the ``dur`` variable. This provides
+the climatological monthly storm event duration (in minutes) used for
+disaggregating daily precipitation according to the "triangle" method. Requires
+one value for each month (12).
+
+Forth if ``prec_type`` = ``triangle``, is the ``t_pk`` variable. This provides
+the climatological monthly time to storm peak (in minutes) use for
+disaggregating daily precipitation to sub-daily time scales using the "triangle"
+method. Requires one value for each month (12).
+
+For more information about the "triangle" method see
+:doc:`PtriangleMethod.pdf`.
 
 It is important to ensure that all valid locations in ``mask`` have data in
 ``elev``.  Failure to ensure this will result in errors during runtime.
