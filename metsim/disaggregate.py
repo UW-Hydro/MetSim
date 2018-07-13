@@ -261,7 +261,7 @@ def prec(prec: pd.Series, ts: float, params: dict,
     def prec_UNIFORM(prec: pd.Series, ts: float, month_of_year: int):
         scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
         P_return = (prec * scale).resample(
-                       '{:0.0f}T'.format(ts)).fillna(method='ffill')
+            '{:0.0f}T'.format(ts)).fillna(method='ffill')
         return P_return
 
     def prec_TRIANGLE(prec: pd.Series, ts: float, month_of_year: int):

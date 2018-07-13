@@ -287,7 +287,8 @@ class MetSim(object):
                 if self.params['prec_type'].upper() == 'TRIANGLE':
                     # add variables for triangle precipitation disgregation
                     # method to parameters
-                    self.params['dur'], self.params['t_pk'] = add_prec_tri_vars(self.domain.sel(**locs))
+                    self.params['dur'], self.params['t_pk'] = (
+                        add_prec_tri_vars(self.domain.sel(**locs)))
 
                 stat = self.pool.apply_async(
                     wrap_run,
@@ -335,7 +336,8 @@ class MetSim(object):
                     print('prec type is triangle')
                     # add variables for triangle precipitation disgregation
                     # method to parameters
-                    self.params['dur'], self.params['t_pk'] = add_prec_tri_vars(self.domain.sel(**locs))
+                    self.params['dur'], self.params['t_pk'] = (
+                        add_prec_tri_vars(self.domain.sel(**locs)))
 
                 wrap_results = wrap_run(
                     self.method.run, locs, self.params, data.sel(**locs),
@@ -730,18 +732,18 @@ def add_prec_tri_vars(domain):
     # Check that variables exist
     try:
         dur = domain['dur']
-    except:
+    except Exception as e:
         logger.error("Storm duration and time to peak values are "
-                    "required in the domain file for the triangle "
-                    "preciptation disagregation method.")
-        raise
+                     "required in the domain file for the triangle "
+                     "preciptation disagregation method.")
+        raise e
     try:
         t_pk = domain['t_pk']
-    except:
+    except Exception as e:
         logger.error("Storm duration and time to peak values are "
-                    "required in the domain file for the triangle "
-                    "preciptation disagregation method.")
-        raise
+                     "required in the domain file for the triangle "
+                     "preciptation disagregation method.")
+        raise e
 
     # Check that variable values are within allowable ranges.
     day_length = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
@@ -749,13 +751,13 @@ def add_prec_tri_vars(domain):
     dur_day_test = dur > day_length
     if dur_zero_test.any() or dur_day_test.any():
         raise ValueError('Storm duration must be greater than 0 and less than',
-                    day_length, '(i.e. the day length in minutes)')
+                         day_length, '(i.e. the day length in minutes)')
 
     t_pk_zero_test = t_pk < 0
     t_pk_day_test = t_pk > day_length
     if t_pk_zero_test.any() or t_pk_day_test.any():
         raise ValueError('Storm time to peak must be greater than or equal to '
-                    '0, and less than', day_length,
-                    '(i.e. the end of a day)')
+                         '0, and less than', day_length,
+                         '(i.e. the end of a day)')
 
     return dur, t_pk
