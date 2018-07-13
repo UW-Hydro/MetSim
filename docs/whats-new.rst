@@ -3,10 +3,23 @@
 What's New
 ==========
 
+.. _whats-new.1.1.1:
+
+v.1.1.1
+-------
+
+Bug fixes
+~~~~~~~~~
+- Fixed a bug where if `iter_dims` is not `[lat, lon]` the selected `lat` value
+  that goes into `solar_geom` ends up as a list. The fix is also added for elevation
+  and longitude, for redundancy.  Fixes :issue:`132`.
+  By `Andrew Bennett <https://github.com/arbennett>`
+
+
 .. _whats-new.1.1.0:
 
-v1.1.0 (unreleased)
--------------------
+v1.1.0
+------
 
 Enhancements
 ~~~~~~~~~~~~
