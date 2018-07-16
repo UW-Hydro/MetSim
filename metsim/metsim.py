@@ -625,9 +625,9 @@ def wrap_run(func: callable, loc: dict, params: dict,
         (location, hourly_output, daily_output)
     """
     logger.info("Processing {}".format(loc))
-    lat = ds['lat'].values
-    lon = ds['lon'].values
-    elev = ds['elev'].values
+    lat = ds['lat'].values.flatten()[0]
+    lon = ds['lon'].values.flatten()[0]
+    elev = ds['elev'].values.flatten()[0]
     params['elev'] = elev
     params['lat'] = lat
     params['lon'] = lon
