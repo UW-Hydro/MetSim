@@ -4,16 +4,17 @@ Unit tests for MetSim
 """
 
 import os
+import subprocess
 import tempfile
-import pytest
+from collections import OrderedDict
+
 import numpy as np
 import pandas as pd
+import pytest
 import xarray as xr
-from collections import OrderedDict
-import subprocess
 
-from metsim.metsim import MetSim
 import metsim.constants as const
+from metsim.metsim import MetSim
 
 # Parameters to test over
 in_fmts = ['ascii', 'binary', 'netcdf']
@@ -21,19 +22,19 @@ out_fmts = ['ascii', 'netcdf']
 methods = ['mtclim']
 
 # Where datasets for each input type are found
-data_locations = {'netcdf': './tests/data/test.nc',
-                  'ascii': './tests/data/ascii/',
-                  'binary': './tests/data/binary/'}
+data_locations = {'netcdf': './metsim/data/test.nc',
+                  'ascii': './metsim/data/ascii/',
+                  'binary': './metsim/data/binary/'}
 
 # Domain files to use
-domain_files = {'netcdf': './tests/data/domain.nc',
-                'ascii': './tests/data/stehekin.nc',
-                'binary': './tests/data/stehekin.nc'}
+domain_files = {'netcdf': './metsim/data/domain.nc',
+                'ascii': './metsim/data/stehekin.nc',
+                'binary': './metsim/data/stehekin.nc'}
 
 # State files to use
-state_files = {'netcdf': './tests/data/state_nc.nc',
-               'ascii': './tests/data/state_vic.nc',
-               'binary': './tests/data/state_vic.nc'}
+state_files = {'netcdf': './metsim/data/state_nc.nc',
+               'ascii': './metsim/data/state_vic.nc',
+               'binary': './metsim/data/state_vic.nc'}
 
 # Dates to run over
 dates = {'netcdf': (pd.datetime(1950, 1, 1), pd.datetime(1950, 1, 31)),
@@ -138,7 +139,7 @@ def test_setup(test_params, domain_file):
         assert len(data_files) == 16
     else:
         data_files = loc
-        assert data_files == './tests/data/test.nc'
+        assert data_files == './metsim/data/test.nc'
     test_params['forcing'] = data_files
 
     # Test construction
@@ -160,13 +161,13 @@ def test_mtclim(test_setup):
     test_setup.params['out_vars'] = daily_out_vars
 
     # Check to see that the data is valid
-    assert type(test_setup.met_data) is xr.Dataset
+    assert isinstance(test_setup.met_data, xr.Dataset)
     n_days = len(test_setup.met_data.time)
 
     # Run the forcing generation, but not the disaggregation
     test_setup.run()
     daily = test_setup.output
-    assert type(test_setup.output) is xr.Dataset
+    assert isinstance(test_setup.output, xr.Dataset)
     assert len(daily.time) == n_days
     for var in daily_out_vars:
         assert var in daily
@@ -176,7 +177,7 @@ def test_mtclim(test_setup):
     test_setup.params['out_vars'] = hourly_out_vars
 
     # Check to see that the data is valid
-    assert type(test_setup.met_data) is xr.Dataset
+    assert isinstance(test_setup.met_data, xr.Dataset)
 
     test_setup.run()
     hourly = test_setup.output.isel(lat=2, lon=2).to_dataframe()
@@ -212,8 +213,8 @@ def test_disaggregation_values():
               'domain_fmt': 'netcdf',
               'state_fmt': 'netcdf',
               'out_fmt': 'ascii',
-              'domain': './tests/data/stehekin.nc',
-              'state': './tests/data/state_vic.nc',
+              'domain': './metsim/data/stehekin.nc',
+              'state': './metsim/data/state_vic.nc',
               'forcing': data_files,
               'method': 'mtclim',
               'time_step': "60",
@@ -226,16 +227,14 @@ def test_disaggregation_values():
     # The location we will test against
     loc = (1, 4)
 
-    def check_data(out, good, prec_type, tol=0.02):
-        assert type(out) is pd.DataFrame
+    def check_data(out, good, tol=0.1):
+        assert isinstance(out, pd.DataFrame)
         for var in ms.params['out_vars']:
-            if var == 'prec' and prec_type.upper() == 'TRIANGLE':
-                continue
             # Check to make sure each variable has normalized
             # rmse of less than 0.02
             h = max([good[var].max(), out[var].max()])
             l = min([good[var].min(), out[var].min()])
-            nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
+            nrmse = np.sqrt((good[var] - out[var]).pow(2).mean()) / (h - l)
             print(var, nrmse)
             assert nrmse < tol
 
@@ -245,23 +244,24 @@ def test_disaggregation_values():
     # Run MetSim and load in the validated data
     ms.run()
     out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
-    good = pd.read_table('./tests/data/validated_48.3125_-120.5625',
+    good = pd.read_table('./metsim/data/validated_48.3125_-120.5625',
                          names=out_vars)
     good.index = out.index
 
     # Make sure the data comes out right
-    check_data(out, good, ms.params['prec_type'])
+    check_data(out, good, tol=0.1)
 
     # Now do 3 hourly
     ms.params['time_step'] = '180'
     ms.run()
     out = ms.output.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
-    good = pd.read_table('./tests/data/three_hourly_48.3125_-120.5625',
+    good = pd.read_table('./metsim/data/three_hourly_48.3125_-120.5625',
                          names=out_vars)
     good.index = out.index
 
     # Make sure the data comes out right
-    check_data(out, good, ms.params['prec_type'], tol=0.1)
+    if ms.params['prec_type'].upper() == 'UNIFORM':
+        check_data(out, good, tol=0.2)
 
 
 @pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc'])

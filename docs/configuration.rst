@@ -76,6 +76,11 @@ account when simulating incoming shortwave radiation.  Defaults to ``0``.
 ``mtclim_swe_corr :: bool``: Whether to activate MtClim's SWE correction
 algorithm. Default to ``False``.
 
+``utc_offset :: bool``: Whether to use UTC timecode offsets for shifting
+timeseries. Without this option all times should be considered local to
+the gridcell being processed. Large domain runs probably want to set this
+option to ``True``.
+
 ``lw_cloud :: str``: Type of cloud correction to longwave radiation to apply.
 Can be either ``DEFAULT`` or ``CLOUD_DEARDORFF``.  Defaults to
 ``CLOUD_DEARDORFF``.  Capitalization does not matter.
@@ -113,12 +118,12 @@ simulation method is used, as well as whether disaggregation is used. Defaults
 to ``['temp', 'prec', 'shortwave', 'longwave', 'vapor_pressure', 'red_humid']``.
 
 ``prec_type :: str``: Type of precipitation disaggregation method to use. Can be
-one of the following: ``uniform`` or ``triangle``. Defaults to ``uniform``. 
-Capitalization does not matter. Under ``uniform`` method, precipitation is 
-disaggregated by dividing uniformly over all sub-daily timesteps. Under 
-``triangle`` the "triangle" method is employed whereby daily precipitation is 
-distributed assuming an isosceles triangle shape with peak and width determined 
-from two domain variables, ``t_pk`` and ``dur``. For more information about the 
+one of the following: ``uniform`` or ``triangle``. Defaults to ``uniform``.
+Capitalization does not matter. Under ``uniform`` method, precipitation is
+disaggregated by dividing uniformly over all sub-daily timesteps. Under
+``triangle`` the "triangle" method is employed whereby daily precipitation is
+distributed assuming an isosceles triangle shape with peak and width determined
+from two domain variables, ``t_pk`` and ``dur``. For more information about the
 "triangle" method see :doc:`PtriangeMethod.pdf`.
 
 For more information about input and output variables see the :ref:`data` page.
@@ -137,7 +142,7 @@ netcdf and data
 The ``in_vars`` section for NetCDF and xarray input acts as a mapping between the variable
 names in the input dataset to the variable names expected by MetSim.  The format
 is given as ``netcdf_varname = metsim_varname``.  The minimum required variables
-given have ``metsim_varname``s corresponding to ``t_min``, ``t_max``, and
+given have ``metsim_varname``\s corresponding to ``t_min``, ``t_max``, and
 ``prec``; these variable names correspond to minimum daily temperature (Celcius),
 maximum daily temperature (Celcius), and precipitation (mm/day).
 
@@ -159,7 +164,7 @@ input style.  Each line is specified as ``varname = scale cdatatype``, where
 floating point scaling factor that should be applied after conversion from
 binary to floating point; the conversion applied by the ``scale`` is applied
 after the value in the input is converted from binary to the ``cdatatype``
-specified for each variable.  Valid ``cdatatype``s are ``signed`` and
+specified for each variable.  Valid ``cdatatype``\s are ``signed`` and
 ``unsigned``.  ``signed`` values are interpreted as values which can be positive
 or negative, whereas ``unsigned`` values are interpreted as values that can only
 be greater than or equal to zero.
@@ -170,9 +175,9 @@ The ``domain_vars`` section is where information about the domain file is given.
 Since the domain file is given as a NetCDF file this section has a similar
 format to that of the NetCDF input file format described above.  That is,
 entries should be of the form ``netcdf_varname = metsim_varname``. The minimum
-required variables have ``metsim_varname``s corresponding to ``lat``, ``lon``,
+required variables have ``metsim_varname``\s corresponding to ``lat``, ``lon``,
 ``mask``, and ``elev``; these variable names correspond to latitude, longitude,
-a mask of valid cells in the domain, and the elevation given in meters. If 
+a mask of valid cells in the domain, and the elevation given in meters. If
 ``prec_type`` = ``triangle``, two additonal variables are required including
-``dur`` and ``t_pk`` for disaggregating daily precipitation according to the 
+``dur`` and ``t_pk`` for disaggregating daily precipitation according to the
 "triangle" method.
