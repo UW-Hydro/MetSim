@@ -101,9 +101,12 @@ to use one less process than the number of processsors (or threads) that the
 machine you are running on has.
 
 .. warning::
-    Users in environments where OpenMP is available may experience over-utilization
-    of CPU resources, leading to lower performance. If you experience this issue
-    try setting ``export OMP_NUM_THREADS=1`` before running MetSim.
+    Users in environments where OpenMP is available may experience
+    over-utilization of CPU resources, leading to lower performance. If you experience
+    this issue try setting the `OMP_NUM_THREADS` environment variable to 1 before running
+    MetSim.. This can be done in bash and similar shells by running
+    `export OMP_NUM_THREADS=1`.
+
 
 References
 ==========
