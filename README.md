@@ -99,11 +99,9 @@ number given after the `-n` flag is the number of processes to run. A
 good rule of thumb is to use one less process than the number of
 processsors (or threads) that the machine you are running on has.
 
-<aside class="notice">
-    Users in environments where OpenMP is available may experience over-utilization
-    of CPU resources, leading to lower performance. If you experience this issue
-    try setting ``export OMP_NUM_THREADS=1`` before running MetSim.
-</aside>
+:exclamation: Users in environments where OpenMP is available may experience
+over-utilization of CPU resources, leading to lower performance. If you experience
+this issue try setting `export OMP_NUM_THREADS=1` before running MetSim.
 
 References
 ==========
