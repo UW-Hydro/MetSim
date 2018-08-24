@@ -19,15 +19,15 @@ Command line tool for MetSim
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import argparse
+# import argparse
 import json
 import logging
 import os
 import sys
-import json
-import logging
-import argparse
-from configparser import SafeConfigParser
+# import json
+# import logging
+# import argparse
+from configparser import ConfigParser
 from collections import OrderedDict
 
 import click
