@@ -28,12 +28,13 @@ output specified.
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
-import sys
+import itertools
 import json
 import logging
-import itertools
+import os
+import sys
 import time as tm
+from collections import Iterable, OrderedDict
 from getpass import getuser
 from collections import OrderedDict, Iterable
 from functools import partial
@@ -43,12 +44,12 @@ import pandas as pd
 import xarray as xr
 import dask
 
-from metsim import io
-from metsim.methods import mtclim
-from metsim.disaggregate import disaggregate
-from metsim.physics import solar_geom
 import metsim.constants as cnst
+from metsim import io
 from metsim.datetime import date_range
+from metsim.disaggregate import disaggregate
+from metsim.methods import mtclim
+from metsim.physics import solar_geom
 
 references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm for estimating incident daily solar radiation from measurements of temperature, humidity, and precipitation. Agricultural and Forest Meteorology, 93:211-228.
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
@@ -88,14 +89,11 @@ attrs = {'pet': {'units': 'mm timestep-1',
                        'standard_name': 'relative_humidity'},
          'spec_humid': {'units': '', 'long_name': 'specific humidity',
                         'standard_name': 'specific_humidity'},
-         'time': {'long_name': 'local time at grid location',
-                  'standard_name': 'local_time'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
                      'history': 'Created: {0} by {1}'.format(now, user),
                      'references': references,
-                     'documentation': 'Times given are local to their locations.',
                      'comment': 'no comment at this time'}}
 
 attrs = {k: OrderedDict(v) for k, v in attrs.items()}
@@ -128,7 +126,8 @@ class MetSim(object):
         "time_step": -1,
         "calendar": 'standard',
         "out_fmt": '',
-        "out_precision": 'f8',
+        "out_precision": 'f4',
+        "verbose": 0,
         "sw_prec_thresh": 0.0,
         "time_grouper": None,
         "utc_offset": False,
@@ -136,8 +135,6 @@ class MetSim(object):
         "lw_type": 'prata',
         "tdew_tol": 1e-6,
         "tmax_daylength_fraction": 0.67,
-        "snow_crit_temp": -6.0,
-        "snow_melt_rate": 0.042,
         "rain_scalar": 0.75,
         "tday_coef": 0.45,
         "lapse_rate": 0.0065,
@@ -228,6 +225,12 @@ class MetSim(object):
         logger.info('state stop {}'.format(self.params['state_stop']))
 
         logger.info('calendar {}'.format(self.params['calendar']))
+        if self.params['utc_offset']:
+            attrs['time'] = {'long_name': 'UTC time',
+                             'standard_name': 'utc_time'}
+        else:
+            attrs['time'] = {'long_name': 'local time at grid location',
+                             'standard_name': 'local_time'}
 
     def load_inputs(self, close=True, stack_dims=None):
         if stack_dims is None:
@@ -355,9 +358,7 @@ class MetSim(object):
             self.output[varname] = xr.DataArray(
                 data=array_func(),
                 coords=coords, dims=dims,
-                name=varname, attrs=attrs.get(varname, {}),
-                encoding={'dtype': self.params['out_precision'],
-                          '_FillValue': cnst.FILL_VALUES['f8']})
+                name=varname, attrs=attrs.get(varname, {}))
         self.output['time'].attrs.update(attrs['time'])
 
     def _aggregate_state(self):
@@ -371,7 +372,8 @@ class MetSim(object):
                                   calendar=self.params['calendar'])
         trailing = self.state['prec']
         trailing['time'] = record_dates
-        total_precip = xr.concat([trailing, self.met_data['prec']], dim='time')
+        total_precip = xr.concat([trailing, self.met_data['prec']],
+                                 dim='time').load()
         total_precip = (cnst.DAYS_PER_YEAR * total_precip.rolling(
             time=90).mean().sel(time=slice(self.params['start'],
                                            self.params['stop'])))
@@ -386,7 +388,7 @@ class MetSim(object):
         if (dtr < 0).any():
             raise ValueError("Daily maximum temperature lower"
                              " than daily minimum temperature!")
-        sm_dtr = xr.concat([trailing, dtr], dim='time')
+        sm_dtr = xr.concat([trailing, dtr], dim='time').load()
         sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
         self.met_data['dtr'] = dtr
         self.met_data['smoothed_dtr'] = sm_dtr
@@ -458,10 +460,10 @@ class MetSim(object):
         Dispatch to the right function based on the configuration given
         """
         dispatch = {
-                'netcdf': self.write_netcdf,
-                'ascii': self.write_ascii,
-                'data': self.write_data
-                }
+            'netcdf': self.write_netcdf,
+            'ascii': self.write_ascii,
+            'data': self.write_data
+        }
         dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
 
     def get_nc_output_suffix(self):
@@ -492,6 +494,7 @@ class MetSim(object):
         logger.info(output_filename)
         out_encoding = {'time': {'dtype': 'f8',
                                  'calendar': self.params['calendar']}}
+        dtype = self.params['out_precision']
         for v in self.output.data_vars:
             out_encoding[v] = {'dtype': 'f8'}
         self.output = self.output.unstack('site').chunk({'lat': 5, 'lon': 5})
@@ -519,11 +522,11 @@ class MetSim(object):
             locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
             if not self.domain['mask'].sel(**locs).values > 0:
                 continue
-            fname = ("{}_" * (len(iter_list)+1) + "{}.csv").format(
+            fname = ("{}_" * (len(iter_list) + 1) + "{}.csv").format(
                 self.params['out_prefix'], *site, suffix)
             fpath = os.path.join(self.params['out_dir'], fname)
             self.output.sel(**locs)[self.params[
-                   'out_vars']].to_dataframe().to_csv(fpath)
+                'out_vars']].to_dataframe().to_csv(fpath)
 
     def write_data(self, suffix):
         pass
@@ -608,8 +611,8 @@ def wrap_run(func: callable, params: dict,
         # Calculate the times that we want to get out by chopping
         # off the endpoints that were added on previously
         start = out_times[0]
-        stop = (out_times[-1] + pd.Timedelta('1 days')
-                - pd.Timedelta("{} minutes".format(params['time_step'])))
+        stop = (out_times[-1] + pd.Timedelta('1 days') -
+                pd.Timedelta("{} minutes".format(params['time_step'])))
         new_times = date_range(
             start, stop, freq='{}T'.format(params['time_step']),
             calendar=params['calendar'])

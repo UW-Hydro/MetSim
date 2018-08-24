@@ -17,15 +17,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import numpy as np
-import pandas as pd
 import itertools
-import scipy.interpolate
 from typing import Tuple
 
+import numpy as np
+import pandas as pd
+import scipy.interpolate
+
 import metsim.constants as cnst
-from metsim.physics import svp
 from metsim.datetime import date_range
+from metsim.physics import svp
 
 
 def disaggregate(df_daily: pd.DataFrame, params: dict,
@@ -37,20 +38,20 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
 
     Parameters
     ----------
-    df_daily: pd.DataFrame
+    df_daily:
         Dataframe containing daily timeseries.
         Should be the result of one of the methods
         provided in the `methods` directory.
-    params: dict
+    params:
         A dictionary containing the class parameters
         of the MetSim object.
-    solar_geom: dict
+    solar_geom:
         A dictionary of solar geometry variables
-    t_begin: list
+    t_begin:
         List of t_min and t_max for day previous to the
         start of `df_daily`. None indicates no extension
         of the record.
-    t_end: list
+    t_end:
         List of t_min and t_max for day after the end
         of `df_daily`. None indicates no extension of
         the record.
@@ -60,8 +61,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg:
         A dataframe with sub-daily timeseries.
     """
-    stop = (df_daily.index[-1] + pd.Timedelta('1 days')
-            - pd.Timedelta("{} minutes".format(params['time_step'])))
+    stop = (df_daily.index[-1] + pd.Timedelta('1 days') -
+            pd.Timedelta("{} minutes".format(params['time_step'])))
     dates_disagg = date_range(df_daily.index[0], stop,
                               freq='{}T'.format(params['time_step']))
     df_disagg = pd.DataFrame(index=dates_disagg)
@@ -79,22 +80,22 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
                                       n_days, ts, params)
 
     df_disagg['temp'] = temp(
-            df_daily['t_min'].values, df_daily['t_max'].values,
-            n_disagg, t_Tmin, t_Tmax, ts, t_begin, t_end)
+        df_daily['t_min'].values, df_daily['t_max'].values,
+        n_disagg, t_Tmin, t_Tmax, ts, t_begin, t_end)
 
     df_disagg['vapor_pressure'] = vapor_pressure(
-            df_daily['vapor_pressure'].values, df_disagg['temp'].values,
-            t_Tmin, n_disagg, ts)
+        df_daily['vapor_pressure'].values, df_disagg['temp'].values,
+        t_Tmin, n_disagg, ts)
 
     df_disagg['rel_humid'] = relative_humidity(
-            df_disagg['vapor_pressure'].values, df_disagg['temp'].values)
+        df_disagg['vapor_pressure'].values, df_disagg['temp'].values)
 
     df_disagg['air_pressure'] = pressure(df_disagg['temp'].values,
                                          params['elev'], params['lapse_rate'])
 
     df_disagg['spec_humid'] = specific_humidity(
-            df_disagg['vapor_pressure'].values,
-            df_disagg['air_pressure'].values)
+        df_disagg['vapor_pressure'].values,
+        df_disagg['air_pressure'].values)
 
     df_disagg['tskc'] = tskc(df_daily['tskc'].values, ts)
 
@@ -118,16 +119,19 @@ def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
 
     Parameters
     ----------
-    disagg_rad:
-        Shortwave radiation disaggregated
-        to sub-daily timesteps.
+    tiny_rad_fract:
+        Array of fraction of shortwave radiation received
+        at a shortened timestep. This should be calculated
+        by `metsim.physics.solar_geom`.
+    yday:
+        Array of day of year for each simulated day.
     n_days:
-        The number of days being disaggregated
+        Number of days in run.
     ts:
-        Timestep used for disaggregation
+        Timestep of run.
     params:
-        A dictionary of class parameters of
-        the MetSim object.
+        Dictionary of parameters to use.  Must contain
+        `utc_offset` and `tmax_daylength_fraction`.
 
     Returns
     -------
@@ -137,21 +141,22 @@ def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
     """
 
     # calculate minute of sunrise and sunset for each day of the year
-    rad_mask = 1*(tiny_rad_fract > 0)
+    rad_mask = 1 * (tiny_rad_fract > 0)
     mask = np.diff(rad_mask)
-    rise_times = np.where(mask > 0)[1] * (cnst.SW_RAD_DT/cnst.SEC_PER_MIN)
-    set_times = np.where(mask < 0)[1] * (cnst.SW_RAD_DT/cnst.SEC_PER_MIN)
+    rise_times = np.where(mask > 0)[1] * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
+    set_times = np.where(mask < 0)[1] * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
 
     if params['utc_offset']:
-        rad_fract_per_day = int(cnst.SEC_PER_DAY/cnst.SW_RAD_DT)
-        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0))
-                         / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
+        # not used elsewhere:
+        # rad_fract_per_day = int(cnst.SEC_PER_DAY/cnst.SW_RAD_DT)
+        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0)) /
+                          cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
         rise_times -= utc_offset
         set_times -= utc_offset
 
     # map the daily sunrise and sunset to a monotonic timseries (in minutes)
-    offset = np.arange(0, n_days * cnst.MIN_PER_HOUR*cnst.HOURS_PER_DAY,
-                       cnst.MIN_PER_HOUR*cnst.HOURS_PER_DAY)
+    offset = np.arange(0, n_days * cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY,
+                       cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
     rise_times = rise_times[yday] + offset
     set_times = set_times[yday] + offset
 
@@ -171,11 +176,12 @@ def temp(t_min: np.array, t_max: np.array, out_len: int,
 
     Parameters
     ----------
-    TODO: FIXME
-    df_daily:
-        A dataframe of daily values.
-    df_disagg:
-        A dataframe of sub-daily values.
+    t_min:
+        Timeseries of daily minimum temperatures.
+    t_max:
+        Timeseries of daily maximum temperatures.
+    out_len:
+        Length of the required output vector.
     t_t_min:
         Times at which minimum daily
         temperatures are reached.
@@ -184,11 +190,11 @@ def temp(t_min: np.array, t_max: np.array, out_len: int,
         temperatures are reached.
     ts:
         Timestep for disaggregation
-    t_begin: list
+    t_begin:
         List of t_min and t_max for day previous to the
         start of `df_daily`. None indicates no extension
         of the record.
-    t_end: list
+    t_end:
         List of t_min and t_max for day after the end
         of `df_daily`. None indicates no extension of
         the record.
@@ -200,12 +206,13 @@ def temp(t_min: np.array, t_max: np.array, out_len: int,
     """
     # Calculate times of min/max temps
     time = np.array(list(next(it) for it in itertools.cycle(
-                [iter(t_t_min), iter(t_t_max)])))
+        [iter(t_t_min), iter(t_t_max)])))
     temp = np.array(list(next(it) for it in itertools.cycle(
-                [iter(t_min), iter(t_max)])))
+        [iter(t_min), iter(t_max)])))
     # Account for end points
     ts_ends = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
-    time = np.append(np.insert(time, 0, time[0:2]-ts_ends), time[-2:]+ts_ends)
+    time = np.append(np.insert(time, 0, time[0:2] - ts_ends),
+                     time[-2:] + ts_ends)
 
     # If no start or end data is provided to extend the record repeat values
     # This provides space at the ends so that extrapolation doesn't continue
@@ -242,7 +249,7 @@ def prec(prec: np.array, ts: int) -> np.array:
         A sub-daily timeseries of precipitation
     """
     scale = ts / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
-    n_repeats = 1/scale
+    n_repeats = 1 / scale
     return np.repeat(prec * scale, n_repeats)
 
 
@@ -366,7 +373,7 @@ def vapor_pressure(vp_daily: np.array, temp: np.array, t_t_min: np.array,
         A sub-daily timeseries of the vapor pressure
     """
     # Linearly interpolate the values
-    interp = scipy.interpolate.interp1d(t_t_min, vp_daily/cnst.MBAR_PER_BAR,
+    interp = scipy.interpolate.interp1d(t_t_min, vp_daily / cnst.MBAR_PER_BAR,
                                         fill_value='extrapolate')
     vp_disagg = interp(ts * np.arange(0, n_out))
 
@@ -446,9 +453,8 @@ def longwave(air_temp: np.array, vapor_pressure: np.array,
         # Prata, A.J., 1996. A new long-wave formula for estimating downward
         # clear-sky radiation at the surface. Q. J. R. Meteor. Soc. 122 (533),
         # 1127–1151, doi:10.1002/qj.49712253306.
-        'PRATA': lambda vp: (1 - (1 + (46.5*vp/air_temp)) * np.exp(
-            -np.sqrt((1.2 + 3. * (46.5*vp / air_temp)))))
-        }
+        'PRATA': lambda vp: (1 - (1 + (46.5 * vp / air_temp)) * np.exp(
+            -np.sqrt((1.2 + 3. * (46.5 * vp / air_temp)))))}
     cloud_calc = {
         # TVA 1972 (see above)
         'TVA': lambda emis, tskc: (1.0 + (0.17 * tskc ** 2)) * emis,
@@ -457,7 +463,7 @@ def longwave(air_temp: np.array, vapor_pressure: np.array,
         # temperature and moisture, with an inclusion of a layer of vegetation.
         # J. Geophys. Res. 83 (N64), 1889–1903, doi:10.1029/JC083iC04p01889.
         'CLOUD_DEARDORFF': lambda emis, tskc: tskc + (1 - tskc) * emis
-        }
+    }
     # Re-index and fill cloud cover, then convert temps to K
     air_temp = air_temp + cnst.KELVIN
     vapor_pressure = vapor_pressure * 10
@@ -520,19 +526,19 @@ def shortwave(sw_rad: np.array, daylength: np.array, day_of_year: np.array,
     tmp_rad = (sw_rad * daylength) / (cnst.SEC_PER_HOUR * ts_hourly)
     n_days = len(tmp_rad)
     ts_per_day = int(cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
-    disaggrad = np.zeros(int(n_days*ts_per_day))
-    rad_fract_per_day = int(cnst.SEC_PER_DAY/cnst.SW_RAD_DT)
+    disaggrad = np.zeros(int(n_days * ts_per_day))
+    rad_fract_per_day = int(cnst.SEC_PER_DAY / cnst.SW_RAD_DT)
     if params['utc_offset']:
-        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0))
-                         / cnst.DEG_PER_REV) * rad_fract_per_day)
+        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0)) /
+                          cnst.DEG_PER_REV) * rad_fract_per_day)
         tiny_rad_fract = np.roll(tiny_rad_fract.flatten(), -utc_offset)
     else:
         tiny_rad_fract = tiny_rad_fract.flatten()
     chunk_size = int(ts * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
     ts_id = np.repeat(np.arange(ts_per_day), chunk_size)
     for day in range(n_days):
-        radslice = slice((day_of_year[day] - 1)*rad_fract_per_day,
-                         (day_of_year[day])*rad_fract_per_day)
+        radslice = slice((day_of_year[day] - 1) * rad_fract_per_day,
+                         (day_of_year[day]) * rad_fract_per_day)
         rad = tiny_rad_fract[radslice]
         dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
         rad_chunk = np.bincount(ts_id, weights=rad)

@@ -4,15 +4,14 @@ Unit tests for MetSim
 """
 
 import os
+import subprocess
 import tempfile
-import pytest
+from collections import OrderedDict
+
 import numpy as np
 import pandas as pd
+import pytest
 import xarray as xr
-from collections import OrderedDict
-import subprocess
-
-import dask
 
 from metsim.metsim import MetSim
 from metsim.utils import setup_dask
@@ -185,13 +184,13 @@ def test_mtclim(test_setup, scheduler):
     test_setup.params['out_vars'] = daily_out_vars
 
     # Check to see that the data is valid
-    assert type(test_setup.met_data) is xr.Dataset
+    assert isinstance(test_setup.met_data, xr.Dataset)
     n_days = len(test_setup.met_data.time)
 
     # Run the forcing generation, but not the disaggregation
     test_setup = run_or_launch(test_setup, dask_info)
     daily = test_setup.output
-    assert type(test_setup.output) is xr.Dataset
+    assert isinstance(test_setup.output, xr.Dataset)
     assert len(daily.time) == n_days
     for var in daily_out_vars:
         assert var in daily
@@ -201,7 +200,7 @@ def test_mtclim(test_setup, scheduler):
     test_setup.params['out_vars'] = hourly_out_vars
 
     # Check to see that the data is valid
-    assert type(test_setup.met_data) is xr.Dataset
+    assert isinstance(test_setup.met_data, xr.Dataset)
 
     test_setup = run_or_launch(test_setup, dask_info)
     hourly = test_setup.output.isel(lat=2, lon=2).to_dataframe()
@@ -253,13 +252,13 @@ def test_disaggregation_values(scheduler):
     loc = (1, 4)
 
     def check_data(out, good, tol=0.1):
-        assert type(out) is pd.DataFrame
+        assert isinstance(out, pd.DataFrame)
         for var in ms.params['out_vars']:
             # Check to make sure each variable has normalized
             # rmse of less than 0.02
             h = max([good[var].max(), out[var].max()])
             l = min([good[var].min(), out[var].min()])
-            nrmse = np.sqrt((good[var] - out[var]).pow(2).mean())/(h-l)
+            nrmse = np.sqrt((good[var] - out[var]).pow(2).mean()) / (h - l)
             print(var, nrmse)
             assert nrmse < tol
 

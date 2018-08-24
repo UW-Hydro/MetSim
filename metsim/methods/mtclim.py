@@ -21,7 +21,7 @@ MTCLIM
 import numpy as np
 
 import metsim.constants as cnst
-from metsim.physics import svp, calc_pet, atm_pres
+from metsim.physics import atm_pres, calc_pet, svp
 
 
 def run(df, params):
@@ -38,18 +38,20 @@ def run(df, params):
     tdew_temp = tdew(pet_temp, df['t_min'].values, df['seasonal_prec'].values,
                      df['dtr'].values)
 
-    while(np.sqrt(np.mean((tdew_temp-tdew_old)**2)) > params['tdew_tol']):
+    while(np.sqrt(np.mean((tdew_temp - tdew_old)**2)) > params['tdew_tol']):
         tdew_old = tdew_temp.copy()
         vp_temp = vapor_pressure(tdew_temp)
         sw_temp = shortwave(df['tfmax'].values, vp_temp,
                             df['tt_max'].values, df['potrad'].values)
-        pet_temp = pet(sw_temp, df['t_day'].values, df['daylength'].values, params)
+        pet_temp = pet(sw_temp, df['t_day'].values, df['daylength'].values,
+                       params)
         tdew_temp = tdew(pet_temp, df['t_min'].values,
                          df['seasonal_prec'].values, df['dtr'].values)
 
     df['tdew'] = tdew_temp
     df['vapor_pressure'] = vapor_pressure(df['tdew'].values)
-    df['shortwave'] = shortwave(df['tfmax'].values, df['vapor_pressure'].values,
+    df['shortwave'] = shortwave(df['tfmax'].values,
+                                df['vapor_pressure'].values,
                                 df['tt_max'].values, df['potrad'].values)
     df['pet'] = pet(df['shortwave'].values, df['t_day'].values,
                     df['daylength'].values, params)
@@ -78,9 +80,8 @@ def tdew(pet, t_min, seasonal_prec, dtr):
     parray = seasonal_prec < 80.0
     seasonal_prec[parray] = 80.0
     ratio = pet / seasonal_prec
-    return ((t_min + cnst.KELVIN) * (-0.127 + 1.121 * (1.003 - 1.444 * ratio
-            + 12.312 * np.power(ratio, 2) - 32.766 * np.power(ratio, 3))
-            + 0.0006 * dtr) - cnst.KELVIN)
+    return ((t_min + cnst.KELVIN) * (-0.127 + 1.121 * (1.003 - 1.444 * ratio + 12.312 * \
+            np.power(ratio, 2) - 32.766 * np.power(ratio, 3)) + 0.0006 * dtr) - cnst.KELVIN)
 
 
 def vapor_pressure(tdew):
