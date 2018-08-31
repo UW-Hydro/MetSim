@@ -45,9 +45,6 @@ def parse(args):
                         help='Parallel mode: number of processes to use')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Increase the verbosity of MetSim')
-    parser.add_argument('-tg', '--time_grouper', nargs='?',
-                        const='1AS', default=None, type=str,
-                        help='Pandas TimeGrouper string (e.g. `1AS`)')
     return parser.parse_args()
 
 
@@ -92,8 +89,6 @@ def init(opts):
                  "verbose": opts.verbose * logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
-    if opts.time_grouper is not None:
-        conf['time_grouper'] = opts.time_grouper
     conf = {k: v for k, v in conf.items() if v != []}
     return conf
 
@@ -103,10 +98,7 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    if ms.params['nprocs'] > 1:
-        ms.launch()
-    else:
-        ms.run()
+    ms.run_parallel()
 
 
 if __name__ == '__main__':

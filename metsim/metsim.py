@@ -33,10 +33,10 @@ import json
 import logging
 import os
 import sys
+import threading
 import time as tm
 from collections import Iterable, OrderedDict
 from getpass import getuser
-from multiprocessing import Pool
 
 import numpy as np
 import pandas as pd
@@ -48,6 +48,14 @@ from metsim.datetime import date_range
 from metsim.disaggregate import disaggregate
 from metsim.methods import mtclim
 from metsim.physics import solar_geom
+
+import dask
+dask.config.set(scheduler='single-threaded')
+
+LOCK = threading.Lock()
+
+
+NO_SLICE = {'lat': slice(None), 'lon': slice(None)}
 
 references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm for estimating incident daily solar radiation from measurements of temperature, humidity, and precipitation. Agricultural and Forest Meteorology, 93:211-228.
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
@@ -122,7 +130,6 @@ class MetSim(object):
         "out_precision": 'f4',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
-        "time_grouper": None,
         "utc_offset": False,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
@@ -133,34 +140,28 @@ class MetSim(object):
         "lapse_rate": 0.0065,
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'vapor_pressure', 'rel_humid']
+                     'vapor_pressure', 'rel_humid'],
+        "chunks": {'lat': 3, 'lon': 3}
     }
 
-    def __init__(self, params: dict):
+    def __init__(self, params: dict, domain_slice=NO_SLICE):
         """
         Constructor
         """
+        self._domain = None
+        self._met_data = None
+        self._state = None
+        self._client = None
+        self._domain_slice = domain_slice
+
         # Record parameters
         self.params.update(params)
 
         logger.setLevel(self.params['verbose'])
         ch.setLevel(self.params['verbose'])
         logger.addHandler(ch)
-        self._validate_setup()
-        logger.info("read_domain")
-        self.domain = io.read_domain(self.params)
         self._normalize_times()
-        logger.info("read_met_data")
-        self.met_data = io.read_met_data(self.params, self.domain)
-        self._validate_force_times(force_times=self.met_data['time'])
-        logger.info("read_state")
-        self.state = io.read_state(self.params, self.domain)
-        self.met_data['elev'] = self.domain['elev']
-        self.met_data['lat'] = self.domain['lat']
-        logger.info("_aggregate_state")
-        self._aggregate_state()
-        logger.info("load_inputs")
-        self.load_inputs()
+        self._validate_setup()
 
     def _normalize_times(self):
         # handle when start/stop times are not specified
@@ -228,72 +229,93 @@ class MetSim(object):
             attrs['time'] = {'long_name': 'local time at grid location',
                              'standard_name': 'local_time'}
 
+    @property
+    def domain(self):
+        if self._domain is None:
+            logger.info("read_domain")
+            self._domain = io.read_domain(self.params).isel(
+                **self._domain_slice)
+        return self._domain
+
+    @property
+    def met_data(self):
+        if self._met_data is None:
+            logger.info("read_met_data")
+            self._met_data = io.read_met_data(self.params, self.domain).isel(
+                **self._domain_slice)
+            self._met_data['elev'] = self.domain['elev']
+            self._met_data['lat'] = self.domain['lat']
+            self._validate_force_times(force_times=self._met_data['time'])
+        return self._met_data
+
+    @property
+    def state(self):
+        if self._state is None:
+            logger.info("read_state")
+            self._state = io.read_state(self.params, self.domain).isel(
+                **self._domain_slice)
+            logger.info("_aggregate_state")
+            self._aggregate_state()
+        return self._state
+
+    @property
+    def client(self):
+        if self._client is None:
+            from distributed import Client
+            self._client = Client()
+        return self._client
+
+    @property
+    def slices(self):
+        return chunk_domain(self.params['chunks'], self.domain[['mask']].dims)
+
+    def run_parallel(self):
+        # TODO: we should be able to pickle the Metsim and not send the params
+        # dict in this way. This feels a bit hokey.
+        self.setup_netcdf_output()
+        delayed_objs = [run_slice(self.params.copy(), domain_slice=dslice)
+                        for dslice in self.slices]
+        dask.compute(delayed_objs)
+
     def load_inputs(self, close=True):
-        self.domain = self.domain.load()
-        self.met_data = self.met_data.load()
-        self.state = self.state.load()
+        self._domain = self.domain.load()
+        self._met_data = self.met_data.load()
+        self._state = self.state.load()
         if close:
             self.domain.close()
             self.met_data.close()
             self.state.close()
 
-    def _get_time_dim_and_time_dim(self):
+    def setup_netcdf_output(self):
 
-        index = self.met_data.indexes['time']
+        from netCDF4 import Dataset
 
-        groups = OrderedDict()
-        if self.params['time_grouper'] is not None:
-            time_dim = pd.Series(index=index)
-            grouper = pd.TimeGrouper(self.params['time_grouper'])
-            for key, vals in time_dim.groupby(grouper):
-                groups[key] = vals.index
-        else:
-            groups['total'] = index
+        self._ncout = Dataset('test.nc', mode="w")
 
-        return index, groups
+        # dims
+        dim_sizes = (None, ) + self.domain['mask'].shape
+        var_dims = ('time', ) + self.domain['mask'].dims
+        for d, size in zip(var_dims, dim_sizes):
+            self._ncout.createDimension(d, size)
 
-    def launch(self):
-        """Farm out the jobs to separate processes"""
-        # Do the forcing generation and disaggregation if required
-        self._validate_setup()
-        nprocs = self.params['nprocs']
-        iter_list = [self.met_data[dim].values
-                     for dim in self.params['iter_dims']]
-        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        self.method = MetSim.methods[self.params['method']]
+        self.ncvars = {}
+        for v in self.params['out_vars']:
+            self._ncout.createVariable(
+                v, self.params['out_precision'], var_dims)
 
-        time_dim, groups = self._get_time_dim_and_time_dim()
+        # TODO: add metadata and coordinate variables (time/lat/lon)
 
-        for label, times in groups.items():
-            self.pool = Pool(processes=nprocs)
-            self.site_generator = itertools.product(*iter_list)
-            logger.info("Beginning {}".format(label))
-            status = []
+        self._ncout.close()
 
-            # Add in some end point data for continuity in chunking
-            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
-                                     times[-1] + pd.Timedelta("1 days")]
-                                    ).intersection(time_dim)
-            data = self.met_data.sel(time=times_ext)
-            self.setup_output(self.met_data.sel(time=times))
-            for site in self.site_generator:
-                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
-                # Don't run masked cells
-                if not self.domain['mask'].sel(**locs).values > 0:
-                    continue
-                stat = self.pool.apply_async(
-                    wrap_run,
-                    args=(self.method.run, locs, self.params,
-                          data.sel(**locs),
-                          self.state.sel(**locs),
-                          self.disagg, times, label),
-                    callback=self._unpack_results)
-                status.append(stat)
-            self.pool.close()
-            # Check that everything worked
-            [stat.get() for stat in status]
-            self.pool.join()
-            self.write(label)
+    def write_chunk(self):
+        from netCDF4 import Dataset
+
+        self._ncout = Dataset('test.nc', mode="a")
+        for v in self.params['out_vars']:
+            var = self._ncout.variables[v]
+            write_slice = (slice(None), ) + tuple(
+                self._domain_slice[d] for d in var.dimensions[1:])
+            var[write_slice] = self.output[v].values[:]
 
     def run(self):
         """
@@ -305,39 +327,27 @@ class MetSim(object):
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
-        time_dim, groups = self._get_time_dim_and_time_dim()
+        self.setup_output(self.met_data)
 
-        for label, times in groups.items():
-            logger.info("Beginning {}".format(label))
-            self.site_generator = itertools.product(*iter_list)
-            # Add in some end point data for continuity
-            times_ext = times.union([times[0] - pd.Timedelta("1 days"),
-                                     times[-1] + pd.Timedelta("1 days")]
-                                    ).intersection(time_dim)
-            data = self.met_data.sel(time=times_ext)
-            self.setup_output(self.met_data.sel(time=times))
+        times = self.met_data['time']
 
-            for site in self.site_generator:
-                locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
-                # Don't run masked cells
-                if not self.domain['mask'].sel(**locs).values > 0:
-                    continue
-                wrap_results = wrap_run(
-                    self.method.run, locs, self.params, data.sel(**locs),
-                    self.state.sel(**locs), self.disagg, times, label)
+        self.site_generator = itertools.product(*iter_list)
+        for site in self.site_generator:
+            locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+            # Don't run masked cells
+            if not self.domain['mask'].sel(**locs).values > 0:
+                continue
+            wrap_results = wrap_run(
+                self.method.run, locs, self.params, self.met_data.sel(**locs),
+                self.state.sel(**locs), self.disagg, times)
 
-                # Cut the returned data down to the correct time index
-                self._unpack_results(wrap_results)
-
-            self.write(label)
+            # Cut the returned data down to the correct time index
+            self._unpack_results(wrap_results)
 
     def _unpack_results(self, result: tuple):
         """Put results into the master dataset"""
-        if len(result) == 3:
-            locs, df, state = result
-            self._unpack_state(state, locs)
-        else:
-            locs, df = result
+        locs, df, state = result
+        self._unpack_state(state, locs)
         for varname in self.params['out_vars']:
             try:
                 self.output[varname].loc[locs] = df[varname]
@@ -395,7 +405,7 @@ class MetSim(object):
                 self.params.pop(p)
         for k, v in self.params.items():
             # Need to convert some parameters to strings
-            if k in ['start', 'stop', 'time_grouper', 'utc_offset']:
+            if k in ['start', 'stop', 'utc_offset']:
                 v = str(v)
             elif k in ['state_start', 'state_stop']:
                 # skip
@@ -591,7 +601,7 @@ class MetSim(object):
 
 def wrap_run(func: callable, loc: dict, params: dict,
              ds: xr.Dataset, state: xr.Dataset, disagg: bool,
-             out_times: pd.DatetimeIndex, group: str):
+             out_times: pd.DatetimeIndex):
     """
     Iterate over a chunk of the domain. This is wrapped
     so we can return a tuple of locs and df.
@@ -613,10 +623,6 @@ def wrap_run(func: callable, loc: dict, params: dict,
     out_times: pd.DatetimeIndex
         Times to return (should be trimmed 1 day at
         each end from the given index)
-    group: str
-        The year being run. This is used to add on
-        extra times to make output smooth at endpoints
-        if the run is chunked in time.
 
     Returns
     -------
@@ -673,8 +679,8 @@ def wrap_run(func: callable, loc: dict, params: dict,
         df_complete = disaggregate(df, params, sg, t_begin, t_end)
         # Calculate the times that we want to get out by chopping
         # off the endpoints that were added on previously
-        start = out_times[0]
-        stop = (out_times[-1] + pd.Timedelta('1 days') -
+        start = out_times.values[0]
+        stop = (out_times.values[-1] + pd.Timedelta('1 days') -
                 pd.Timedelta("{} minutes".format(params['time_step'])))
         new_times = date_range(
             start, stop, freq='{}T'.format(params['time_step']),
@@ -691,3 +697,35 @@ def wrap_run(func: callable, loc: dict, params: dict,
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
     return (loc, df_complete, df_base)
+
+
+@dask.delayed
+def run_slice(params, domain_slice=NO_SLICE):
+    ms = MetSim(params.copy(), domain_slice=domain_slice)
+    logger.info("load_inputs")
+    ms.load_inputs()
+    ms.run()
+    with LOCK:  # TODO: replace with CombinedLock from Xarray
+        ms.write_chunk()
+
+
+# TODO: needs tests
+def chunk_domain(chunks, dims):
+    '''
+    Return a dictionary of chunk slices that can be used to decompose a grid
+    '''
+
+    def right(chunk, dim):
+        nums = np.arange(chunk, dim + chunk, chunk)
+        nums[-1] = dims['lat'] + 1
+        return nums
+
+    def left(chunk, dim):
+        return np.arange(0, dim, chunk)
+
+    lats = [slice(*a) for a in (zip(left(chunks['lat'], dims['lat']),
+                                    right(chunks['lat'], dims['lat'])))]
+    lons = [slice(*a) for a in (zip(left(chunks['lon'], dims['lon']),
+                                    right(chunks['lon'], dims['lon'])))]
+    product = itertools.product(lats, lons)
+    return [{'lat': lat, 'lon': lon} for lat, lon in product]
