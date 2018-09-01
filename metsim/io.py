@@ -143,7 +143,7 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
                 start=None, stop=None, calendar='standard',
                 var_dict=None) -> xr.Dataset:
     """Read in a NetCDF file"""
-    ds = xr.open_mfdataset(data_handle)
+    ds = xr.open_dataset(data_handle)
 
     if 'time' in ds.coords:
         ds['time'] = (ds.indexes['time'] -

@@ -33,7 +33,6 @@ import json
 import logging
 import os
 import sys
-import threading
 import time as tm
 from collections import Iterable, OrderedDict
 from getpass import getuser
@@ -50,9 +49,12 @@ from metsim.methods import mtclim
 from metsim.physics import solar_geom
 
 import dask
-dask.config.set(scheduler='single-threaded')
 
-LOCK = threading.Lock()
+from xarray.backends.common import _get_scheduler
+from xarray.backends.api import _get_lock
+
+dask.config.set(scheduler='multiprocessing')
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 
 NO_SLICE = {'lat': slice(None), 'lon': slice(None)}
@@ -226,7 +228,8 @@ class MetSim(object):
             attrs['time'] = {'long_name': 'UTC time',
                              'standard_name': 'utc_time'}
         else:
-            attrs['time'] = {'long_name': 'local time at grid location',
+            attrs['time'] = {'units': 'hours since 0001-01-01 00:00:00.0',
+                             'long_name': 'local time at grid location',
                              'standard_name': 'local_time'}
 
     @property
@@ -282,13 +285,13 @@ class MetSim(object):
         self._met_data = self.met_data.load()
         self._state = self.state.load()
         if close:
-            self.domain.close()
-            self.met_data.close()
-            self.state.close()
+            self._domain.close()
+            self._met_data.close()
+            self._state.close()
 
     def setup_netcdf_output(self):
 
-        from netCDF4 import Dataset
+        from netCDF4 import Dataset, date2num
 
         self._ncout = Dataset('test.nc', mode="w")
 
@@ -297,25 +300,47 @@ class MetSim(object):
         var_dims = ('time', ) + self.domain['mask'].dims
         for d, size in zip(var_dims, dim_sizes):
             self._ncout.createDimension(d, size)
-
+        # vars
         self.ncvars = {}
-        for v in self.params['out_vars']:
+        for varname in self.params['out_vars']:
             self._ncout.createVariable(
-                v, self.params['out_precision'], var_dims)
+                varname, self.params['out_precision'], var_dims)
 
-        # TODO: add metadata and coordinate variables (time/lat/lon)
+        # add metadata and coordinate variables (time/lat/lon)
+        times = self._get_output_times()
+        time_var = self._ncout.createVariable('time', 'i4', ('time', ))
+        time_var.calendar = self.params['calendar']
+        time_var[:] = date2num(times.to_pydatetime(), units=attrs['time']['units'],
+                               calendar=time_var.calendar)
 
+        # set global attrs
+        for key, val in attrs['_global'].items():
+            setattr(self._ncout, key, val)
+
+        # set variable attrs
+        for varname in self._ncout.variables:
+            for key, val in attrs.get(varname, {}).items():
+                setattr(self._ncout.variables[varname], key, val)
+
+        print(self._ncout)
         self._ncout.close()
 
     def write_chunk(self):
         from netCDF4 import Dataset
 
-        self._ncout = Dataset('test.nc', mode="a")
-        for v in self.params['out_vars']:
-            var = self._ncout.variables[v]
-            write_slice = (slice(None), ) + tuple(
-                self._domain_slice[d] for d in var.dimensions[1:])
-            var[write_slice] = self.output[v].values[:]
+        filename = 'test.nc'
+
+        LOCK = _get_lock('netcdf4', _get_scheduler(), 'NETCDF4', filename)
+
+        with LOCK:
+            self._ncout = Dataset(filename, mode="a")
+            for v in self.params['out_vars']:
+                var = self._ncout.variables[v]
+                write_slice = (slice(None), ) + tuple(
+                    self._domain_slice[d] for d in var.dimensions[1:])
+                var[write_slice] = self.output[v].values[:]
+
+            self._ncout.close()
 
     def run(self):
         """
@@ -327,7 +352,7 @@ class MetSim(object):
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
-        self.setup_output(self.met_data)
+        self.setup_output()
 
         times = self.met_data['time']
 
@@ -377,11 +402,10 @@ class MetSim(object):
         self.state['time'].values = date_range(
             state_start, result.index[-1], calendar=self.params['calendar'])
 
-    def setup_output(self, prototype: xr.Dataset=None):
-        if not prototype.variables:
-            prototype = self.met_data
+    def _get_output_times(self):
+        prototype = self.met_data
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        # Number of timesteps
+
         if self.disagg:
             delta = pd.Timedelta('1 days') - pd.Timedelta(
                 '{} minutes'.format(self.params['time_step']))
@@ -393,6 +417,14 @@ class MetSim(object):
         times = date_range(start, stop + delta,
                            freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
+        return times
+
+    def setup_output(self):
+
+        # output times
+        times = self._get_output_times()
+
+        # Number of timesteps
         n_ts = len(times)
 
         shape = (n_ts, ) + self.domain['mask'].shape
@@ -699,33 +731,29 @@ def wrap_run(func: callable, loc: dict, params: dict,
     return (loc, df_complete, df_base)
 
 
-@dask.delayed
+@dask.delayed()
 def run_slice(params, domain_slice=NO_SLICE):
     ms = MetSim(params.copy(), domain_slice=domain_slice)
     logger.info("load_inputs")
     ms.load_inputs()
     ms.run()
-    with LOCK:  # TODO: replace with CombinedLock from Xarray
-        ms.write_chunk()
+    ms.write_chunk()
 
 
-# TODO: needs tests
 def chunk_domain(chunks, dims):
     '''
     Return a dictionary of chunk slices that can be used to decompose a grid
     '''
-
-    def right(chunk, dim):
-        nums = np.arange(chunk, dim + chunk, chunk)
-        nums[-1] = dims['lat'] + 1
-        return nums
-
     def left(chunk, dim):
         return np.arange(0, dim, chunk)
 
-    lats = [slice(*a) for a in (zip(left(chunks['lat'], dims['lat']),
-                                    right(chunks['lat'], dims['lat'])))]
-    lons = [slice(*a) for a in (zip(left(chunks['lon'], dims['lon']),
-                                    right(chunks['lon'], dims['lon'])))]
-    product = itertools.product(lats, lons)
-    return [{'lat': lat, 'lon': lon} for lat, lon in product]
+    def right(chunk, dim):
+        nums = np.arange(chunk, dim + chunk, chunk)
+        nums[-1] = dim + 1
+        return nums
+
+    slices = [[slice(*a) for a in (zip(left(chunks[dim], dims[dim]),
+                                       right(chunks[dim], dims[dim])))]
+              for dim in chunks.keys()]
+
+    return [dict(zip(chunks.keys(), p)) for p in itertools.product(*slices)]
