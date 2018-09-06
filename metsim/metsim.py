@@ -30,9 +30,9 @@ output specified.
 
 import itertools
 import json
-import logging
+# import logging
 import os
-import sys
+# import sys
 import time as tm
 from collections import Iterable, OrderedDict
 from getpass import getuser
@@ -50,11 +50,19 @@ from metsim.physics import solar_geom
 
 import dask
 
-from xarray.backends.common import _get_scheduler
+from xarray.backends.common import _get_scheduler, CombinedLock, SerializableLock
 from xarray.backends.api import _get_write_lock
+from multiprocessing import Lock
 
-dask.config.set(scheduler='threading')
+# from distributed import Client
+
+dask.config.set(scheduler='processes', num_workers=1)
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+
+# client = Client()
+# print(client)
+
+LOCK = CombinedLock([SerializableLock(), Lock()])
 
 NO_SLICE = {'lat': slice(None), 'lon': slice(None)}
 
@@ -62,14 +70,15 @@ references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm fo
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
 Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen, and D. P. Lettenmaier, 2013a: Global evaluation of MT-CLIM and related algorithms for forcing of ecological and hydrological models, Agr. Forest. Meteorol., 176, 38-49, doi:10.1016/j.agrformet.2013.03.003.'''
 
+DEFAULT_TIME_UNITS = 'hours since 0001-01-01 00:00:00.0'
+
 now = tm.ctime(tm.time())
 user = getuser()
-formatter = logging.Formatter(' - '.join(
-    ["%(asctime)s", "%(name)s", "%(levelname)s", "%(message)s"]))
+# formatter = logging.Formatter(' - '.join(["%(asctime)s", "%(name)s", "%(levelname)s", "%(message)s"]))
 
-ch = logging.StreamHandler(sys.stdout)
-ch.setFormatter(formatter)
-logger = logging.getLogger("metsim")
+# ch = logging.StreamHandler(sys.stdout)
+# ch.setFormatter(formatter)
+# logger = logging.getLogger("metsim")
 
 attrs = {'pet': {'units': 'mm timestep-1',
                  'long_name': 'potential evaporation',
@@ -158,9 +167,9 @@ class MetSim(object):
         # Record parameters
         self.params.update(params)
 
-        logger.setLevel(self.params['verbose'])
-        ch.setLevel(self.params['verbose'])
-        logger.addHandler(ch)
+        # logger.setLevel(self.params['verbose'])
+        # ch.setLevel(self.params['verbose'])
+        # logger.addHandler(ch)
         self._normalize_times()
         self._validate_setup()
 
@@ -187,8 +196,8 @@ class MetSim(object):
             else:
                 self.params[p] = pd.to_datetime(self.params[p])
 
-        logger.info('start {}'.format(self.params['start']))
-        logger.info('stop {}'.format(self.params['stop']))
+        # logger.info('start {}'.format(self.params['start']))
+        # logger.info('stop {}'.format(self.params['stop']))
 
     def _validate_force_times(self, force_times):
 
@@ -211,30 +220,31 @@ class MetSim(object):
                                       pd.Timedelta("90 days"))
         self.params['state_stop'] = (self.params['start'] -
                                      pd.Timedelta("1 days"))
-        logger.info('start {}'.format(self.params['start']))
-        logger.info('stop {}'.format(self.params['stop']))
+        # logger.info('start {}'.format(self.params['start']))
+        # logger.info('stop {}'.format(self.params['stop']))
 
-        logger.info('force start {}'.format(pd.Timestamp(
-            force_times.values[0]).to_pydatetime()))
-        logger.info('force stop {}'.format(pd.Timestamp(
-            force_times.values[-1]).to_pydatetime()))
+        # logger.info('force start {}'.format(pd.Timestamp(
+        # force_times.values[0]).to_pydatetime()))
+        # logger.info('force stop {}'.format(pd.Timestamp(
+        # force_times.values[-1]).to_pydatetime()))
 
-        logger.info('state start {}'.format(self.params['state_start']))
-        logger.info('state stop {}'.format(self.params['state_stop']))
+        # logger.info('state start {}'.format(self.params['state_start']))
+        # logger.info('state stop {}'.format(self.params['state_stop']))
 
-        logger.info('calendar {}'.format(self.params['calendar']))
+        # logger.info('calendar {}'.format(self.params['calendar']))
         if self.params['utc_offset']:
-            attrs['time'] = {'long_name': 'UTC time',
+            attrs['time'] = {'units': DEFAULT_TIME_UNITS,
+                             'long_name': 'UTC time',
                              'standard_name': 'utc_time'}
         else:
-            attrs['time'] = {'units': 'hours since 0001-01-01 00:00:00.0',
+            attrs['time'] = {'units': DEFAULT_TIME_UNITS,
                              'long_name': 'local time at grid location',
                              'standard_name': 'local_time'}
 
     @property
     def domain(self):
         if self._domain is None:
-            logger.info("read_domain")
+            # logger.info("read_domain")
             self._domain = io.read_domain(self.params).isel(
                 **self._domain_slice)
         return self._domain
@@ -242,7 +252,7 @@ class MetSim(object):
     @property
     def met_data(self):
         if self._met_data is None:
-            logger.info("read_met_data")
+            # logger.info("read_met_data")
             self._met_data = io.read_met_data(self.params, self.domain).isel(
                 **self._domain_slice)
             self._met_data['elev'] = self.domain['elev']
@@ -253,10 +263,10 @@ class MetSim(object):
     @property
     def state(self):
         if self._state is None:
-            logger.info("read_state")
+            # logger.info("read_state")
             self._state = io.read_state(self.params, self.domain).isel(
                 **self._domain_slice)
-            logger.info("_aggregate_state")
+            # logger.info("_aggregate_state")
             self._aggregate_state()
         return self._state
 
@@ -279,7 +289,7 @@ class MetSim(object):
         self.setup_netcdf_output(filename, times)
         delayed_objs = [run_slice(self.params, domain_slice=dslice)
                         for dslice in self.slices]
-        print(delayed_objs)
+        print('processing %d chunks' % len(delayed_objs))
         dask.compute(delayed_objs, rerun_exceptions_locally=True)
 
     def load_inputs(self, close=True):
@@ -295,7 +305,7 @@ class MetSim(object):
 
         from netCDF4 import Dataset
         from cftime import date2num
-        print('creating %s' % filename)
+        print('creating %s' % filename, flush=True)
         ncout = Dataset(filename, mode="w")
 
         # dims
@@ -312,7 +322,8 @@ class MetSim(object):
         time_var = ncout.createVariable('time', 'i4', ('time', ))
         time_var.calendar = self.params['calendar']
         time_var[:] = date2num(times.to_pydatetime(),
-                               units=attrs['time']['units'],
+                               units=attrs['time'].get('units',
+                                                       DEFAULT_TIME_UNITS),
                                calendar=time_var.calendar)
 
         # set global attrs
@@ -333,10 +344,12 @@ class MetSim(object):
         times = self._get_output_times()
         filename = self._get_output_filename(times)
 
-        LOCK = _get_write_lock('netcdf4', _get_scheduler(),
-                               'NETCDF4', filename)
+        # LOCK = _get_write_lock('netcdf4', _get_scheduler(),
+        #                        'NETCDF4', filename)
+        print(LOCK, flush=True)
 
         with LOCK:
+            print('inside lock', flush=True)
             ncout = Dataset(filename, mode="a")
             for varname in self.params['out_vars']:
                 ncvar = ncout.variables[varname]
@@ -346,6 +359,8 @@ class MetSim(object):
 
             ncout.sync()
             ncout.close()
+            print("releasing lock", flush=True)
+        print('outside lock', flush=True)
 
     def run(self):
         """
@@ -384,12 +399,13 @@ class MetSim(object):
             try:
                 self.output[varname].loc[locs] = df[varname]
             except ValueError as e:
-                logger.error(e)
-                logger.error("This error is probably indicitive of a mismatch "
-                             "between the domain and input data. Check that "
-                             "all of your cells inside of the mask have both "
-                             "elevation in the domain as well as all of the "
-                             "required input forcings.")
+                print(e)
+                # logger.error(e)
+                # logger.error("This error is probably indicitive of a mismatch "
+                            #  "between the domain and input data. Check that "
+                            #  "all of your cells inside of the mask have both "
+                            #  "elevation in the domain as well as all of the "
+                            #  "required input forcings.")
                 raise
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
@@ -430,7 +446,7 @@ class MetSim(object):
         suffix = self.get_nc_output_suffix(times)
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
-        logger.info(output_filename)
+        # logger.info(output_filename)
         return output_filename
 
     def setup_output(self):
@@ -586,7 +602,7 @@ class MetSim(object):
 
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
-        logger.info("Writing netcdf...")
+        # logger.info("Writing netcdf...")
         for dirname in [self.params['out_dir'],
                         os.path.dirname(self.params['out_state'])]:
             os.makedirs(dirname, exist_ok=True)
@@ -614,7 +630,7 @@ class MetSim(object):
 
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
-        logger.info("Writing ascii...")
+        # logger.info("Writing ascii...")
         for dirname in [self.params['out_dir'],
                         os.path.dirname(self.params['out_state'])]:
             os.makedirs(dirname, exist_ok=True)
@@ -674,7 +690,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
         A list of tuples arranged as
         (location, hourly_output, daily_output)
     """
-    logger.info("Processing {}".format(loc))
+    # logger.info("Processing {}".format(loc))
     lat = ds['lat'].values.flatten()[0]
     lon = ds['lon'].values.flatten()[0]
     elev = ds['elev'].values.flatten()[0]
@@ -743,10 +759,11 @@ def wrap_run(func: callable, loc: dict, params: dict,
     return (loc, df_complete, df_base)
 
 
-@dask.delayed()
+@dask.delayed(pure=True, traverse=True)
 def run_slice(params, domain_slice=NO_SLICE):
+    print('running chunk', flush=True)
     ms = MetSim(params, domain_slice=domain_slice)
-    logger.info("load_inputs")
+    # logger.info("load_inputs")
     ms.load_inputs()
     ms.run()
     ms.write_chunk()
