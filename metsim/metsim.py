@@ -53,11 +53,8 @@ import dask
 from xarray.backends.common import _get_scheduler
 from xarray.backends.api import _get_write_lock
 
-dask.config.set(scheduler='multiprocessing')
+dask.config.set(scheduler='threading')
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
-
-filename = 'test.nc'
-
 
 NO_SLICE = {'lat': slice(None), 'lon': slice(None)}
 
@@ -277,10 +274,13 @@ class MetSim(object):
     def run_parallel(self):
         # TODO: we should be able to pickle the Metsim and not send the params
         # dict in this way. This feels a bit hokey.
-        self.setup_netcdf_output()
+        times = self._get_output_times()
+        filename = self._get_output_filename(times)
+        self.setup_netcdf_output(filename, times)
         delayed_objs = [run_slice(self.params, domain_slice=dslice)
                         for dslice in self.slices]
-        dask.compute(delayed_objs)
+        print(delayed_objs)
+        dask.compute(delayed_objs, rerun_exceptions_locally=True)
 
     def load_inputs(self, close=True):
         self._domain = self.domain.load()
@@ -291,11 +291,11 @@ class MetSim(object):
             self._met_data.close()
             self._state.close()
 
-    def setup_netcdf_output(self):
+    def setup_netcdf_output(self, filename, times):
 
         from netCDF4 import Dataset
         from cftime import date2num
-
+        print('creating %s' % filename)
         ncout = Dataset(filename, mode="w")
 
         # dims
@@ -309,7 +309,6 @@ class MetSim(object):
                 varname, self.params['out_precision'], var_dims)
 
         # add metadata and coordinate variables (time/lat/lon)
-        times = self._get_output_times()
         time_var = ncout.createVariable('time', 'i4', ('time', ))
         time_var.calendar = self.params['calendar']
         time_var[:] = date2num(times.to_pydatetime(),
@@ -330,6 +329,9 @@ class MetSim(object):
 
     def write_chunk(self):
         from netCDF4 import Dataset
+
+        times = self._get_output_times()
+        filename = self._get_output_filename(times)
 
         LOCK = _get_write_lock('netcdf4', _get_scheduler(),
                                'NETCDF4', filename)
@@ -423,6 +425,13 @@ class MetSim(object):
                            freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
         return times
+
+    def _get_output_filename(self, times):
+        suffix = self.get_nc_output_suffix(times)
+        fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
+        output_filename = os.path.join(self.params['out_dir'], fname)
+        logger.info(output_filename)
+        return output_filename
 
     def setup_output(self):
 
@@ -569,8 +578,8 @@ class MetSim(object):
         }
         dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
 
-    def get_nc_output_suffix(self):
-        s, e = self.output.indexes['time'][[0, -1]]
+    def get_nc_output_suffix(self, times):
+        s, e = times[[0, -1]]
         template = '{:04d}{:02d}{:02d}-{:04d}{:02d}{:02d}'
         return template.format(s.year, s.month, s.day,
                                e.year, e.month, e.day,)
@@ -591,10 +600,8 @@ class MetSim(object):
         self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
 
         # write output file
-        suffix = self.get_nc_output_suffix()
-        fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
-        output_filename = os.path.join(self.params['out_dir'], fname)
-        logger.info(output_filename)
+        output_filename = self._get_output_filename(
+            self.output.indexes['time'])
         out_encoding = {'time': {'dtype': 'f8',
                                  'calendar': self.params['calendar']}}
         dtype = self.params['out_precision']
