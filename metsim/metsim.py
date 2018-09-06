@@ -51,10 +51,12 @@ from metsim.physics import solar_geom
 import dask
 
 from xarray.backends.common import _get_scheduler
-from xarray.backends.api import _get_lock
+from xarray.backends.api import _get_write_lock
 
 dask.config.set(scheduler='multiprocessing')
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+
+filename = 'test.nc'
 
 
 NO_SLICE = {'lat': slice(None), 'lon': slice(None)}
@@ -276,7 +278,7 @@ class MetSim(object):
         # TODO: we should be able to pickle the Metsim and not send the params
         # dict in this way. This feels a bit hokey.
         self.setup_netcdf_output()
-        delayed_objs = [run_slice(self.params.copy(), domain_slice=dslice)
+        delayed_objs = [run_slice(self.params, domain_slice=dslice)
                         for dslice in self.slices]
         dask.compute(delayed_objs)
 
@@ -291,56 +293,57 @@ class MetSim(object):
 
     def setup_netcdf_output(self):
 
-        from netCDF4 import Dataset, date2num
+        from netCDF4 import Dataset
+        from cftime import date2num
 
-        self._ncout = Dataset('test.nc', mode="w")
+        ncout = Dataset(filename, mode="w")
 
         # dims
         dim_sizes = (None, ) + self.domain['mask'].shape
         var_dims = ('time', ) + self.domain['mask'].dims
         for d, size in zip(var_dims, dim_sizes):
-            self._ncout.createDimension(d, size)
+            ncout.createDimension(d, size)
         # vars
-        self.ncvars = {}
         for varname in self.params['out_vars']:
-            self._ncout.createVariable(
+            ncout.createVariable(
                 varname, self.params['out_precision'], var_dims)
 
         # add metadata and coordinate variables (time/lat/lon)
         times = self._get_output_times()
-        time_var = self._ncout.createVariable('time', 'i4', ('time', ))
+        time_var = ncout.createVariable('time', 'i4', ('time', ))
         time_var.calendar = self.params['calendar']
-        time_var[:] = date2num(times.to_pydatetime(), units=attrs['time']['units'],
+        time_var[:] = date2num(times.to_pydatetime(),
+                               units=attrs['time']['units'],
                                calendar=time_var.calendar)
 
         # set global attrs
         for key, val in attrs['_global'].items():
-            setattr(self._ncout, key, val)
+            setattr(ncout, key, val)
 
         # set variable attrs
-        for varname in self._ncout.variables:
+        for varname in ncout.variables:
             for key, val in attrs.get(varname, {}).items():
-                setattr(self._ncout.variables[varname], key, val)
+                setattr(ncout.variables[varname], key, val)
 
-        print(self._ncout)
-        self._ncout.close()
+        ncout.sync()
+        ncout.close()
 
     def write_chunk(self):
         from netCDF4 import Dataset
 
-        filename = 'test.nc'
-
-        LOCK = _get_lock('netcdf4', _get_scheduler(), 'NETCDF4', filename)
+        LOCK = _get_write_lock('netcdf4', _get_scheduler(),
+                               'NETCDF4', filename)
 
         with LOCK:
-            self._ncout = Dataset(filename, mode="a")
-            for v in self.params['out_vars']:
-                var = self._ncout.variables[v]
+            ncout = Dataset(filename, mode="a")
+            for varname in self.params['out_vars']:
+                ncvar = ncout.variables[varname]
                 write_slice = (slice(None), ) + tuple(
-                    self._domain_slice[d] for d in var.dimensions[1:])
-                var[write_slice] = self.output[v].values[:]
+                    self._domain_slice[d] for d in ncvar.dimensions[1:])
+                ncvar[write_slice] = self.output[varname].values[:]
 
-            self._ncout.close()
+            ncout.sync()
+            ncout.close()
 
     def run(self):
         """
@@ -356,6 +359,8 @@ class MetSim(object):
 
         times = self.met_data['time']
 
+        params = self.params.copy()
+
         self.site_generator = itertools.product(*iter_list)
         for site in self.site_generator:
             locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
@@ -363,7 +368,7 @@ class MetSim(object):
             if not self.domain['mask'].sel(**locs).values > 0:
                 continue
             wrap_results = wrap_run(
-                self.method.run, locs, self.params, self.met_data.sel(**locs),
+                self.method.run, locs, params, self.met_data.sel(**locs),
                 self.state.sel(**locs), self.disagg, times)
 
             # Cut the returned data down to the correct time index
@@ -675,7 +680,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
     sg = solar_geom(elev, lat, params['lapse_rate'])
     sg = {'tiny_rad_fract': sg[0], 'daylength': sg[1],
           'potrad': sg[2], 'tt_max0': sg[3]}
-    yday = df.index.dayofyear.values - 1
+    yday = df.index.dayofyear - 1
     df['daylength'] = sg['daylength'][yday]
     df['potrad'] = sg['potrad'][yday]
     df['tt_max'] = sg['tt_max0'][yday]
@@ -733,7 +738,7 @@ def wrap_run(func: callable, loc: dict, params: dict,
 
 @dask.delayed()
 def run_slice(params, domain_slice=NO_SLICE):
-    ms = MetSim(params.copy(), domain_slice=domain_slice)
+    ms = MetSim(params, domain_slice=domain_slice)
     logger.info("load_inputs")
     ms.load_inputs()
     ms.run()
