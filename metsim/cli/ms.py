@@ -41,8 +41,10 @@ def parse(args):
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=lambda x: _is_valid_file(parser, x),
                         help='Input configuration file')
-    parser.add_argument('-n', '--n-processes', default=1, type=int,
+    parser.add_argument('-n', '--num_workers', default=1, type=int,
                         help='Parallel mode: number of processes to use')
+    parser.add_argument('-s', '--scheduler', default='threading', type=str,
+                        help='Dask scheduler to use')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Increase the verbosity of MetSim')
     return parser.parse_args()
@@ -57,6 +59,7 @@ def init(opts):
     conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
     conf['domain_vars'] = OrderedDict(config['domain_vars'])
     conf['state_vars'] = OrderedDict(config['state_vars'])
+    conf['chunks'] = OrderedDict(config['chunks'])
     out_dir = conf['out_dir']
     out_state = conf.get('out_state', None)
     if out_state is None:
@@ -74,18 +77,21 @@ def init(opts):
     # We assume there is only one domain file and one state file
     domain_file = conf['domain']
     state_file = conf['state']
+    chunks = conf['chunks']
 
     def to_list(s):
         return json.loads(s.replace("'", '"'))
 
     conf.update({"calendar": conf.get('calendar', 'standard'),
-                 "nprocs": opts.n_processes,
+                 "scheduler": opts.scheduler,
+                 "num_workers": opts.num_workers,
                  "method": method,
                  "out_dir": out_dir,
                  "out_state": out_state,
                  "state": state_file,
                  "domain": domain_file,
                  "forcing": forcing_files,
+                 "chunks": chunks,
                  "verbose": opts.verbose * logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))

@@ -50,13 +50,11 @@ from metsim.physics import solar_geom
 
 import dask
 
-from xarray.backends.common import _get_scheduler, CombinedLock, SerializableLock
-from xarray.backends.api import _get_write_lock
+from xarray.backends.common import CombinedLock, SerializableLock
 from multiprocessing import Lock
 
 # from distributed import Client
 
-dask.config.set(scheduler='processes')
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 # client = Client()
@@ -65,7 +63,7 @@ os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 WRITE_LOCK = CombinedLock([SerializableLock(), Lock()])
 READ_LOCK = SerializableLock()
 
-NO_SLICE = {'lat': slice(None), 'lon': slice(None)}
+NO_SLICE = {}
 
 references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm for estimating incident daily solar radiation from measurements of temperature, humidity, and precipitation. Agricultural and Forest Meteorology, 93:211-228.
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
@@ -152,7 +150,9 @@ class MetSim(object):
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid'],
-        "chunks": {'lat': 3, 'lon': 3}
+        "chunks": NO_SLICE,
+        "scheduler": 'single-threaded',
+        "num_workers": 1
     }
 
     def __init__(self, params: dict, domain_slice=NO_SLICE):
@@ -167,6 +167,13 @@ class MetSim(object):
 
         # Record parameters
         self.params.update(params)
+
+        # set global dask scheduler
+        if 'distributed' == self.params['scheduler']:
+            from distributed import Client
+            self._client = Client(n_workers=self.params['num_workers'])
+        else:
+            dask.config.set(scheduler=self.params['scheduler'])
 
         # logger.setLevel(self.params['verbose'])
         # ch.setLevel(self.params['verbose'])
@@ -272,14 +279,9 @@ class MetSim(object):
         return self._state
 
     @property
-    def client(self):
-        if self._client is None:
-            from distributed import Client
-            self._client = Client()
-        return self._client
-
-    @property
     def slices(self):
+        if not self.params['chunks']:
+            return [{d: slice(None) for d in self.domain[['mask']].dims}]
         return chunk_domain(self.params['chunks'], self.domain[['mask']].dims)
 
     def run_parallel(self):
@@ -288,10 +290,13 @@ class MetSim(object):
         times = self._get_output_times()
         filename = self._get_output_filename(times)
         self.setup_netcdf_output(filename, times)
+
+        print(self.slices)
+
         delayed_objs = [run_slice(self.params, domain_slice=dslice)
                         for dslice in self.slices]
         print('processing %d chunks' % len(delayed_objs))
-        dask.compute(delayed_objs, num_workers=2)
+        dask.compute(delayed_objs, num_workers=self.params['num_workers'])
 
     def load_inputs(self, close=True):
         self._domain = self.domain.load()
@@ -783,8 +788,8 @@ def chunk_domain(chunks, dims):
         nums[-1] = dim + 1
         return nums
 
-    slices = [[slice(*a) for a in (zip(left(chunks[dim], dims[dim]),
-                                       right(chunks[dim], dims[dim])))]
+    slices = [[slice(*a) for a in (zip(left(int(chunks[dim]), dims[dim]),
+                                       right(int(chunks[dim]), dims[dim])))]
               for dim in chunks.keys()]
 
     return [dict(zip(chunks.keys(), p)) for p in itertools.product(*slices)]
