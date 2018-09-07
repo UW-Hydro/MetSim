@@ -56,13 +56,14 @@ from multiprocessing import Lock
 
 # from distributed import Client
 
-dask.config.set(scheduler='processes', num_workers=1)
+dask.config.set(scheduler='processes')
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 # client = Client()
 # print(client)
 
-LOCK = CombinedLock([SerializableLock(), Lock()])
+WRITE_LOCK = CombinedLock([SerializableLock(), Lock()])
+READ_LOCK = SerializableLock()
 
 NO_SLICE = {'lat': slice(None), 'lon': slice(None)}
 
@@ -290,7 +291,7 @@ class MetSim(object):
         delayed_objs = [run_slice(self.params, domain_slice=dslice)
                         for dslice in self.slices]
         print('processing %d chunks' % len(delayed_objs))
-        dask.compute(delayed_objs, rerun_exceptions_locally=True)
+        dask.compute(delayed_objs, num_workers=2)
 
     def load_inputs(self, close=True):
         self._domain = self.domain.load()
@@ -344,12 +345,12 @@ class MetSim(object):
         times = self._get_output_times()
         filename = self._get_output_filename(times)
 
-        # LOCK = _get_write_lock('netcdf4', _get_scheduler(),
+        # WRITE_LOCK = _get_write_lock('netcdf4', _get_scheduler(),
         #                        'NETCDF4', filename)
-        print(LOCK, flush=True)
+        print(WRITE_LOCK, flush=True)
 
-        with LOCK:
-            print('inside lock', flush=True)
+        with WRITE_LOCK:
+            print('inside lock %r' % WRITE_LOCK, flush=True)
             ncout = Dataset(filename, mode="a")
             for varname in self.params['out_vars']:
                 ncvar = ncout.variables[varname]
@@ -764,7 +765,8 @@ def run_slice(params, domain_slice=NO_SLICE):
     print('running chunk', flush=True)
     ms = MetSim(params, domain_slice=domain_slice)
     # logger.info("load_inputs")
-    ms.load_inputs()
+    with READ_LOCK:
+        ms.load_inputs()
     ms.run()
     ms.write_chunk()
 
