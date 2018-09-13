@@ -92,7 +92,7 @@ Basic Usage
 -----------
 MetSim provides a simple command line interface which is primarily operated via
 configuration files.  For more information about the options available to be set
-in the configuration files see the :ref:`configuration` page.
+in the configuration files see the `configuration <configuration.rst>`_ page.
 
 Once installed, MetSim can be used from the command line via:
 

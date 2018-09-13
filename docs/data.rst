@@ -48,7 +48,7 @@ method. Requires one value for each month (12).
 
 For more information about the "triangle" method see
 `this description <PtriangleMethod.pdf>`_. If you use this feature, please
-cite Bohn et al. (2018) as listed in the `references <index.rst>`_.
+cite Bohn et al. (2018) as listed in the `references <index.rst#[7]>`_.
 
 
 It is important to ensure that all valid locations in ``mask`` have data in
