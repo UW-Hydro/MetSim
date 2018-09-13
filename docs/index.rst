@@ -50,7 +50,8 @@ intervals specified in minutes (provided they divide evenly into 24
 hours).  The operation of these algorithms is also described in [1]_.
 
 For the "triangle" method of precipitation disaggregation, doumentation
-can be found `here <PtriangleMethod.pdf>`_.
+can be found `here <PtriangleMethod.pdf>`_. This will eventually be superceded
+by a journal article that is currently in review [7]_.
 
 This documentation is a work in progress.
 If you don't find what you're looking for here, check out MetSim's Github page.
@@ -107,9 +108,9 @@ References
 ==========
 
 .. [1] Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen, and D. P.
-       Lettenmaier, 2013a: Global evaluation of MTCLIM and related algorithms for
-       forcing of ecological and hydrological models, Agr. Forest. Meteorol., 176,
-       38-49, doi:10.1016/j.agrformet.2013.03.003.
+       Lettenmaier, 2013. Global evaluation of MTCLIM and related algorithms for
+       forcing of ecological and hydrological models, Agricultural and Forest
+       Meteorology, 176, 38-49, doi:10.1016/j.agrformet.2013.03.003.
 
 .. [2] Bristow, K.L., and G.S. Campbell, 1984. On the relationship between
        incoming solar radiation and daily maximum and minimum temperature.
@@ -132,6 +133,10 @@ References
        estimating incident daily solar radiation from measurements of
        temperature, humidity, and precipitation. Agricultural and Forest
        Meteorology, 93:211-228.
+
+.. [7] Bohn, T. J., K. M. Whitney, G. Mascaro, and E. R. Vivoni, 2018. A simple
+       approach for approximating the diurnal cycle of precipitation for large-
+       scale hydrological simulations. Journal of Hydrometeorology (submitted).
 
 Sitemap
 =======
