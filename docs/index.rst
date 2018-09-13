@@ -50,7 +50,8 @@ intervals specified in minutes (provided they divide evenly into 24
 hours).  The operation of these algorithms is also described in [1]_.
 
 For the "triangle" method of precipitation disaggregation, doumentation
-can be found at :doc:`PtriangleMethod.pdf`.:
+can be found here_.
+.. _here: PtriangleMethod.pdf
 
 This documentation is a work in progress.
 If you don't find what you're looking for here, check out MetSim's Github page.
