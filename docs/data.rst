@@ -18,7 +18,7 @@ daily temperature, and daily precipitation.
 
 The variable names can be mapped via the configuration file in the ``forcing_vars``
 section. For more information about how to set up your configuration file see
-the :ref:`configuration` page.
+the `configuration <configuration.rst>`_ page.
 
 Domain file
 -----------
@@ -47,7 +47,9 @@ disaggregating daily precipitation to sub-daily time scales using the "triangle"
 method. Requires one value for each month (12).
 
 For more information about the "triangle" method see
-:doc:`PtriangleMethod.pdf`.
+`this description <PtriangleMethod.pdf>`_. If you use this feature, please
+cite Bohn et al. (2018) as listed in the `references <index.rst#id10>`_.
+
 
 It is important to ensure that all valid locations in ``mask`` have data in
 ``elev``.  Failure to ensure this will result in errors during runtime.
