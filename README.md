@@ -8,9 +8,9 @@ METSIM: Meteorology Simulator
 | Current Release DOI    | [![DOI](https://zenodo.org/badge/69834400.svg)](https://zenodo.org/badge/latestdoi/69834400) |
 
 MetSim is a meteorological simulator and forcing disaggregator for
-hydrologic modeling and climate applications. Metsim is based on 
+hydrologic modeling and climate applications. Metsim is based on
 [MtClim](http://www.ntsg.umt.edu/project/mtclim)
-and the preprocessor from version 4 of the [VIC hydrologic 
+and the preprocessor from version 4 of the [VIC hydrologic
 model](https://github.com/UW-Hydro/VIC).
 
 MetSim consists of 3 main modules that govern the operation of 3 major
@@ -98,6 +98,12 @@ messages about the status of a run, and `-n` activates parallelism. The
 number given after the `-n` flag is the number of processes to run. A
 good rule of thumb is to use one less process than the number of
 processsors (or threads) that the machine you are running on has.
+
+:exclamation: Users in environments where OpenMP is available may experience
+over-utilization of CPU resources, leading to lower performance. If you experience
+this issue try setting the `OMP_NUM_THREADS` environment variable to 1 before running
+MetSim.. This can be done in bash and similar shells by running
+`export OMP_NUM_THREADS=1`.
 
 References
 ==========
