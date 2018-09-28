@@ -82,6 +82,8 @@ def init(opts):
     def to_list(s):
         return json.loads(s.replace("'", '"'))
 
+    print(opts.verbose)
+
     conf.update({"calendar": conf.get('calendar', 'standard'),
                  "scheduler": opts.scheduler,
                  "num_workers": opts.num_workers,
@@ -92,7 +94,7 @@ def init(opts):
                  "domain": domain_file,
                  "forcing": forcing_files,
                  "chunks": chunks,
-                 "verbose": opts.verbose * logging.INFO})
+                 "verbose": logging.DEBUG if opts.verbose else logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
     conf = {k: v for k, v in conf.items() if v != []}
@@ -104,7 +106,7 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    ms.run_parallel()
+    ms.run()
 
 
 if __name__ == '__main__':
