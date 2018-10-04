@@ -167,7 +167,6 @@ class MetSim(object):
                 self._client = Client(
                     n_workers=self.params['num_workers'], threads_per_worker=1, diagnostics_port=5555)
                 print(self._client)
-                print(self._client.cluster)
             else:
                 print('setting the dask scheduler to %s' %
                       self.params['scheduler'])
@@ -298,7 +297,6 @@ class MetSim(object):
         delayed_objs = [wrap_run_slice(self.params, write_lock, domain_slice=dslice)
                         for dslice in self.slices]
         print('debug', 'processing %d chunks' % len(delayed_objs))
-        print(delayed_objs[0])
         dask.compute(delayed_objs, num_workers=self.params['num_workers'])
 
     def load_inputs(self, close=True):
@@ -355,21 +353,20 @@ class MetSim(object):
 
         ncout = Dataset(filename, mode="a")
         for varname in self.params['out_vars']:
-            ncvar = ncout.variables[varname]
             write_slice = (slice(None), ) + tuple(
-                self._domain_slice[d] for d in ncvar.dimensions[1:])
-            ncvar[write_slice] = self.output[varname].values[:]
+                self._domain_slice[d] for d in ncout.variables[varname].dimensions[1:])
+            print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
+            ncout.variables[varname][write_slice] = self.output[varname].values
 
         ncout.sync()
         ncout.close()
+        print('done writing chunk')
 
     def run_slice(self):
         """
         Run a single slice of
         """
         self._validate_setup()
-        iter_list = [self.met_data[dim].values
-                     for dim in self.params['iter_dims']]
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
 
@@ -378,36 +375,36 @@ class MetSim(object):
         times = self.met_data['time']
 
         params = self.params.copy()
-
-        self.site_generator = itertools.product(*iter_list)
-        for site in self.site_generator:
-            locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+        for index, mask_val in np.ndenumerate(self.domain['mask'].values):
+            locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
+            print(locs)
             # Don't run masked cells
-            if not self.domain['mask'].sel(**locs).values > 0:
+            if not mask_val > 0:
+                print('continuing', flush=True)
                 continue
             df, state = wrap_run_cell(self.method.run, params,
-                                      self.met_data.sel(**locs),
-                                      self.state.sel(**locs),
+                                      self.met_data.isel(**locs),
+                                      self.state.isel(**locs),
                                       self.disagg, times)
 
             # Cut the returned data down to the correct time index
             self._unpack_state(state, locs)
             for varname in self.params['out_vars']:
-                self.output[varname].loc[locs] = df[varname]
+                self.output[varname][locs] = df[varname].values
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""
         # We concatenate with the old state values in case we don't
         # have 90 new days to use
-        tmin = np.concatenate((self.state['t_min'].sel(**locs).values[:],
+        tmin = np.concatenate((self.state['t_min'].isel(**locs).values[:],
                                result['t_min'].values))
-        tmax = np.concatenate((self.state['t_max'].sel(**locs).values[:],
+        tmax = np.concatenate((self.state['t_max'].isel(**locs).values[:],
                                result['t_max'].values))
-        prec = np.concatenate((self.state['prec'].sel(**locs).values[:],
+        prec = np.concatenate((self.state['prec'].isel(**locs).values[:],
                                result['prec'].values))
-        self.state['t_min'].sel(**locs).values[:] = tmin[-90:]
-        self.state['t_max'].sel(**locs).values[:] = tmax[-90:]
-        self.state['prec'].sel(**locs).values[:] = prec[-90:]
+        self.state['t_min'].isel(**locs).values[:] = tmin[-90:]
+        self.state['t_max'].isel(**locs).values[:] = tmax[-90:]
+        self.state['prec'].isel(**locs).values[:] = prec[-90:]
         state_start = result.index[-1] - pd.Timedelta('89 days')
         self.state['time'].values = date_range(
             state_start, result.index[-1], calendar=self.params['calendar'])
@@ -501,9 +498,8 @@ class MetSim(object):
         trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         if (dtr < 0).any():
-            print('undo this')
-            print("Daily maximum temperature lower"
-                  " than daily minimum temperature!")
+            raise ValueError("Daily maximum temperature lower"
+                             " than daily minimum temperature!")
         sm_dtr = xr.concat([trailing, dtr], dim='time').load()
         sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
         self.met_data['dtr'] = dtr
@@ -571,16 +567,16 @@ class MetSim(object):
         if len(errs) > 1:
             raise Exception("\n  ".join(errs))
 
-    def write(self, suffix=""):
-        """
-        Dispatch to the right function based on the configuration given
-        """
-        dispatch = {
-            'netcdf': self.write_netcdf,
-            'ascii': self.write_ascii,
-            'data': self.write_data
-        }
-        dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
+    # def write(self, suffix=""):
+    #     """
+    #     Dispatch to the right function based on the configuration given
+    #     """
+    #     dispatch = {
+    #         'netcdf': self.write_netcdf,
+    #         'ascii': self.write_ascii,
+    #         'data': self.write_data
+    #     }
+    #     dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
 
     def get_nc_output_suffix(self, times):
         s, e = times[[0, -1]]
@@ -588,63 +584,63 @@ class MetSim(object):
         return template.format(s.year, s.month, s.day,
                                e.year, e.month, e.day,)
 
-    def write_netcdf(self, suffix: str):
-        """Write out as NetCDF to the output file"""
-        print("Writing netcdf...")
-        for dirname in [self.params['out_dir'],
-                        os.path.dirname(self.params['out_state'])]:
-            os.makedirs(dirname, exist_ok=True)
+    # def write_netcdf(self, suffix: str):
+    #     """Write out as NetCDF to the output file"""
+    #     print("Writing netcdf...")
+    #     for dirname in [self.params['out_dir'],
+    #                     os.path.dirname(self.params['out_state'])]:
+    #         os.makedirs(dirname, exist_ok=True)
 
-        # all state variables are written as doubles
-        state_encoding = {}
-        for v in self.state.variables:
-            state_encoding[v] = {'dtype': 'f8'}
-        state_encoding['time']['calendar'] = self.params['calendar']
-        # write state file
-        self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
+    #     # all state variables are written as doubles
+    #     state_encoding = {}
+    #     for v in self.state.variables:
+    #         state_encoding[v] = {'dtype': 'f8'}
+    #     state_encoding['time']['calendar'] = self.params['calendar']
+    #     # write state file
+    #     self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
 
-        # write output file
-        output_filename = self._get_output_filename(
-            self.output.indexes['time'])
-        out_encoding = {'time': {'dtype': 'f8',
-                                 'calendar': self.params['calendar']}}
-        dtype = self.params['out_precision']
-        for v in self.output.data_vars:
-            out_encoding[v] = {'dtype': dtype,
-                               '_FillValue': cnst.FILL_VALUES[dtype]}
-        self.output.to_netcdf(output_filename,
-                              unlimited_dims=['time'],
-                              encoding=out_encoding)
+    #     # write output file
+    #     output_filename = self._get_output_filename(
+    #         self.output.indexes['time'])
+    #     out_encoding = {'time': {'dtype': 'f8',
+    #                              'calendar': self.params['calendar']}}
+    #     dtype = self.params['out_precision']
+    #     for v in self.output.data_vars:
+    #         out_encoding[v] = {'dtype': dtype,
+    #                            '_FillValue': cnst.FILL_VALUES[dtype]}
+    #     self.output.to_netcdf(output_filename,
+    #                           unlimited_dims=['time'],
+    #                           encoding=out_encoding)
 
-    def write_ascii(self, suffix):
-        """Write out as ASCII to the output file"""
-        print("Writing ascii...")
-        for dirname in [self.params['out_dir'],
-                        os.path.dirname(self.params['out_state'])]:
-            os.makedirs(dirname, exist_ok=True)
-        # all state variables are written as doubles
-        state_encoding = {'time': {'dtype': 'f8'}}
-        for v in self.state.variables:
-            state_encoding[v] = {'dtype': 'f8'}
-        # write state file
-        self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
-        # Need to create new generator to loop over
-        iter_list = [self.met_data[dim].values
-                     for dim in self.params['iter_dims']]
-        site_generator = itertools.product(*iter_list)
+    # def write_ascii(self, suffix):
+    #     """Write out as ASCII to the output file"""
+    #     print("Writing ascii...")
+    #     for dirname in [self.params['out_dir'],
+    #                     os.path.dirname(self.params['out_state'])]:
+    #         os.makedirs(dirname, exist_ok=True)
+    #     # all state variables are written as doubles
+    #     state_encoding = {'time': {'dtype': 'f8'}}
+    #     for v in self.state.variables:
+    #         state_encoding[v] = {'dtype': 'f8'}
+    #     # write state file
+    #     self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
+    #     # Need to create new generator to loop over
+    #     iter_list = [self.met_data[dim].values
+    #                  for dim in self.params['iter_dims']]
+    #     site_generator = itertools.product(*iter_list)
 
-        for site in site_generator:
-            locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
-            if not self.domain['mask'].sel(**locs).values > 0:
-                continue
-            fname = ("{}_" * (len(iter_list) + 1) + "{}.csv").format(
-                self.params['out_prefix'], *site, suffix)
-            fpath = os.path.join(self.params['out_dir'], fname)
-            self.output.sel(**locs)[self.params[
-                'out_vars']].to_dataframe().to_csv(fpath)
+    #     for site in site_generator:
+    #         locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
+    #         if not self.domain['mask'].sel(**locs).values > 0:
+    #             continue
+    #         fname = ("{}_" * (len(iter_list) + 1) + "{}.csv").format(
+    #             self.params['out_prefix'], *site, suffix)
+    #         fpath = os.path.join(self.params['out_dir'], fname)
+    #         self.output.sel(**locs)[self.params[
+    #             'out_vars']].to_dataframe().to_csv(fpath)
 
-    def write_data(self, suffix):
-        pass
+    # def write_data(self, suffix):
+    #     pass
 
 
 def wrap_run_cell(func: callable, params: dict,
@@ -684,6 +680,7 @@ def wrap_run_cell(func: callable, params: dict,
     params['lat'] = lat
     params['lon'] = lon
     df = ds.to_dataframe()
+
     # solar_geom returns a tuple due to restrictions of numba
     # for clarity we convert it to a dictionary here
     sg = solar_geom(elev, lat, params['lapse_rate'])
@@ -747,13 +744,14 @@ def wrap_run_cell(func: callable, params: dict,
 
 @dask.delayed()
 def wrap_run_slice(params, write_lock, domain_slice=NO_SLICE):
-    print('running chunk', flush=True)
+    print('running chunk %s' % domain_slice, flush=True)
     os.environ["HDF5_USE_FILE_LOCKING"] = HDF5_USE_FILE_LOCKING
     ms = MetSim(params, domain_slice=domain_slice)
-    lock = SerializableLock()
-    with lock:
-        print("load_inputs")
-        ms.load_inputs()
+    # TODO: determine if this lock/block is actually necessary.
+    # lock = SerializableLock()
+    # with lock:
+    #     print("load_inputs")
+    ms.load_inputs()
     print('run_slice')
     ms.run_slice()
     with write_lock:
