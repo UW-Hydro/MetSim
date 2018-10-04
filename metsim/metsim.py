@@ -49,14 +49,16 @@ from metsim.physics import solar_geom
 
 import dask
 
-from xarray.backends.common import CombinedLock, SerializableLock
+from xarray.backends.common import CombinedLock, SerializableLock, _get_scheduler_lock, HDF5_LOCK
 from multiprocessing import Lock
+import multiprocessing
+
+# HDF_LOCK = SerializableLock()
+HDF5_USE_FILE_LOCKING = "FALSE"
+os.environ["HDF5_USE_FILE_LOCKING"] = HDF5_USE_FILE_LOCKING
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-WRITE_LOCK = CombinedLock([SerializableLock(), Lock()])
-READ_LOCK = SerializableLock()
 
 NO_SLICE = {}
 
@@ -162,16 +164,18 @@ class MetSim(object):
         if domain_slice is NO_SLICE:
             if 'distributed' == self.params['scheduler']:
                 from distributed import Client
-                self._client = Client(n_workers=self.params['num_workers'])
+                self._client = Client(
+                    n_workers=self.params['num_workers'], threads_per_worker=1, diagnostics_port=5555)
+                print(self._client)
+                print(self._client.cluster)
             else:
-                print('setting the dask scheduler to %s' % self.params['scheduler'])
+                print('setting the dask scheduler to %s' %
+                      self.params['scheduler'])
                 dask.config.set(scheduler=self.params['scheduler'])
             print(dask.config.config)
         else:
             dask.config.set(scheduler='single-threaded')
 
-        # TODO: Are there times when we don't want to turn this off?
-        os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
         logger.setLevel(logging.DEBUG)
         self._normalize_times()
         self._validate_setup()
@@ -199,8 +203,8 @@ class MetSim(object):
             else:
                 self.params[p] = pd.to_datetime(self.params[p])
 
-        logger.info('start {}'.format(self.params['start']))
-        logger.info('stop {}'.format(self.params['stop']))
+        print('start {}'.format(self.params['start']))
+        print('stop {}'.format(self.params['stop']))
 
     def _validate_force_times(self, force_times):
 
@@ -223,18 +227,18 @@ class MetSim(object):
                                       pd.Timedelta("90 days"))
         self.params['state_stop'] = (self.params['start'] -
                                      pd.Timedelta("1 days"))
-        logger.info('start {}'.format(self.params['start']))
-        logger.info('stop {}'.format(self.params['stop']))
+        print('start {}'.format(self.params['start']))
+        print('stop {}'.format(self.params['stop']))
 
-        logger.info('force start {}'.format(pd.Timestamp(
-                    force_times.values[0]).to_pydatetime()))
-        logger.info('force stop {}'.format(pd.Timestamp(
-                    force_times.values[-1]).to_pydatetime()))
+        print('force start {}'.format(pd.Timestamp(
+            force_times.values[0]).to_pydatetime()))
+        print('force stop {}'.format(pd.Timestamp(
+            force_times.values[-1]).to_pydatetime()))
 
-        logger.info('state start {}'.format(self.params['state_start']))
-        logger.info('state stop {}'.format(self.params['state_stop']))
+        print('state start {}'.format(self.params['state_start']))
+        print('state stop {}'.format(self.params['state_stop']))
 
-        logger.info('calendar {}'.format(self.params['calendar']))
+        print('calendar {}'.format(self.params['calendar']))
         if self.params['utc_offset']:
             attrs['time'] = {'units': DEFAULT_TIME_UNITS,
                              'long_name': 'UTC time',
@@ -247,7 +251,7 @@ class MetSim(object):
     @property
     def domain(self):
         if self._domain is None:
-            logger.info("read_domain")
+            print("read_domain")
             self._domain = io.read_domain(self.params).isel(
                 **self._domain_slice)
         return self._domain
@@ -255,7 +259,7 @@ class MetSim(object):
     @property
     def met_data(self):
         if self._met_data is None:
-            logger.info("read_met_data")
+            print("read_met_data")
             self._met_data = io.read_met_data(self.params, self.domain).isel(
                 **self._domain_slice)
             self._met_data['elev'] = self.domain['elev']
@@ -266,10 +270,10 @@ class MetSim(object):
     @property
     def state(self):
         if self._state is None:
-            logger.info("read_state")
+            print("read_state")
             self._state = io.read_state(self.params, self.domain).isel(
                 **self._domain_slice)
-            logger.info("_aggregate_state")
+            print("_aggregate_state")
             self._aggregate_state()
         return self._state
 
@@ -282,13 +286,19 @@ class MetSim(object):
     def run(self):
         # TODO: we should be able to pickle the Metsim and not send the params
         # dict in this way. This feels a bit hokey.
+        print('running chunks')
         times = self._get_output_times()
         filename = self._get_output_filename(times)
         self.setup_netcdf_output(filename, times)
 
-        delayed_objs = [wrap_run_slice(self.params, domain_slice=dslice)
+        # write_lock = _get_scheduler_lock(self.params['scheduler'], path_or_file=filename)
+        m = multiprocessing.Manager()
+        write_lock = m.Lock()
+
+        delayed_objs = [wrap_run_slice(self.params, write_lock, domain_slice=dslice)
                         for dslice in self.slices]
-        logger.debug('processing %d chunks' % len(delayed_objs))
+        print('debug', 'processing %d chunks' % len(delayed_objs))
+        print(delayed_objs[0])
         dask.compute(delayed_objs, num_workers=self.params['num_workers'])
 
     def load_inputs(self, close=True):
@@ -304,7 +314,7 @@ class MetSim(object):
 
         from netCDF4 import Dataset
         from cftime import date2num
-        logger.debug('creating %s' % filename)
+        print('debug', 'creating %s' % filename)
         ncout = Dataset(filename, mode="w")
 
         # dims
@@ -343,23 +353,15 @@ class MetSim(object):
         times = self._get_output_times()
         filename = self._get_output_filename(times)
 
-        # WRITE_LOCK = _get_write_lock('netcdf4', _get_scheduler(),
-        #                        'NETCDF4', filename)
-        logger.debug(WRITE_LOCK)
+        ncout = Dataset(filename, mode="a")
+        for varname in self.params['out_vars']:
+            ncvar = ncout.variables[varname]
+            write_slice = (slice(None), ) + tuple(
+                self._domain_slice[d] for d in ncvar.dimensions[1:])
+            ncvar[write_slice] = self.output[varname].values[:]
 
-        with WRITE_LOCK:
-            logger.debug('inside lock %r' % WRITE_LOCK)
-            ncout = Dataset(filename, mode="a")
-            for varname in self.params['out_vars']:
-                ncvar = ncout.variables[varname]
-                write_slice = (slice(None), ) + tuple(
-                    self._domain_slice[d] for d in ncvar.dimensions[1:])
-                ncvar[write_slice] = self.output[varname].values[:]
-
-            ncout.sync()
-            ncout.close()
-            logger.debug("releasing lock")
-        logger.debug('outside lock')
+        ncout.sync()
+        ncout.close()
 
     def run_slice(self):
         """
@@ -431,7 +433,7 @@ class MetSim(object):
         suffix = self.get_nc_output_suffix(times)
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(self.params['out_dir'], fname)
-        logger.info(output_filename)
+        print(output_filename)
         return output_filename
 
     def setup_output(self):
@@ -499,8 +501,9 @@ class MetSim(object):
         trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         if (dtr < 0).any():
-            raise ValueError("Daily maximum temperature lower"
-                             " than daily minimum temperature!")
+            print('undo this')
+            print("Daily maximum temperature lower"
+                  " than daily minimum temperature!")
         sm_dtr = xr.concat([trailing, dtr], dim='time').load()
         sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
         self.met_data['dtr'] = dtr
@@ -587,7 +590,7 @@ class MetSim(object):
 
     def write_netcdf(self, suffix: str):
         """Write out as NetCDF to the output file"""
-        logger.info("Writing netcdf...")
+        print("Writing netcdf...")
         for dirname in [self.params['out_dir'],
                         os.path.dirname(self.params['out_state'])]:
             os.makedirs(dirname, exist_ok=True)
@@ -615,7 +618,7 @@ class MetSim(object):
 
     def write_ascii(self, suffix):
         """Write out as ASCII to the output file"""
-        logger.info("Writing ascii...")
+        print("Writing ascii...")
         for dirname in [self.params['out_dir'],
                         os.path.dirname(self.params['out_state'])]:
             os.makedirs(dirname, exist_ok=True)
@@ -645,8 +648,8 @@ class MetSim(object):
 
 
 def wrap_run_cell(func: callable, params: dict,
-             ds: xr.Dataset, state: xr.Dataset, disagg: bool,
-             out_times: pd.DatetimeIndex):
+                  ds: xr.Dataset, state: xr.Dataset, disagg: bool,
+                  out_times: pd.DatetimeIndex):
     """
     Iterate over a chunk of the domain. This is wrapped
     so we can return a tuple of locs and df.
@@ -742,15 +745,20 @@ def wrap_run_cell(func: callable, params: dict,
     return df_complete, df_base
 
 
-@dask.delayed(pure=True, traverse=True)
-def wrap_run_slice(params, domain_slice=NO_SLICE):
+@dask.delayed()
+def wrap_run_slice(params, write_lock, domain_slice=NO_SLICE):
     print('running chunk', flush=True)
+    os.environ["HDF5_USE_FILE_LOCKING"] = HDF5_USE_FILE_LOCKING
     ms = MetSim(params, domain_slice=domain_slice)
-    logger.info("load_inputs")
-    with READ_LOCK:
+    lock = SerializableLock()
+    with lock:
+        print("load_inputs")
         ms.load_inputs()
+    print('run_slice')
     ms.run_slice()
-    ms.write_chunk()
+    with write_lock:
+        print('write_chunk')
+        ms.write_chunk()
 
 
 def chunk_domain(chunks, dims):
