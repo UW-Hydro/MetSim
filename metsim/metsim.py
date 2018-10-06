@@ -40,22 +40,17 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+import dask
+from netCDF4 import Dataset
+from cftime import date2num
+from xarray.backends.common import _get_scheduler_lock, HDF5_LOCK
+
 import metsim.constants as cnst
 from metsim import io
 from metsim.datetime import date_range
 from metsim.disaggregate import disaggregate
 from metsim.methods import mtclim
 from metsim.physics import solar_geom
-
-import dask
-
-from xarray.backends.common import CombinedLock, SerializableLock, _get_scheduler_lock, HDF5_LOCK
-from multiprocessing import Lock
-import multiprocessing
-
-# HDF_LOCK = SerializableLock()
-HDF5_USE_FILE_LOCKING = "FALSE"
-os.environ["HDF5_USE_FILE_LOCKING"] = HDF5_USE_FILE_LOCKING
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -166,12 +161,13 @@ class MetSim(object):
                 from distributed import Client
                 self._client = Client(
                     n_workers=self.params['num_workers'], threads_per_worker=1, diagnostics_port=5555)
-                print(self._client)
+            elif os.path.isfile(self.params['scheduler']):
+                self._client = Client(scheduler_file=self.params['scheduler'])
+                self.params['scheduler'] = 'distributed'
             else:
                 print('setting the dask scheduler to %s' %
                       self.params['scheduler'])
                 dask.config.set(scheduler=self.params['scheduler'])
-            print(dask.config.config)
         else:
             dask.config.set(scheduler='single-threaded')
 
@@ -259,8 +255,9 @@ class MetSim(object):
     def met_data(self):
         if self._met_data is None:
             print("read_met_data")
-            self._met_data = io.read_met_data(self.params, self.domain).isel(
-                **self._domain_slice)
+            temp = io.read_met_data(self.params, self.domain)
+            temp = temp.sel(**{d: domain[d] for d in iter_dims})
+            self._met_data= temp.isel(**self._domain_slice)
             self._met_data['elev'] = self.domain['elev']
             self._met_data['lat'] = self.domain['lat']
             self._validate_force_times(force_times=self._met_data['time'])
@@ -290,9 +287,7 @@ class MetSim(object):
         filename = self._get_output_filename(times)
         self.setup_netcdf_output(filename, times)
 
-        # write_lock = _get_scheduler_lock(self.params['scheduler'], path_or_file=filename)
-        m = multiprocessing.Manager()
-        write_lock = m.Lock()
+        write_lock = _get_scheduler_lock(self.params['scheduler'], path_or_file=filename)
 
         delayed_objs = [wrap_run_slice(self.params, write_lock, domain_slice=dslice)
                         for dslice in self.slices]
@@ -309,57 +304,52 @@ class MetSim(object):
             self._state.close()
 
     def setup_netcdf_output(self, filename, times):
-
-        from netCDF4 import Dataset
-        from cftime import date2num
+        '''setup a single netcdf file'''
         print('debug', 'creating %s' % filename)
-        ncout = Dataset(filename, mode="w")
+        with Dataset(filename, mode="w") as ncout:
+            # dims
+            dim_sizes = (None, ) + self.domain['mask'].shape
+            var_dims = ('time', ) + self.domain['mask'].dims
+            for d, size in zip(var_dims, dim_sizes):
+                ncout.createDimension(d, size)
+            # vars
+            for varname in self.params['out_vars']:
+                ncout.createVariable(
+                    varname, self.params['out_precision'], var_dims)
 
-        # dims
-        dim_sizes = (None, ) + self.domain['mask'].shape
-        var_dims = ('time', ) + self.domain['mask'].dims
-        for d, size in zip(var_dims, dim_sizes):
-            ncout.createDimension(d, size)
-        # vars
-        for varname in self.params['out_vars']:
-            ncout.createVariable(
-                varname, self.params['out_precision'], var_dims)
+            # add metadata and coordinate variables (time/lat/lon)
+            time_var = ncout.createVariable('time', 'i4', ('time', ))
+            time_var.calendar = self.params['calendar']
+            time_var[:] = date2num(times.to_pydatetime(),
+                                units=attrs['time'].get('units',
+                                                        DEFAULT_TIME_UNITS),
+                                calendar=time_var.calendar)
 
-        # add metadata and coordinate variables (time/lat/lon)
-        time_var = ncout.createVariable('time', 'i4', ('time', ))
-        time_var.calendar = self.params['calendar']
-        time_var[:] = date2num(times.to_pydatetime(),
-                               units=attrs['time'].get('units',
-                                                       DEFAULT_TIME_UNITS),
-                               calendar=time_var.calendar)
+            # set global attrs
+            for key, val in attrs['_global'].items():
+                setattr(ncout, key, val)
 
-        # set global attrs
-        for key, val in attrs['_global'].items():
-            setattr(ncout, key, val)
-
-        # set variable attrs
-        for varname in ncout.variables:
-            for key, val in attrs.get(varname, {}).items():
-                setattr(ncout.variables[varname], key, val)
+            # set variable attrs
+            for varname in ncout.variables:
+                for key, val in attrs.get(varname, {}).items():
+                    setattr(ncout.variables[varname], key, val)
 
         ncout.sync()
         ncout.close()
 
     def write_chunk(self):
-        from netCDF4 import Dataset
-
+        '''write data from a single chunk'''
         times = self._get_output_times()
         filename = self._get_output_filename(times)
 
-        ncout = Dataset(filename, mode="a")
-        for varname in self.params['out_vars']:
-            write_slice = (slice(None), ) + tuple(
-                self._domain_slice[d] for d in ncout.variables[varname].dimensions[1:])
-            print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
-            ncout.variables[varname][write_slice] = self.output[varname].values
-
-        ncout.sync()
-        ncout.close()
+        with Dataset(filename, mode="r+") as ncout:
+            for varname in self.params['out_vars']:
+                write_slice = (
+                    (slice(None), ) +
+                    tuple(self._domain_slice[d
+                          for d in ncout.variables[varname].dimensions[1:]))
+                print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
+                ncout.variables[varname][write_slice] = self.output[varname].values
         print('done writing chunk')
 
     def run_slice(self):
@@ -376,12 +366,12 @@ class MetSim(object):
 
         params = self.params.copy()
         for index, mask_val in np.ndenumerate(self.domain['mask'].values):
-            locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
-            print(locs)
-            # Don't run masked cells
-            if not mask_val > 0:
-                print('continuing', flush=True)
+            if mask_val > 0:
+                locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
+                print(locs)            
+            else:
                 continue
+
             df, state = wrap_run_cell(self.method.run, params,
                                       self.met_data.isel(**locs),
                                       self.state.isel(**locs),
@@ -747,11 +737,9 @@ def wrap_run_slice(params, write_lock, domain_slice=NO_SLICE):
     print('running chunk %s' % domain_slice, flush=True)
     os.environ["HDF5_USE_FILE_LOCKING"] = HDF5_USE_FILE_LOCKING
     ms = MetSim(params, domain_slice=domain_slice)
-    # TODO: determine if this lock/block is actually necessary.
-    # lock = SerializableLock()
-    # with lock:
-    #     print("load_inputs")
-    ms.load_inputs()
+    with HDF5_LOCK:
+        print("load_inputs")
+        ms.load_inputs()
     print('run_slice')
     ms.run_slice()
     with write_lock:

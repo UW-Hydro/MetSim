@@ -143,7 +143,7 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
                 start=None, stop=None, calendar='standard',
                 var_dict=None) -> xr.Dataset:
     """Read in a NetCDF file"""
-    ds = xr.open_dataset(data_handle, engine='netcdf4')
+    ds = xr.open_dataset(data_handle)
 
     if 'time' in ds.coords:
         ds['time'] = (ds.indexes['time'] -
@@ -159,9 +159,6 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
         dates = ds.indexes['time']
         ds['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
-    # TODO: figure out a better way to do this
-    # if domain is not None:
-    #     ds = ds.sel(**{d: domain[d] for d in iter_dims})
     return ds
 
 
