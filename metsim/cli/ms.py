@@ -60,7 +60,7 @@ def init(opts):
     conf['domain_vars'] = OrderedDict(config['domain_vars'])
     conf['state_vars'] = OrderedDict(config['state_vars'])
     conf['chunks'] = OrderedDict(config['chunks'])
-    out_dir = conf['out_dir']
+    out_dir = os.path.abspath(conf['out_dir'])
     out_state = conf.get('out_state', None)
     if out_state is None:
         out_state = os.path.join(out_dir, 'state.nc')

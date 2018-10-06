@@ -162,6 +162,7 @@ class MetSim(object):
                 self._client = Client(
                     n_workers=self.params['num_workers'], threads_per_worker=1, diagnostics_port=5555)
             elif os.path.isfile(self.params['scheduler']):
+                from distributed import Client
                 self._client = Client(scheduler_file=self.params['scheduler'])
                 self.params['scheduler'] = 'distributed'
             else:
@@ -256,7 +257,7 @@ class MetSim(object):
         if self._met_data is None:
             print("read_met_data")
             temp = io.read_met_data(self.params, self.domain)
-            temp = temp.sel(**{d: domain[d] for d in iter_dims})
+            # FIXME (iterdims) temp = temp.sel(**{d: domain[d] for d in iter_dims})
             self._met_data= temp.isel(**self._domain_slice)
             self._met_data['elev'] = self.domain['elev']
             self._met_data['lat'] = self.domain['lat']
@@ -334,8 +335,6 @@ class MetSim(object):
                 for key, val in attrs.get(varname, {}).items():
                     setattr(ncout.variables[varname], key, val)
 
-        ncout.sync()
-        ncout.close()
 
     def write_chunk(self):
         '''write data from a single chunk'''
@@ -346,8 +345,7 @@ class MetSim(object):
             for varname in self.params['out_vars']:
                 write_slice = (
                     (slice(None), ) +
-                    tuple(self._domain_slice[d
-                          for d in ncout.variables[varname].dimensions[1:]))
+                    tuple(self._domain_slice[d] for d in ncout.variables[varname].dimensions[1:]))
                 print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
                 ncout.variables[varname][write_slice] = self.output[varname].values
         print('done writing chunk')
@@ -419,7 +417,7 @@ class MetSim(object):
     def _get_output_filename(self, times):
         suffix = self.get_nc_output_suffix(times)
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
-        output_filename = os.path.join(self.params['out_dir'], fname)
+        output_filename = os.path.join(os.path.abspath(self.params['out_dir']), fname)
         print(output_filename)
         return output_filename
 
@@ -735,7 +733,6 @@ def wrap_run_cell(func: callable, params: dict,
 @dask.delayed()
 def wrap_run_slice(params, write_lock, domain_slice=NO_SLICE):
     print('running chunk %s' % domain_slice, flush=True)
-    os.environ["HDF5_USE_FILE_LOCKING"] = HDF5_USE_FILE_LOCKING
     ms = MetSim(params, domain_slice=domain_slice)
     with HDF5_LOCK:
         print("load_inputs")
