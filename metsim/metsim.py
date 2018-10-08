@@ -56,8 +56,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 NO_SLICE = {}
-DASK_CORE_SCHEDULERS = ['multiprocessing', 'threaded', 'synchronous',
-                        'processes', 'threads', 'single-threaded']
+DASK_CORE_SCHEDULERS = ['multiprocessing', 'threading', 'synchronous',
+                        'processes', 'threads', 'single-threaded', 'sync']
 
 references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm for estimating incident daily solar radiation from measurements of temperature, humidity, and precipitation. Agricultural and Forest Meteorology, 93:211-228.
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
@@ -356,7 +356,7 @@ class MetSim(object):
                         tuple(self._domain_slice[d] for d in ncout.variables[varname].dimensions[1:]))
                     print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
                     ncout.variables[varname][write_slice] = self.output[varname].values
-         print('done writing chunk')
+        print('done writing chunk')
 
     def run_slice(self):
         """
@@ -742,7 +742,6 @@ def wrap_run_cell(func: callable, params: dict,
 def wrap_run_slice(params, write_lock, domain_slice=NO_SLICE):
     print('running chunk %s' % domain_slice, flush=True)
     ms = MetSim(params, domain_slice=domain_slice)
-    with HDF5_LOCK:
     print("load_inputs")
     ms.load_inputs(lock=HDF5_LOCK)
     print('run_slice')
