@@ -56,6 +56,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 NO_SLICE = {}
+DASK_CORE_SCHEDULERS = ['multiprocessing', 'threaded', 'synchronous',
+                        'processes', 'threads', 'single-threaded']
 
 references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm for estimating incident daily solar radiation from measurements of temperature, humidity, and precipitation. Agricultural and Forest Meteorology, 93:211-228.
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
@@ -157,18 +159,20 @@ class MetSim(object):
 
         # set global dask scheduler
         if domain_slice is NO_SLICE:
-            if 'distributed' == self.params['scheduler']:
-                from distributed import Client
-                self._client = Client(
-                    n_workers=self.params['num_workers'], threads_per_worker=1, diagnostics_port=5555)
-            elif os.path.isfile(self.params['scheduler']):
-                from distributed import Client
-                self._client = Client(scheduler_file=self.params['scheduler'])
-                self.params['scheduler'] = 'distributed'
-            else:
+            if self.params['scheduler'] in DASK_CORE_SCHEDULERS:
                 print('setting the dask scheduler to %s' %
                       self.params['scheduler'])
                 dask.config.set(scheduler=self.params['scheduler'])
+            else:
+                from distributed import Client
+                if 'distributed' == self.params['scheduler']:
+                    self._client = Client(
+                        n_workers=self.params['num_workers'], threads_per_worker=1)
+                elif os.path.isfile(self.params['scheduler']):
+                    self._client = Client(scheduler_file=self.params['scheduler'])
+                else:
+                    self._client = Client(self.params['scheduler'])
+                self.params['scheduler'] = 'distributed'
         else:
             dask.config.set(scheduler='single-threaded')
 
@@ -295,14 +299,16 @@ class MetSim(object):
         print('debug', 'processing %d chunks' % len(delayed_objs))
         dask.compute(delayed_objs, num_workers=self.params['num_workers'])
 
-    def load_inputs(self, close=True):
-        self._domain = self.domain.load()
-        self._met_data = self.met_data.load()
-        self._state = self.state.load()
-        if close:
-            self._domain.close()
-            self._met_data.close()
-            self._state.close()
+    def load_inputs(self, close=True, lock=None):
+        lock = lock if lock is not None else DummyLock()
+        with lock:
+            self._domain = self.domain.load()
+            self._met_data = self.met_data.load()
+            self._state = self.state.load()
+            if close:
+                self._domain.close()
+                self._met_data.close()
+                self._state.close()
 
     def setup_netcdf_output(self, filename, times):
         '''setup a single netcdf file'''
@@ -336,19 +342,21 @@ class MetSim(object):
                     setattr(ncout.variables[varname], key, val)
 
 
-    def write_chunk(self):
+    def write_chunk(self, lock=None):
         '''write data from a single chunk'''
-        times = self._get_output_times()
-        filename = self._get_output_filename(times)
+        lock = lock if lock is not None else DummyLock()
+        with lock:
+            times = self._get_output_times()
+            filename = self._get_output_filename(times)
 
-        with Dataset(filename, mode="r+") as ncout:
-            for varname in self.params['out_vars']:
-                write_slice = (
-                    (slice(None), ) +
-                    tuple(self._domain_slice[d] for d in ncout.variables[varname].dimensions[1:]))
-                print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
-                ncout.variables[varname][write_slice] = self.output[varname].values
-        print('done writing chunk')
+            with Dataset(filename, mode="r+") as ncout:
+                for varname in self.params['out_vars']:
+                    write_slice = (
+                        (slice(None), ) +
+                        tuple(self._domain_slice[d] for d in ncout.variables[varname].dimensions[1:]))
+                    print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
+                    ncout.variables[varname][write_slice] = self.output[varname].values
+         print('done writing chunk')
 
     def run_slice(self):
         """
@@ -735,13 +743,12 @@ def wrap_run_slice(params, write_lock, domain_slice=NO_SLICE):
     print('running chunk %s' % domain_slice, flush=True)
     ms = MetSim(params, domain_slice=domain_slice)
     with HDF5_LOCK:
-        print("load_inputs")
-        ms.load_inputs()
+    print("load_inputs")
+    ms.load_inputs(lock=HDF5_LOCK)
     print('run_slice')
     ms.run_slice()
-    with write_lock:
-        print('write_chunk')
-        ms.write_chunk()
+    print('write_chunk')
+    ms.write_chunk(lock=write_lock)
 
 
 def chunk_domain(chunks, dims):
@@ -761,3 +768,23 @@ def chunk_domain(chunks, dims):
               for dim in chunks.keys()]
 
     return [dict(zip(chunks.keys(), p)) for p in itertools.product(*slices)]
+
+
+class DummyLock(object):
+    """DummyLock provides the lock API without any actual locking."""
+    # This will be available in xarray in the next major version
+    def acquire(self, *args):
+        pass
+
+    def release(self, *args):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass
+
+    @property
+    def locked(self):
+        return False
