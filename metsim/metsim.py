@@ -139,9 +139,10 @@ class MetSim(object):
         "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid'],
+        "out_freq": 'AS',
         "chunks": NO_SLICE,
         "scheduler": 'single-threaded',
-        "num_workers": 1
+        "num_workers": 1,
     }
 
     def __init__(self, params: dict, domain_slice=NO_SLICE):
@@ -179,6 +180,8 @@ class MetSim(object):
         logger.setLevel(logging.DEBUG)
         self._normalize_times()
         self._validate_setup()
+
+        self._times = self._get_output_times(freq=self.params['out_freq'])
 
     def _normalize_times(self):
         # handle when start/stop times are not specified
@@ -285,16 +288,15 @@ class MetSim(object):
         return chunk_domain(self.params['chunks'], self.domain[['mask']].dims)
 
     def run(self):
-        # TODO: we should be able to pickle the Metsim and not send the params
-        # dict in this way. This feels a bit hokey.
         print('running chunks')
-        times = self._get_output_times()
-        filename = self._get_output_filename(times)
-        self.setup_netcdf_output(filename, times)
+        write_locks = {}
+        for times in self._times:
+            filename = self._get_output_filename(times)
+            self.setup_netcdf_output(filename, times)
+            write_locks[filename] = _get_scheduler_lock(
+                self.params['scheduler'], path_or_file=filename)
 
-        write_lock = _get_scheduler_lock(self.params['scheduler'], path_or_file=filename)
-
-        delayed_objs = [wrap_run_slice(self.params, write_lock, domain_slice=dslice)
+        delayed_objs = [wrap_run_slice(self.params, write_locks, domain_slice=dslice)
                         for dslice in self.slices]
         print('debug', 'processing %d chunks' % len(delayed_objs))
         dask.compute(delayed_objs, num_workers=self.params['num_workers'])
@@ -317,12 +319,21 @@ class MetSim(object):
             # dims
             dim_sizes = (None, ) + self.domain['mask'].shape
             var_dims = ('time', ) + self.domain['mask'].dims
+            chunksizes = [len(times)]
+            for d, s in zip(var_dims[1:], dim_sizes[1:]):
+                c = int(self.params['chunks'].get(d, s))
+                if c <= s:
+                    chunksizes.append(c)
+                else:
+                    chunksizes.append(s)
+            create_kwargs = {'chunksizes': chunksizes}
             for d, size in zip(var_dims, dim_sizes):
                 ncout.createDimension(d, size)
             # vars
             for varname in self.params['out_vars']:
                 ncout.createVariable(
-                    varname, self.params['out_precision'], var_dims)
+                    varname, self.params['out_precision'], var_dims,
+                    **create_kwargs)
 
             # add metadata and coordinate variables (time/lat/lon)
             time_var = ncout.createVariable('time', 'i4', ('time', ))
@@ -342,20 +353,20 @@ class MetSim(object):
                     setattr(ncout.variables[varname], key, val)
 
 
-    def write_chunk(self, lock=None):
-        '''write data from a single chunk'''
-        lock = lock if lock is not None else DummyLock()
-        with lock:
-            times = self._get_output_times()
+    def write_chunk(self, locks=None):
+        '''write data from a single chunk'''       
+        for times in self._times:
             filename = self._get_output_filename(times)
-
-            with Dataset(filename, mode="r+") as ncout:
-                for varname in self.params['out_vars']:
-                    write_slice = (
-                        (slice(None), ) +
-                        tuple(self._domain_slice[d] for d in ncout.variables[varname].dimensions[1:]))
-                    print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
-                    ncout.variables[varname][write_slice] = self.output[varname].values
+            lock = locks.get(filename, DummyLock())
+            time_slice = slice(times[0], times[-1])
+            with lock:
+                with Dataset(filename, mode="r+") as ncout:
+                    for varname in self.params['out_vars']:
+                        write_slice = (
+                            (slice(None), ) +
+                            tuple(self._domain_slice[d] for d in ncout.variables[varname].dimensions[1:]))
+                        print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
+                        ncout.variables[varname][write_slice] = self.output[varname].sel(time=time_slice).values
         print('done writing chunk')
 
     def run_slice(self):
@@ -374,7 +385,7 @@ class MetSim(object):
         for index, mask_val in np.ndenumerate(self.domain['mask'].values):
             if mask_val > 0:
                 locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
-                print(locs)            
+                # print(locs)            
             else:
                 continue
 
@@ -405,7 +416,7 @@ class MetSim(object):
         self.state['time'].values = date_range(
             state_start, result.index[-1], calendar=self.params['calendar'])
 
-    def _get_output_times(self):
+    def _get_output_times(self, freq=None):
         prototype = self.met_data
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
 
@@ -420,6 +431,13 @@ class MetSim(object):
         times = date_range(start, stop + delta,
                            freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
+        
+        if freq is None:
+            return [times]
+        else:
+            dummy = pd.Series(np.arange(len(times)), index=times)
+            grouper = pd.Grouper(freq=freq)
+            return [t.index for k, t in dummy.groupby(grouper)]
         return times
 
     def _get_output_filename(self, times):
@@ -432,7 +450,7 @@ class MetSim(object):
     def setup_output(self):
 
         # output times
-        times = self._get_output_times()
+        times = self._get_output_times(freq=None)[0]
 
         # Number of timesteps
         n_ts = len(times)
@@ -739,7 +757,7 @@ def wrap_run_cell(func: callable, params: dict,
 
 
 @dask.delayed()
-def wrap_run_slice(params, write_lock, domain_slice=NO_SLICE):
+def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
     print('running chunk %s' % domain_slice, flush=True)
     ms = MetSim(params, domain_slice=domain_slice)
     print("load_inputs")
@@ -747,7 +765,7 @@ def wrap_run_slice(params, write_lock, domain_slice=NO_SLICE):
     print('run_slice')
     ms.run_slice()
     print('write_chunk')
-    ms.write_chunk(lock=write_lock)
+    ms.write_chunk(locks=write_locks)
 
 
 def chunk_domain(chunks, dims):
