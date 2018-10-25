@@ -41,6 +41,7 @@ import pandas as pd
 import xarray as xr
 
 import dask
+from dask.diagnostics import ProgressBar
 from netCDF4 import Dataset
 from cftime import date2num
 from xarray.backends.common import _get_scheduler_lock, HDF5_LOCK
@@ -111,7 +112,6 @@ class MetSim(object):
     """
 
     # Class variables
-    met_data = None
     methods = {'mtclim': mtclim}
     params = {
         "method": '',
@@ -141,7 +141,7 @@ class MetSim(object):
                      'vapor_pressure', 'rel_humid'],
         "out_freq": 'AS',
         "chunks": NO_SLICE,
-        "scheduler": 'single-threaded',
+        "scheduler": 'distributed',
         "num_workers": 1,
     }
 
@@ -154,6 +154,8 @@ class MetSim(object):
         self._state = None
         self._client = None
         self._domain_slice = domain_slice
+        self.progress_bar = ProgressBar()
+        self.progress_bar.register()
 
         # Record parameters
         self.params.update(params)
@@ -161,21 +163,20 @@ class MetSim(object):
         # set global dask scheduler
         if domain_slice is NO_SLICE:
             if self.params['scheduler'] in DASK_CORE_SCHEDULERS:
-                print('setting the dask scheduler to %s' %
-                      self.params['scheduler'])
                 dask.config.set(scheduler=self.params['scheduler'])
             else:
-                from distributed import Client
+                from distributed import Client, progress
                 if 'distributed' == self.params['scheduler']:
                     self._client = Client(
-                        n_workers=self.params['num_workers'], threads_per_worker=1)
+                        n_workers=self.params['num_workers'],
+                        threads_per_worker=1)
                 elif os.path.isfile(self.params['scheduler']):
-                    self._client = Client(scheduler_file=self.params['scheduler'])
+                    self._client = Client(
+                        scheduler_file=self.params['scheduler'])
                 else:
                     self._client = Client(self.params['scheduler'])
-                self.params['scheduler'] = 'distributed'
         else:
-            dask.config.set(scheduler='single-threaded')
+            dask.config.set(scheduler=self.params['scheduler'])
 
         logger.setLevel(logging.DEBUG)
         self._normalize_times()
@@ -206,9 +207,6 @@ class MetSim(object):
             else:
                 self.params[p] = pd.to_datetime(self.params[p])
 
-        print('start {}'.format(self.params['start']))
-        print('stop {}'.format(self.params['stop']))
-
     def _validate_force_times(self, force_times):
 
         for p, i in [('start', 0), ('stop', -1)]:
@@ -230,18 +228,6 @@ class MetSim(object):
                                       pd.Timedelta("90 days"))
         self.params['state_stop'] = (self.params['start'] -
                                      pd.Timedelta("1 days"))
-        print('start {}'.format(self.params['start']))
-        print('stop {}'.format(self.params['stop']))
-
-        print('force start {}'.format(pd.Timestamp(
-            force_times.values[0]).to_pydatetime()))
-        print('force stop {}'.format(pd.Timestamp(
-            force_times.values[-1]).to_pydatetime()))
-
-        print('state start {}'.format(self.params['state_start']))
-        print('state stop {}'.format(self.params['state_stop']))
-
-        print('calendar {}'.format(self.params['calendar']))
         if self.params['utc_offset']:
             attrs['time'] = {'units': DEFAULT_TIME_UNITS,
                              'long_name': 'UTC time',
@@ -254,7 +240,6 @@ class MetSim(object):
     @property
     def domain(self):
         if self._domain is None:
-            print("read_domain")
             self._domain = io.read_domain(self.params).isel(
                 **self._domain_slice)
         return self._domain
@@ -262,22 +247,20 @@ class MetSim(object):
     @property
     def met_data(self):
         if self._met_data is None:
-            print("read_met_data")
             temp = io.read_met_data(self.params, self.domain)
             # FIXME (iterdims) temp = temp.sel(**{d: domain[d] for d in iter_dims})
-            self._met_data= temp.isel(**self._domain_slice)
+            self._met_data = temp.isel(**self._domain_slice)
             self._met_data['elev'] = self.domain['elev']
             self._met_data['lat'] = self.domain['lat']
+            self._met_data['lon'] = self.domain['lon']
             self._validate_force_times(force_times=self._met_data['time'])
         return self._met_data
 
     @property
     def state(self):
         if self._state is None:
-            print("read_state")
             self._state = io.read_state(self.params, self.domain).isel(
                 **self._domain_slice)
-            print("_aggregate_state")
             self._aggregate_state()
         return self._state
 
@@ -288,7 +271,6 @@ class MetSim(object):
         return chunk_domain(self.params['chunks'], self.domain[['mask']].dims)
 
     def run(self):
-        print('running chunks')
         write_locks = {}
         for times in self._times:
             filename = self._get_output_filename(times)
@@ -298,7 +280,7 @@ class MetSim(object):
 
         delayed_objs = [wrap_run_slice(self.params, write_locks, domain_slice=dslice)
                         for dslice in self.slices]
-        print('debug', 'processing %d chunks' % len(delayed_objs))
+        self.progress_bar.register()
         dask.compute(delayed_objs, num_workers=self.params['num_workers'])
 
     def load_inputs(self, close=True, lock=None):
@@ -314,7 +296,6 @@ class MetSim(object):
 
     def setup_netcdf_output(self, filename, times):
         '''setup a single netcdf file'''
-        print('debug', 'creating %s' % filename)
         with Dataset(filename, mode="w") as ncout:
             # dims
             dim_sizes = (None, ) + self.domain['mask'].shape
@@ -338,10 +319,10 @@ class MetSim(object):
             # add metadata and coordinate variables (time/lat/lon)
             time_var = ncout.createVariable('time', 'i4', ('time', ))
             time_var.calendar = self.params['calendar']
-            time_var[:] = date2num(times.to_pydatetime(),
-                                units=attrs['time'].get('units',
-                                                        DEFAULT_TIME_UNITS),
-                                calendar=time_var.calendar)
+            time_var[:] = date2num(
+                times.to_pydatetime(),
+                units=attrs['time'].get('units', DEFAULT_TIME_UNITS),
+                calendar=time_var.calendar)
 
             # set global attrs
             for key, val in attrs['_global'].items():
@@ -352,9 +333,8 @@ class MetSim(object):
                 for key, val in attrs.get(varname, {}).items():
                     setattr(ncout.variables[varname], key, val)
 
-
     def write_chunk(self, locks=None):
-        '''write data from a single chunk'''       
+        '''write data from a single chunk'''
         for times in self._times:
             filename = self._get_output_filename(times)
             lock = locks.get(filename, DummyLock())
@@ -362,12 +342,11 @@ class MetSim(object):
             with lock:
                 with Dataset(filename, mode="r+") as ncout:
                     for varname in self.params['out_vars']:
-                        write_slice = (
-                            (slice(None), ) +
-                            tuple(self._domain_slice[d] for d in ncout.variables[varname].dimensions[1:]))
-                        print('writing chunk for %s-%s-%s' % (filename, varname, write_slice))
-                        ncout.variables[varname][write_slice] = self.output[varname].sel(time=time_slice).values
-        print('done writing chunk')
+                        dims = ncout.variables[varname].dimensions[1:]
+                        write_slice = ((slice(None), ) + tuple(
+                            self._domain_slice[d] for d in dims))
+                        ncout.variables[varname][write_slice] = (
+                            self.output[varname].sel(time=time_slice).values)
 
     def run_slice(self):
         """
@@ -385,7 +364,6 @@ class MetSim(object):
         for index, mask_val in np.ndenumerate(self.domain['mask'].values):
             if mask_val > 0:
                 locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
-                # print(locs)            
             else:
                 continue
 
@@ -431,7 +409,7 @@ class MetSim(object):
         times = date_range(start, stop + delta,
                            freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
-        
+
         if freq is None:
             return [times]
         else:
@@ -444,7 +422,6 @@ class MetSim(object):
         suffix = self.get_nc_output_suffix(times)
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(os.path.abspath(self.params['out_dir']), fname)
-        print(output_filename)
         return output_filename
 
     def setup_output(self):
@@ -581,80 +558,11 @@ class MetSim(object):
         if len(errs) > 1:
             raise Exception("\n  ".join(errs))
 
-    # def write(self, suffix=""):
-    #     """
-    #     Dispatch to the right function based on the configuration given
-    #     """
-    #     dispatch = {
-    #         'netcdf': self.write_netcdf,
-    #         'ascii': self.write_ascii,
-    #         'data': self.write_data
-    #     }
-    #     dispatch[self.params.get('out_fmt', 'netcdf').lower()](suffix)
-
     def get_nc_output_suffix(self, times):
         s, e = times[[0, -1]]
         template = '{:04d}{:02d}{:02d}-{:04d}{:02d}{:02d}'
         return template.format(s.year, s.month, s.day,
                                e.year, e.month, e.day,)
-
-    # def write_netcdf(self, suffix: str):
-    #     """Write out as NetCDF to the output file"""
-    #     print("Writing netcdf...")
-    #     for dirname in [self.params['out_dir'],
-    #                     os.path.dirname(self.params['out_state'])]:
-    #         os.makedirs(dirname, exist_ok=True)
-
-    #     # all state variables are written as doubles
-    #     state_encoding = {}
-    #     for v in self.state.variables:
-    #         state_encoding[v] = {'dtype': 'f8'}
-    #     state_encoding['time']['calendar'] = self.params['calendar']
-    #     # write state file
-    #     self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
-
-    #     # write output file
-    #     output_filename = self._get_output_filename(
-    #         self.output.indexes['time'])
-    #     out_encoding = {'time': {'dtype': 'f8',
-    #                              'calendar': self.params['calendar']}}
-    #     dtype = self.params['out_precision']
-    #     for v in self.output.data_vars:
-    #         out_encoding[v] = {'dtype': dtype,
-    #                            '_FillValue': cnst.FILL_VALUES[dtype]}
-    #     self.output.to_netcdf(output_filename,
-    #                           unlimited_dims=['time'],
-    #                           encoding=out_encoding)
-
-    # def write_ascii(self, suffix):
-    #     """Write out as ASCII to the output file"""
-    #     print("Writing ascii...")
-    #     for dirname in [self.params['out_dir'],
-    #                     os.path.dirname(self.params['out_state'])]:
-    #         os.makedirs(dirname, exist_ok=True)
-    #     # all state variables are written as doubles
-    #     state_encoding = {'time': {'dtype': 'f8'}}
-    #     for v in self.state.variables:
-    #         state_encoding[v] = {'dtype': 'f8'}
-    #     # write state file
-    #     self.state.to_netcdf(self.params['out_state'], encoding=state_encoding)
-    #     # Need to create new generator to loop over
-    #     iter_list = [self.met_data[dim].values
-    #                  for dim in self.params['iter_dims']]
-    #     site_generator = itertools.product(*iter_list)
-
-    #     for site in site_generator:
-    #         locs = {k: v for k, v in zip(self.params['iter_dims'], site)}
-    #         if not self.domain['mask'].sel(**locs).values > 0:
-    #             continue
-    #         fname = ("{}_" * (len(iter_list) + 1) + "{}.csv").format(
-    #             self.params['out_prefix'], *site, suffix)
-    #         fpath = os.path.join(self.params['out_dir'], fname)
-    #         self.output.sel(**locs)[self.params[
-    #             'out_vars']].to_dataframe().to_csv(fpath)
-
-    # def write_data(self, suffix):
-    #     pass
 
 
 def wrap_run_cell(func: callable, params: dict,
@@ -687,6 +595,7 @@ def wrap_run_cell(func: callable, params: dict,
     df_base: pd.DataFrame
         A dataframe with the state data in it
     """
+    print(ds)
     lat = ds['lat'].values.flatten()[0]
     lon = ds['lon'].values.flatten()[0]
     elev = ds['elev'].values.flatten()[0]
@@ -758,13 +667,9 @@ def wrap_run_cell(func: callable, params: dict,
 
 @dask.delayed()
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
-    print('running chunk %s' % domain_slice, flush=True)
     ms = MetSim(params, domain_slice=domain_slice)
-    print("load_inputs")
     ms.load_inputs(lock=HDF5_LOCK)
-    print('run_slice')
     ms.run_slice()
-    print('write_chunk')
     ms.write_chunk(locks=write_locks)
 
 

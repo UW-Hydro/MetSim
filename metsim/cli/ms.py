@@ -82,8 +82,6 @@ def init(opts):
     def to_list(s):
         return json.loads(s.replace("'", '"'))
 
-    print(opts.verbose)
-
     conf.update({"calendar": conf.get('calendar', 'standard'),
                  "scheduler": opts.scheduler,
                  "num_workers": opts.num_workers,
