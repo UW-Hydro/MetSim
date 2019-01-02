@@ -32,6 +32,7 @@ import itertools
 import json
 import logging
 import os
+import sys
 import time as tm
 from collections import Iterable, OrderedDict
 from getpass import getuser
@@ -52,9 +53,6 @@ from metsim.datetime import date_range
 from metsim.disaggregate import disaggregate
 from metsim.methods import mtclim
 from metsim.physics import solar_geom
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 NO_SLICE = {}
 DASK_CORE_SCHEDULERS = ['multiprocessing', 'threading', 'synchronous',
@@ -118,13 +116,11 @@ class MetSim(object):
         "domain": '',
         "state": '',
         "out_dir": '',
-        "out_state": '',
         "out_prefix": 'forcing',
-        "start": '',
-        "stop": '',
+        "start": 'forcing',
+        "stop": 'forcing',
         "time_step": -1,
         "calendar": 'standard',
-        "out_fmt": '',
         "out_precision": 'f4',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
@@ -136,7 +132,6 @@ class MetSim(object):
         "rain_scalar": 0.75,
         "tday_coef": 0.45,
         "lapse_rate": 0.0065,
-        "iter_dims": ['lat', 'lon'],
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid'],
         "out_freq": 'AS',
@@ -155,10 +150,15 @@ class MetSim(object):
         self._client = None
         self._domain_slice = domain_slice
         self.progress_bar = ProgressBar()
-        self.progress_bar.register()
-
-        # Record parameters
         self.params.update(params)
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(self.params['verbose'])
+
+        formatter = logging.Formatter(' - '.join(
+            ['%asctime)s', '%(name)s', '%(levelname)s', '%(message)s']))
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setFormatter(formatter)
+        ch.setLevel(self.params['verbose'])
 
         # set global dask scheduler
         if domain_slice is NO_SLICE:
@@ -170,6 +170,8 @@ class MetSim(object):
                     self._client = Client(
                         n_workers=self.params['num_workers'],
                         threads_per_worker=1)
+                    if self.params['verbose'] == logging.DEBUG:
+                        self.progress_bar = progress
                 elif os.path.isfile(self.params['scheduler']):
                     self._client = Client(
                         scheduler_file=self.params['scheduler'])
@@ -178,42 +180,31 @@ class MetSim(object):
         else:
             dask.config.set(scheduler=self.params['scheduler'])
 
-        logger.setLevel(logging.DEBUG)
-        self._normalize_times()
-        self._validate_setup()
-
+        # Set up logging
+        # If in verbose mode set up the progress bar
+        if self.params['verbose'] == logging.DEBUG:
+            if 'distributed' != self.params['scheduler']:
+                self.progress_bar.register()
+                self.progress_bar = lambda x: x
+        else:
+            # If not in verbose mode, create a dummy function
+            self.progress_bar = lambda x: x
+        # Create time vector(s)
         self._times = self._get_output_times(freq=self.params['out_freq'])
-
-    def _normalize_times(self):
-        # handle when start/stop times are not specified
-        for p in ['start', 'stop']:
-            # TODO: make sure these options get documented
-            if self.params[p] in [None, 'forcing', '']:
-                self.params[p] = None
-            elif isinstance(self.params[p], str):
-                if ':' in self.params[p]:
-                    # start from config file
-                    date, hour = self.params[p].split(':')
-                    year, month, day = date.split('/')
-                    self.params[p] = pd.datetime(int(year), int(month),
-                                                 int(day), int(hour))
-                elif '/' in self.params[p]:
-                    # end from config file
-                    year, month, day = self.params[p].split('/')
-                    self.params[p] = pd.datetime(int(year), int(month),
-                                                 int(day))
-                else:
-                    self.params[p] = pd.to_datetime(self.params[p])
-            else:
-                self.params[p] = pd.to_datetime(self.params[p])
 
     def _validate_force_times(self, force_times):
 
         for p, i in [('start', 0), ('stop', -1)]:
             # infer times from force_times
-            if self.params[p] is None:
-                self.params[p] = pd.Timestamp(
-                    force_times.values[i]).to_pydatetime()
+            if isinstance(self.params[p], str):
+                if self.params[p] == 'forcing':
+                    self.params[p] = pd.Timestamp(
+                        force_times.values[i]).to_pydatetime()
+                elif '/' in self.params[p]:
+                    year, month, day = map(int, self.params[p].split('/'))
+                    self.params[p] = pd.datetime(year, month, day)
+                else:
+                    self.params[p] = pd.to_datetime(self.params[p])
 
         # update calendar from input data (fall back to params version)
         self.params['calendar'] = self.met_data['time'].encoding.get(
@@ -248,9 +239,8 @@ class MetSim(object):
     def met_data(self):
         if self._met_data is None:
             temp = io.read_met_data(self.params, self.domain)
-            # FIXME (iterdims) temp = temp.sel(**{d: domain[d] for d in iter_dims})
             self._met_data = temp.isel(**self._domain_slice)
-            self._met_data['elev'] = self.domain['elev']
+            self._met_data['elev'] =self.domain['elev']
             self._met_data['lat'] = self.domain['lat']
             self._met_data['lon'] = self.domain['lon']
             self._validate_force_times(force_times=self._met_data['time'])
@@ -270,18 +260,26 @@ class MetSim(object):
             return [{d: slice(None) for d in self.domain[['mask']].dims}]
         return chunk_domain(self.params['chunks'], self.domain[['mask']].dims)
 
+    def open_output(self):
+        filenames = [self._get_output_filename(times) for times in self._times]
+        return xr.open_mfdataset(filenames)
+
     def run(self):
+        self._validate_setup()
         write_locks = {}
         for times in self._times:
             filename = self._get_output_filename(times)
             self.setup_netcdf_output(filename, times)
             write_locks[filename] = _get_scheduler_lock(
                 self.params['scheduler'], path_or_file=filename)
-
-        delayed_objs = [wrap_run_slice(self.params, write_locks, domain_slice=dslice)
+        self.logger.info('Starting {} chunks...'.format(len(self.slices)))
+        delayed_objs = [wrap_run_slice(self.params, write_locks, dslice)
                         for dslice in self.slices]
-        self.progress_bar.register()
-        dask.compute(delayed_objs, num_workers=self.params['num_workers'])
+
+        self.progress_bar(
+            dask.persist(delayed_objs, num_workers=self.params['num_workers']))
+        dask.compute(delayed_objs)
+        self.logger.info('Cleaning up...')
 
     def load_inputs(self, close=True, lock=None):
         lock = lock if lock is not None else DummyLock()
@@ -335,6 +333,8 @@ class MetSim(object):
 
     def write_chunk(self, locks=None):
         '''write data from a single chunk'''
+        if not len(self.params['out_vars']):
+            return
         for times in self._times:
             filename = self._get_output_filename(times)
             lock = locks.get(filename, DummyLock())
@@ -355,11 +355,8 @@ class MetSim(object):
         self._validate_setup()
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
         self.method = MetSim.methods[self.params['method']]
-
         self.setup_output()
-
         times = self.met_data['time']
-
         params = self.params.copy()
         for index, mask_val in np.ndenumerate(self.domain['mask'].values):
             if mask_val > 0:
@@ -395,6 +392,21 @@ class MetSim(object):
             state_start, result.index[-1], calendar=self.params['calendar'])
 
     def _get_output_times(self, freq=None):
+        """
+        Generate chunked time vectors
+
+        Parameters
+        ----------
+        freq:
+            Output frequency. Given as a Pandas timegrouper string.
+            If not given, the entire timeseries will be used.
+
+        Returns
+        -------
+        times:
+            A list of timeseries which represent each of times that
+            output files will be created for.
+        """
         prototype = self.met_data
         self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
 
@@ -421,7 +433,8 @@ class MetSim(object):
     def _get_output_filename(self, times):
         suffix = self.get_nc_output_suffix(times)
         fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
-        output_filename = os.path.join(os.path.abspath(self.params['out_dir']), fname)
+        output_filename = os.path.join(
+            os.path.abspath(self.params['out_dir']), fname)
         return output_filename
 
     def setup_output(self):
@@ -505,8 +518,7 @@ class MetSim(object):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
-        non_empty = ['method', 'out_dir', 'out_state', 'start',
-                     'stop', 'time_step', 'out_fmt',
+        non_empty = ['method', 'out_dir', 'time_step',
                      'forcing_fmt', 'domain_fmt', 'state_fmt']
         for each in non_empty:
             if self.params.get(each, None) is None or self.params[each] == '':
@@ -595,7 +607,6 @@ def wrap_run_cell(func: callable, params: dict,
     df_base: pd.DataFrame
         A dataframe with the state data in it
     """
-    print(ds)
     lat = ds['lat'].values.flatten()[0]
     lon = ds['lon'].values.flatten()[0]
     elev = ds['elev'].values.flatten()[0]
@@ -665,7 +676,7 @@ def wrap_run_cell(func: callable, params: dict,
     return df_complete, df_base
 
 
-@dask.delayed()
+#@dask.delayed()
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
     ms = MetSim(params, domain_slice=domain_slice)
     ms.load_inputs(lock=HDF5_LOCK)

@@ -43,7 +43,7 @@ def parse(args):
                         help='Input configuration file')
     parser.add_argument('-n', '--num_workers', default=1, type=int,
                         help='Parallel mode: number of processes to use')
-    parser.add_argument('-s', '--scheduler', default='threading', type=str,
+    parser.add_argument('-s', '--scheduler', default='distributed', type=str,
                         help='Dask scheduler to use')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Increase the verbosity of MetSim')
