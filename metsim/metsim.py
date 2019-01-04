@@ -333,7 +333,7 @@ class MetSim(object):
 
     def write_chunk(self, locks=None):
         '''write data from a single chunk'''
-        if not len(self.params['out_vars']):
+        if not self.params['out_vars']:
             return
         for times in self._times:
             filename = self._get_output_filename(times)
@@ -676,7 +676,7 @@ def wrap_run_cell(func: callable, params: dict,
     return df_complete, df_base
 
 
-#@dask.delayed()
+@dask.delayed()
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
     ms = MetSim(params, domain_slice=domain_slice)
     ms.load_inputs(lock=HDF5_LOCK)
