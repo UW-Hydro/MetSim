@@ -49,9 +49,9 @@ component of MetSim can be disaggregated down to sub-daily values at
 intervals specified in minutes (provided they divide evenly into 24
 hours).  The operation of these algorithms is also described in [1]_.
 
-For the "triangle" method of precipitation disaggregation, doumentation
-can be found `here <PtriangleMethod.pdf>`_. This will eventually be superceded
-by a journal article that is currently in review [7]_.
+For the "triangle" and "mix" methods of precipitation disaggregation,
+doumentation can be found `here <PtriangleMethod.pdf>`_. This will eventually
+be superceded by a journal article that is currently in review [7]_.
 
 This documentation is a work in progress.
 If you don't find what you're looking for here, check out MetSim's Github page.
@@ -134,9 +134,10 @@ References
        temperature, humidity, and precipitation. Agricultural and Forest
        Meteorology, 93:211-228.
 
-.. [7] Bohn, T. J., K. M. Whitney, G. Mascaro, and E. R. Vivoni, 2018. A simple
-       approach for approximating the diurnal cycle of precipitation for large-
-       scale hydrological simulations. Journal of Hydrometeorology (submitted).
+.. [7] Bohn, T. J., K. M. Whitney, G. Mascaro, and E. R. Vivoni, 2019. A
+       deterministic approach for approximating the diurnal cycle of 
+       precipitation for large-scale hydrological simulations. Journal of
+       Hydrometeorology (accepted). doi: 10.1175/JHM-D-18-0203.1.
 
 Sitemap
 =======

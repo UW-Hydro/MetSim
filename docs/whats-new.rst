@@ -8,6 +8,14 @@ What's New
 v.1.1.1
 -------
 
+Enhancements
+~~~~~~~~~~~~
+
+- Added option to disaggregate precipitation via a triangular hyetograph.
+  (:issue:`42`).
+  By `Kristen Whitney <https://github.com/kwhitney727>` and `Theodore Bohn
+  <https://github.com/tbohn>`
+
 Bug fixes
 ~~~~~~~~~
 - Fixed a bug where if `iter_dims` is not `[lat, lon]` the selected `lat` value
