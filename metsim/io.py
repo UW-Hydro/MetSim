@@ -140,6 +140,9 @@ def read_netcdf(data_handle, domain=None,
     """Read in a NetCDF file"""
     ds = xr.open_dataset(data_handle)
 
+    if domain is not None:
+        ds = ds.sel(**domain.coords)
+
     if 'time' in ds.coords:
         ds['time'] = (ds.indexes['time'] -
                       pd.Timedelta('11H59M59S')).round('D')

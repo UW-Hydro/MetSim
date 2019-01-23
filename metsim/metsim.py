@@ -62,7 +62,7 @@ references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm fo
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
 Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen, and D. P. Lettenmaier, 2013a: Global evaluation of MT-CLIM and related algorithms for forcing of ecological and hydrological models, Agr. Forest. Meteorol., 176, 38-49, doi:10.1016/j.agrformet.2013.03.003.'''
 
-DEFAULT_TIME_UNITS = 'hours since 0001-01-01 00:00:00.0'
+DEFAULT_TIME_UNITS = 'hours since 2000-01-01 00:00:00.0'
 
 now = tm.ctime(tm.time())
 user = getuser()
@@ -134,7 +134,7 @@ class MetSim(object):
         "lapse_rate": 0.0065,
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
                      'vapor_pressure', 'rel_humid'],
-        "out_freq": 'AS',
+        "out_freq": None,
         "chunks": NO_SLICE,
         "scheduler": 'distributed',
         "num_workers": 1,
@@ -238,19 +238,20 @@ class MetSim(object):
     @property
     def met_data(self):
         if self._met_data is None:
-            temp = io.read_met_data(self.params, self.domain)
-            self._met_data = temp.isel(**self._domain_slice)
-            self._met_data['elev'] =self.domain['elev']
-            self._met_data['lat'] = self.domain['lat']
-            self._met_data['lon'] = self.domain['lon']
+            if self.domain is None:
+                self._domain = io.read_domain(self.params).isel(
+                    **self._domain_slice)
+            self._met_data = io.read_met_data(self.params, self._domain)
+            self._met_data['elev'] = self.domain['elev']
+            #self._met_data['lat'] = self.domain['lat']
+            #self._met_data['lon'] = self.domain['lon']
             self._validate_force_times(force_times=self._met_data['time'])
         return self._met_data
 
     @property
     def state(self):
         if self._state is None:
-            self._state = io.read_state(self.params, self.domain).isel(
-                **self._domain_slice)
+            self._state = io.read_state(self.params, self.domain)
             self._aggregate_state()
         return self._state
 
@@ -278,8 +279,14 @@ class MetSim(object):
 
         self.progress_bar(
             dask.persist(delayed_objs, num_workers=self.params['num_workers']))
-        dask.compute(delayed_objs)
         self.logger.info('Cleaning up...')
+        try:
+            self._client.cluster.close()
+            self._client.close()
+            if self.params['verbose'] == logging.DEBUG:
+                    print()
+        except Exception:
+            pass
 
     def load_inputs(self, close=True, lock=None):
         lock = lock if lock is not None else DummyLock()
@@ -427,7 +434,7 @@ class MetSim(object):
         else:
             dummy = pd.Series(np.arange(len(times)), index=times)
             grouper = pd.Grouper(freq=freq)
-            return [t.index for k, t in dummy.groupby(grouper)]
+            return [t.index for k, t in dummy.groupby(grouper)][:-1]
         return times
 
     def _get_output_filename(self, times):
@@ -680,6 +687,7 @@ def wrap_run_cell(func: callable, params: dict,
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
     ms = MetSim(params, domain_slice=domain_slice)
     ms.load_inputs(lock=HDF5_LOCK)
+    ms.params['out_freq'] = ''
     ms.run_slice()
     ms.write_chunk(locks=write_locks)
 
