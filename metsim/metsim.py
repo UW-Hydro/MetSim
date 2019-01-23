@@ -243,8 +243,8 @@ class MetSim(object):
                     **self._domain_slice)
             self._met_data = io.read_met_data(self.params, self._domain)
             self._met_data['elev'] = self.domain['elev']
-            #self._met_data['lat'] = self.domain['lat']
-            #self._met_data['lon'] = self.domain['lon']
+            self._met_data['lat'] = self.domain['lat']
+            self._met_data['lon'] = self.domain['lon']
             self._validate_force_times(force_times=self._met_data['time'])
         return self._met_data
 

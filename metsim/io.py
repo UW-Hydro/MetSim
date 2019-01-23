@@ -141,7 +141,7 @@ def read_netcdf(data_handle, domain=None,
     ds = xr.open_dataset(data_handle)
 
     if domain is not None:
-        ds = ds.sel(**domain.coords)
+        ds = ds.sel({k: domain[k] for k in list(domain.dims.keys())})
 
     if 'time' in ds.coords:
         ds['time'] = (ds.indexes['time'] -
