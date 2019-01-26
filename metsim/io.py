@@ -65,7 +65,7 @@ def read_state(params: dict, domain: xr.Dataset) -> xr.Dataset:
     }
 
     return read_funcs[params['state_fmt']](
-        params['state'], domain=domain, iter_dims=params['iter_dims'],
+        params['state'], domain=domain,
         start=params['state_start'], stop=params['state_stop'],
         calendar=params['calendar'],
         var_dict=params.get('state_vars', None))
@@ -78,7 +78,7 @@ def process_nc(params: dict, domain: xr.Dataset) -> xr.Dataset:
         "data": read_data
     }
     return read_funcs[params['forcing_fmt']](
-        params['forcing'], domain=domain, iter_dims=params['iter_dims'],
+        params['forcing'], domain=domain,
         start=params['start'], stop=params['stop'],
         calendar=params['calendar'], var_dict=params.get('forcing_vars', None))
 
@@ -89,11 +89,6 @@ def process_vic(params: dict, domain: xr.Dataset) -> xr.Dataset:
         "binary": read_binary,
         "ascii": read_ascii,
     }
-
-    if 'lon' not in params['iter_dims'] or 'lat' not in params['iter_dims']:
-        raise ValueError(
-            'Using VIC type input requires lat and lon to be'
-            ' specified via `iter_dims` in configuration.')
 
     # Creates the master dataset which will be used to parallelize
     dates = date_range(params['start'], params['stop'],
@@ -127,7 +122,7 @@ def process_vic(params: dict, domain: xr.Dataset) -> xr.Dataset:
     return met_data
 
 
-def read_ascii(data_handle, domain=None, iter_dims=['lat', 'lon'],
+def read_ascii(data_handle, domain=None,
                start=None, stop=None, calendar='standard',
                var_dict=None) -> xr.Dataset:
     """Read in an ascii forcing file"""
@@ -139,11 +134,14 @@ def read_ascii(data_handle, domain=None, iter_dims=['lat', 'lon'],
     return ds
 
 
-def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
+def read_netcdf(data_handle, domain=None,
                 start=None, stop=None, calendar='standard',
                 var_dict=None) -> xr.Dataset:
     """Read in a NetCDF file"""
     ds = xr.open_dataset(data_handle)
+
+    if domain is not None:
+        ds = ds.sel({k: domain[k] for k in list(domain.dims.keys())})
 
     if 'time' in ds.coords:
         ds['time'] = (ds.indexes['time'] -
@@ -162,7 +160,7 @@ def read_netcdf(data_handle, domain=None, iter_dims=['lat', 'lon'],
     return ds
 
 
-def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
+def read_data(data_handle, domain=None,
               start=None, stop=None, calendar='standard',
               var_dict=None) -> xr.Dataset:
     """Read data directly from an xarray dataset"""
@@ -177,12 +175,10 @@ def read_data(data_handle, domain=None, iter_dims=['lat', 'lon'],
         dates = data_handle.indexes['time']
         data_handle['day_of_year'] = xr.Variable(('time', ), dates.dayofyear)
 
-    if domain is not None:
-        data_handle = data_handle.sel(**{d: domain[d] for d in iter_dims})
     return data_handle
 
 
-def read_binary(data_handle, domain=None, iter_dims=['lat', 'lon'],
+def read_binary(data_handle, domain=None,
                 start=None, stop=None, calendar='standard',
                 var_dict=None) -> xr.Dataset:
     """Reads a binary forcing file (VIC 4 format)"""
