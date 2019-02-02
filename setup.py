@@ -13,7 +13,7 @@ setup(name='metsim',
       packages=['metsim', 'metsim.methods', 'metsim.cli'],
       entry_points={
           'console_scripts': ['ms = metsim.cli.ms:main']},
-      install_requires=['xarray', 'numba', 'numpy', 'pandas',
+      install_requires=['xarray==0.10.9', 'numba', 'numpy', 'pandas',
                         'dask', 'distributed', 'toolz', 'netCDF4', 'scipy'],
       keywords=['meteorology', 'disaggregation', 'hydrology',
                 'climate', 'mtclim'],
