@@ -3,7 +3,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.5
-  - xarray=0.9.1
+  - xarray=0.10.9
   - pandas=0.19.1
   - netcdf4=1.2.5
   - numba
