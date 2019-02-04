@@ -61,7 +61,7 @@ contents are:
 This is a minimal configuration file for MetSim, and contains 3 sections.  The
 first section, ``[MetSim]`` describes some basic settings such as the locations
 of data and parameters used in calculations.  For a complete description of the
-input format see :ref:`configuration`.  The key things to note in this section
+input format see the `configuration <configuration.rst>`_ page.  The key things to note in this section
 are the options specified under the ``# Input specification`` and ``# Output
 specification`` comment headers.  The ``forcing`` and ``domain`` options refer
 to the two types of required input, and the ``in_format`` and ``out_format``
@@ -76,7 +76,7 @@ variables shown here are the minimum required set to run the
 forcing generation. The names given on the right hand side are
 also important to name correctly, as they are referenced internally.
 If you are unsure what variable names are used internally see the
-:ref:`configuration` page for a full breakdown.
+`configuration <configuration.rst>`_ page for a full breakdown.
 
 To run this example from the command line, once you have installed
 MetSim, use the following command:
