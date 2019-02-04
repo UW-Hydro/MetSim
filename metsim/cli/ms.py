@@ -41,13 +41,12 @@ def parse(args):
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=lambda x: _is_valid_file(parser, x),
                         help='Input configuration file')
-    parser.add_argument('-n', '--n-processes', default=1, type=int,
+    parser.add_argument('-n', '--num_workers', default=1, type=int,
                         help='Parallel mode: number of processes to use')
+    parser.add_argument('-s', '--scheduler', default='distributed', type=str,
+                        help='Dask scheduler to use')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Increase the verbosity of MetSim')
-    parser.add_argument('-tg', '--time_grouper', nargs='?',
-                        const='1AS', default=None, type=str,
-                        help='Pandas TimeGrouper string (e.g. `1AS`)')
     return parser.parse_args()
 
 
@@ -60,7 +59,8 @@ def init(opts):
     conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
     conf['domain_vars'] = OrderedDict(config['domain_vars'])
     conf['state_vars'] = OrderedDict(config['state_vars'])
-    out_dir = conf['out_dir']
+    conf['chunks'] = OrderedDict(config['chunks'])
+    out_dir = os.path.abspath(conf['out_dir'])
     out_state = conf.get('out_state', None)
     if out_state is None:
         out_state = os.path.join(out_dir, 'state.nc')
@@ -77,23 +77,24 @@ def init(opts):
     # We assume there is only one domain file and one state file
     domain_file = conf['domain']
     state_file = conf['state']
+    chunks = conf['chunks']
 
     def to_list(s):
         return json.loads(s.replace("'", '"'))
 
     conf.update({"calendar": conf.get('calendar', 'standard'),
-                 "nprocs": opts.n_processes,
+                 "scheduler": opts.scheduler,
+                 "num_workers": opts.num_workers,
                  "method": method,
                  "out_dir": out_dir,
                  "out_state": out_state,
                  "state": state_file,
                  "domain": domain_file,
                  "forcing": forcing_files,
-                 "verbose": opts.verbose * logging.INFO})
+                 "chunks": chunks,
+                 "verbose": logging.DEBUG if opts.verbose else logging.INFO})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
-    if opts.time_grouper is not None:
-        conf['time_grouper'] = opts.time_grouper
     conf = {k: v for k, v in conf.items() if v != []}
     return conf
 
@@ -103,10 +104,7 @@ def main():
     from metsim.metsim import MetSim
     setup = init(parse(sys.argv[1:]))
     ms = MetSim(setup)
-    if ms.params['nprocs'] > 1:
-        ms.launch()
-    else:
-        ms.run()
+    ms.run()
 
 
 if __name__ == '__main__':

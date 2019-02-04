@@ -71,12 +71,12 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     ts = int(params['time_step'])
     df_disagg['shortwave'] = shortwave(df_daily['shortwave'].values,
                                        df_daily['daylength'].values,
-                                       df_daily.index.dayofyear.values,
+                                       df_daily.index.dayofyear,
                                        solar_geom['tiny_rad_fract'],
                                        params)
 
     t_Tmin, t_Tmax = set_min_max_hour(solar_geom['tiny_rad_fract'],
-                                      df_daily.index.dayofyear.values - 1,
+                                      df_daily.index.dayofyear - 1,
                                       n_days, ts, params)
 
     df_disagg['temp'] = temp(
@@ -162,8 +162,8 @@ def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
 
     # time of maximum and minimum temperature calculated thusly
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
-               rise_times) + ts
-    t_t_min = rise_times
+               rise_times)
+    t_t_min = rise_times -ts
     return t_t_min, t_t_max
 
 

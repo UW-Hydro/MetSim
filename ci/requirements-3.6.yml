@@ -3,7 +3,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.6
-  - xarray
+  - xarray=0.10.9
   - pandas
   - netcdf4
   - bottleneck
