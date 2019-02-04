@@ -13,8 +13,17 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import metsim.constants as const
+import metsim.cli.ms as cli
 from metsim.metsim import MetSim
+
+
+class DummyOpts:
+    def __init__(self, config):
+        self.config = config
+        self.scheduler = 'threading'
+        self.verbose = False
+        self.num_workers = 1
+
 
 # Parameters to test over
 in_fmts = ['ascii', 'binary', 'netcdf']
@@ -265,5 +274,9 @@ def test_disaggregation_values():
 @pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc'])
 def test_examples(kind):
     filename = './examples/example_{kind}.conf'.format(kind=kind)
-    ret_code = subprocess.call(['ms', '-v', filename])
-    assert ret_code == 0
+    conf = cli.init(DummyOpts(filename))
+    out_dir = tempfile.mkdtemp('results')
+    conf['out_dir'] = out_dir
+    ms = MetSim(conf)
+    ms.run()
+    assert ms.open_output() is not None

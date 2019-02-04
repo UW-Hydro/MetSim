@@ -429,7 +429,7 @@ class MetSim(object):
                            freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
 
-        if freq is None:
+        if freq is None or freq == '':
             return [times]
         else:
             dummy = pd.Series(np.arange(len(times)), index=times)
