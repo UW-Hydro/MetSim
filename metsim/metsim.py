@@ -284,7 +284,7 @@ class MetSim(object):
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
 
-                if self.params['prec_type'].upper() == 'TRIANGLE':
+                if self.params['prec_type'].upper() in ['TRIANGLE', 'MIX']:
                     # add variables for triangle precipitation disgregation
                     # method to parameters
                     self.params['dur'], self.params['t_pk'] = (
@@ -332,8 +332,7 @@ class MetSim(object):
                 if not self.domain['mask'].sel(**locs).values > 0:
                     continue
 
-                if self.params['prec_type'].upper() == 'TRIANGLE':
-                    print('prec type is triangle')
+                if self.params['prec_type'].upper() in ['TRIANGLE', 'MIX']:
                     # add variables for triangle precipitation disgregation
                     # method to parameters
                     self.params['dur'], self.params['t_pk'] = (

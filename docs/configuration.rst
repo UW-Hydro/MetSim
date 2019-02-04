@@ -118,13 +118,20 @@ simulation method is used, as well as whether disaggregation is used. Defaults
 to ``['temp', 'prec', 'shortwave', 'longwave', 'vapor_pressure', 'red_humid']``.
 
 ``prec_type :: str``: Type of precipitation disaggregation method to use. Can be
-one of the following: ``uniform`` or ``triangle``. Defaults to ``uniform``.
-Capitalization does not matter. Under ``uniform`` method, precipitation is
-disaggregated by dividing uniformly over all sub-daily timesteps. Under
-``triangle`` the "triangle" method is employed whereby daily precipitation is
-distributed assuming an isosceles triangle shape with peak and width determined
-from two domain variables, ``t_pk`` and ``dur``. For more information about the
-"triangle" method see :doc:`PtriangeMethod.pdf`.
+one of the following: ``uniform``, ``triangle``, or ``mix``. Defaults to
+``uniform``.  Capitalization does not matter. Under ``uniform`` method,
+precipitation is disaggregated by dividing uniformly over all sub-daily
+timesteps. Under ``triangle`` the "triangle" method is employed whereby daily
+precipitation is distributed assuming an isosceles triangle shape with peak and
+width determined from two domain variables, ``t_pk`` and ``dur``.  Under
+``mix``, the "uniform" method is used on days when ``t_min`` < 0 C, and
+"triangle" is used on all other days; this hybrid method retains the improved
+accuracy of "triangle" in terms of warm season runoff but avoids the biases
+in snow accumulation that the "triangle" method sometimes yields due to fixed
+event timing within the diurnal cycle of temperature. A domain file for the
+CONUS+Mexico domain, containing the ``dur`` and ``t_pk`` parameters is
+available at: `<https://zenodo.org/record/1402223#.XEI-mM2IZPY>`.  For more
+information about the "triangle" method see :doc:`PtriangleMethod.pdf`.
 
 For more information about input and output variables see the :ref:`data` page.
 
@@ -178,6 +185,6 @@ entries should be of the form ``netcdf_varname = metsim_varname``. The minimum
 required variables have ``metsim_varname``\s corresponding to ``lat``, ``lon``,
 ``mask``, and ``elev``; these variable names correspond to latitude, longitude,
 a mask of valid cells in the domain, and the elevation given in meters. If
-``prec_type`` = ``triangle``, two additonal variables are required including
-``dur`` and ``t_pk`` for disaggregating daily precipitation according to the
-"triangle" method.
+``prec_type`` = ``triangle`` or ``mix``, two additonal variables are required
+including ``dur`` and ``t_pk`` for disaggregating daily precipitation according
+to the "triangle" method.
