@@ -215,6 +215,7 @@ def test_disaggregation_values():
               'state': './metsim/data/state_vic.nc',
               'forcing': data_files,
               'method': 'mtclim',
+              'scheduler': 'threading',
               'time_step': "60",
               'out_dir': out_dir,
               'out_state': os.path.join(out_dir, 'state.nc'),
