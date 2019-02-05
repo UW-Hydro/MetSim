@@ -103,7 +103,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         df_disagg['temp'].values, df_disagg['vapor_pressure'].values,
         df_disagg['tskc'].values, params)
 
-    df_disagg['prec'] = prec(df_daily['prec'], df_daily['t_min'],
+    df_disagg['prec'] = prec(df_daily['prec'].values, df_daily['t_min'].values,
                              ts, params, df_daily.index.month)
 
     if 'wind' in df_daily:
@@ -260,14 +260,8 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
     prec:
         A sub-daily timeseries of precipitation. [mm]
     """
-    def prec_UNIFORM(prec: pd.Series, t_min: pd.Series, ts: float,
-                     month_of_year: int, do_mix: bool):
-        n_repeats = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
-        P_return = np.repeat(prec, n_repeats) / n_repeats
-        return P_return
-
-    def prec_TRIANGLE(prec: pd.Series, t_min: pd.Series, ts: float,
-                      month_of_year: int, do_mix: bool):
+    def prec_TRIANGLE(prec: pd.Series, t_min: pd.Series,
+                      month_of_year: int, do_mix: bool, params: dict):
 
         def P_kernel(t_corners, m, t):
             # calculating precipitation intensity of current time t
@@ -285,14 +279,14 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
         dur = params['dur']
         t_pk = params['t_pk']
         n_days = len(prec)
-        steps_per_day = int(cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY / int(ts))
+        steps_per_day = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
         offset = np.ceil(steps_per_day / 2)
         output_length = int(steps_per_day * n_days)
         index = np.arange(output_length)
         steps_per_two_days = int(((np.ceil(steps_per_day / 2)) * 2) +
                                  steps_per_day)
         # time of step on next day [minutes]
-        t_next = 2 * cnst.MIN_PER_DAY + ts + 1
+        t_next = 2 * cnst.MIN_PER_DAY + 2
         P_return = pd.Series(np.zeros(output_length, dtype='float'),
                              index=index)
 
@@ -310,19 +304,19 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
             # time of storm end [minutes]
             t_end = (t_pk[month] + (dur[month] / 2.))
             # time step of storm start
-            i_start = int(np.floor(t_start / ts) + offset)
+            i_start = int(np.floor(t_start) + offset)
             # time step of storm end
-            i_end = int(np.floor(t_end / ts) + offset)
+            i_end = int(np.floor(t_end) + offset)
 
             # Initializing timestep variables
             i = i_start  # current timestep
-            t = i_start * ts  # current time [minutes]
+            t = i_start  # current time [minutes]
             t_0 = t     # start time of current timestep [minutes]
             # times of key corners of unit hyetograph
-            t_corners = [t_start, t_pk[month], t_end, t_next] + offset * ts
+            t_corners = [t_start, t_pk[month], t_end, t_next] + offset
             c = 0   # current corner index
             # end time of current timestep [minutes]
-            t_1 = min(t_0 + ts, t_corners[c])
+            t_1 = min(t_0, t_corners[c])
             area = 0  # area under curve for current timestep
 
             # Looping through kernel timesteps
@@ -330,15 +324,15 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
                 P_0 = P_kernel(t_corners, m, t_0)
                 P_1 = P_kernel(t_corners, m, t_1)
                 area += 0.5 * (P_0 + P_1) * (t_1 - t_0)
-                if t_1 == (t + ts):  # end of timestep check
+                if t_1 == t:  # end of timestep check
                     kernels[month, i] = area
                     area = 0
-                    t += ts
+                    t += 1
                     i += 1
                 if t_1 == t_corners[c]:
                     c += 1
                 t_0 = t_1
-                t_1 = min(t + ts, t_corners[c])
+                t_1 = min(t, t_corners[c])
 
         # Loop through each rain day of the timeseries and apply the kernel for
         # the appropriate month of year
@@ -368,9 +362,11 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
                     i0 = int(np.floor((d - 0.5) * steps_per_day))
                     i1 = int(i0 + (2 * steps_per_day))
                     P_return[i0:i1] += prec[d] * kernels[mon]
-
         P_return = np.around(P_return, decimals=5)
         return P_return.values
+
+    def prec_UNIFORM(prec: pd.Series, *args):
+        return np.repeat(prec / cnst.MIN_PER_DAY, cnst.MIN_PER_DAY)
 
     prec_function = {
         'UNIFORM': prec_UNIFORM,
@@ -382,15 +378,14 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
     else:
         do_mix = False
 
-    P_return = prec_function[params['prec_type'].upper()](prec, t_min, 1,
+    P_return = prec_function[params['prec_type'].upper()](prec, t_min,
                                                           month_of_year,
-                                                          do_mix)
+                                                          do_mix, params)
 
     if params['utc_offset']:
-        utc_offset = int(((params.get("lon", 0) / cnst.DEG_PER_REV)
-                          * cnst.MIN_PER_DAY))
-        P_return = np.roll(P_return, -utc_offset)
-    P_return = np.sum(P_return.reshape(int(ts), -1), axis=0).flatten()
+        offset = int(((params["lon"] / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY))
+        P_return = np.roll(P_return, -offset)
+    P_return = np.sum(P_return.reshape(-1, int(ts)), axis=1).flatten()
     return P_return
 
 
@@ -413,14 +408,13 @@ def wind(wind: np.array, ts: int, params: dict) -> np.array:
     wind:
         A sub-daily timeseries of wind
     """
-    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / ts
-    subdaily_wind = np.repeat(wind, n_repeats)
+    sd_wind = np.repeat(wind, cnst.MIN_PER_DAY)
     if params['utc_offset']:
-        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0)) /
-                          cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
-        subdaily_wind = np.roll(subdaily_wind, -utc_offset)
+        offset = int((params["lon"] / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
+        sd_wind = np.roll(sd_wind, -offset)
 
-    return subdaily_wind
+    sd_wind = np.mean(sd_wind.reshape(-1, int(ts)), axis=1).flatten()
+    return sd_wind
 
 
 def pressure(temp: np.array, elev: float, lr: float) -> np.array:
@@ -640,14 +634,13 @@ def tskc(tskc: np.array, ts: int, params: dict) -> np.array:
     tskc:
         Sub-daily timeseries of cloud fraction
     """
-    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / ts
-    subdaily_tskc = np.repeat(tskc, n_repeats)
+    sd_tskc = np.repeat(tskc, cnst.MIN_PER_DAY)
     if params['utc_offset']:
-        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0)) /
-                          cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
-        subdaily_tskc = np.roll(subdaily_tskc, -utc_offset)
+        offset = int((params["lon"] / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
+        sd_tskc = np.roll(sd_tskc, -offset)
 
-    return subdaily_tskc
+    sd_tskc = np.mean(sd_tskc.reshape(-1, int(ts)), axis=-1).flatten()
+    return sd_tskc
 
 
 def shortwave(sw_rad: np.array, daylength: np.array, day_of_year: np.array,
