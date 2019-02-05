@@ -121,6 +121,8 @@ class MetSim(object):
         "stop": 'forcing',
         "time_step": -1,
         "calendar": 'standard',
+        "prec_type": 'uniform',
+        "out_fmt": '',
         "out_precision": 'f4',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
@@ -133,7 +135,7 @@ class MetSim(object):
         "tday_coef": 0.45,
         "lapse_rate": 0.0065,
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'wind', 'vapor_pressure', 'rel_humid'],
+                     'vapor_pressure', 'rel_humid'],
         "out_freq": None,
         "chunks": NO_SLICE,
         "scheduler": 'distributed',
@@ -159,7 +161,6 @@ class MetSim(object):
         ch = logging.StreamHandler(sys.stdout)
         ch.setFormatter(formatter)
         ch.setLevel(self.params['verbose'])
-
         # set global dask scheduler
         if domain_slice is NO_SLICE:
             if self.params['scheduler'] in DASK_CORE_SCHEDULERS:
@@ -368,6 +369,11 @@ class MetSim(object):
         for index, mask_val in np.ndenumerate(self.domain['mask'].values):
             if mask_val > 0:
                 locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
+                if self.params['prec_type'].upper() in ['TRIANGLE', 'MIX']:
+                    # add variables for triangle precipitation disgregation
+                    # method to parameters
+                    params['dur'], params['t_pk'] = (
+                        add_prec_tri_vars(self.domain.isel(**locs)))
             else:
                 continue
 
@@ -661,6 +667,7 @@ def wrap_run_cell(func: callable, params: dict,
 
         # Disaggregate to subdaily values
         df_complete = disaggregate(df, params, sg, t_begin, t_end)
+
         # Calculate the times that we want to get out by chopping
         # off the endpoints that were added on previously
         start = out_times.values[0]
@@ -729,3 +736,52 @@ class DummyLock(object):
     @property
     def locked(self):
         return False
+
+
+def add_prec_tri_vars(domain):
+    """
+    Check that variables for triangle precipitation method exist and have
+    values that are within allowable ranges. Return these variables.
+
+    Parameters
+    ----------
+    domain:
+        Dataset of domain variables for given location.
+
+    Returns
+    -------
+    dur
+        Array of climatological monthly storm durations. [minutes]
+    t_pk
+        Array of climatological monthly times to storm peaks. [minutes]
+    """
+    # Check that variables exist
+    try:
+        dur = domain['dur']
+    except Exception as e:
+        raise e("Storm duration and time to peak values are "
+                "required in the domain file for the triangle "
+                "preciptation disagregation method.")
+    try:
+        t_pk = domain['t_pk']
+    except Exception as e:
+        raise e("Storm duration and time to peak values are "
+                "required in the domain file for the triangle "
+                "preciptation disagregation method.")
+
+    # Check that variable values are within allowable ranges.
+    day_length = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
+    dur_zero_test = dur <= 0
+    dur_day_test = dur > day_length
+    if dur_zero_test.any() or dur_day_test.any():
+        raise ValueError('Storm duration must be greater than 0 and less than',
+                         day_length, '(i.e. the day length in minutes)')
+
+    t_pk_zero_test = t_pk < 0
+    t_pk_day_test = t_pk > day_length
+    if t_pk_zero_test.any() or t_pk_day_test.any():
+        raise ValueError('Storm time to peak must be greater than or equal to '
+                         '0, and less than', day_length,
+                         '(i.e. the end of a day)')
+
+    return dur, t_pk

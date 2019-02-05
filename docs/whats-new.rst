@@ -8,12 +8,20 @@ What's New
 v.1.1.1
 -------
 
+Enhancements
+~~~~~~~~~~~~
+
+- Added option to disaggregate precipitation via a triangular hyetograph.
+  (:issue:`42`).
+  By `Kristen Whitney <https://github.com/kwhitney727>`_ and `Theodore Bohn
+  <https://github.com/tbohn>`_.
+
 Bug fixes
 ~~~~~~~~~
 - Fixed a bug where if `iter_dims` is not `[lat, lon]` the selected `lat` value
   that goes into `solar_geom` ends up as a list. The fix is also added for elevation
   and longitude, for redundancy.  Fixes :issue:`132`.
-  By `Andrew Bennett <https://github.com/arbennett>`
+  By `Andrew Bennett <https://github.com/arbennett>`_.
 
 
 .. _whats-new.1.1.0:
@@ -29,7 +37,7 @@ Enhancements
 - Added option a flexible time grouper when chunking MetSim runs (:issue:`93`).
   By `Joe Hamman <https://github.com/jhamman>`_.
 - Improved configuration validation by checking for correctness of output variables (:issue:`96`)
-  By `Andrew Bennett <https://github.com/arbennett>`
+  By `Andrew Bennett <https://github.com/arbennett>`_.
 - Added option to skip reading ``swe`` variable from state file if it is not
   going to be used by MtClim. (:issue:`103`). By `Joe Hamman <https://github.com/jhamman>`_.
 - Added support for supplying a glob-like file path or multiple input forcing

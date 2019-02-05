@@ -67,6 +67,10 @@ def init(opts):
 
     method = conf['method']
 
+    prec_type = conf.get('prec_type', None)
+    if prec_type is None:
+        prec_type = 'uniform'
+
     # If the forcing variable is a directory, scan it for files
     if os.path.isdir(conf['forcing']):
         forcing_files = [os.path.join(conf['forcing'], fn) for fn in
@@ -92,7 +96,8 @@ def init(opts):
                  "domain": domain_file,
                  "forcing": forcing_files,
                  "chunks": chunks,
-                 "verbose": logging.DEBUG if opts.verbose else logging.INFO})
+                 "verbose": logging.DEBUG if opts.verbose else logging.INFO,
+                 "prec_type": prec_type})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
     conf = {k: v for k, v in conf.items() if v != []}
