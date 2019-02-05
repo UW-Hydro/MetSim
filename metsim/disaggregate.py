@@ -97,7 +97,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         df_disagg['vapor_pressure'].values,
         df_disagg['air_pressure'].values)
 
-    df_disagg['tskc'] = tskc(df_daily['tskc'].values, ts)
+    df_disagg['tskc'] = tskc(df_daily['tskc'].values, ts, params)
 
     df_disagg['longwave'] = longwave(
         df_disagg['temp'].values, df_disagg['vapor_pressure'].values,
@@ -107,7 +107,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
                              ts, params, df_daily.index.month)
 
     if 'wind' in df_daily:
-        df_disagg['wind'] = wind(df_daily['wind'].values, ts)
+        df_disagg['wind'] = wind(df_daily['wind'].values, ts, params)
 
     return df_disagg.fillna(method='ffill')
 
@@ -262,10 +262,8 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
     """
     def prec_UNIFORM(prec: pd.Series, t_min: pd.Series, ts: float,
                      month_of_year: int, do_mix: bool):
-
-        scale = int(ts) / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
-        P_return = (prec * scale).resample(
-            '{:0.0f}T'.format(ts)).fillna(method='ffill')
+        n_repeats = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
+        P_return = np.repeat(prec, n_repeats) / n_repeats
         return P_return
 
     def prec_TRIANGLE(prec: pd.Series, t_min: pd.Series, ts: float,
@@ -384,13 +382,19 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
     else:
         do_mix = False
 
-    P_return = prec_function[params['prec_type'].upper()](prec, t_min, ts,
+    P_return = prec_function[params['prec_type'].upper()](prec, t_min, 1,
                                                           month_of_year,
                                                           do_mix)
+
+    if params['utc_offset']:
+        utc_offset = int(((params.get("lon", 0) / cnst.DEG_PER_REV)
+                          * cnst.MIN_PER_DAY))
+        P_return = np.roll(P_return, -utc_offset)
+    P_return = np.sum(P_return.reshape(int(ts), -1), axis=0).flatten()
     return P_return
 
 
-def wind(wind: np.array, ts: int) -> np.array:
+def wind(wind: np.array, ts: int, params: dict) -> np.array:
     """
     Wind is assumed constant throughout the day
     Note: this returns only through to the beginning of the
@@ -410,7 +414,13 @@ def wind(wind: np.array, ts: int) -> np.array:
         A sub-daily timeseries of wind
     """
     n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / ts
-    return np.repeat(wind, n_repeats)
+    subdaily_wind = np.repeat(wind, n_repeats)
+    if params['utc_offset']:
+        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0)) /
+                          cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
+        subdaily_wind = np.roll(subdaily_wind, -utc_offset)
+
+    return subdaily_wind
 
 
 def pressure(temp: np.array, elev: float, lr: float) -> np.array:
@@ -614,7 +624,7 @@ def longwave(air_temp: np.array, vapor_pressure: np.array,
     return lwrad
 
 
-def tskc(tskc: np.array, ts: int) -> np.array:
+def tskc(tskc: np.array, ts: int, params: dict) -> np.array:
     """
     Disaggregate cloud fraction with uniform interpolation
 
@@ -631,7 +641,13 @@ def tskc(tskc: np.array, ts: int) -> np.array:
         Sub-daily timeseries of cloud fraction
     """
     n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / ts
-    return np.repeat(tskc, n_repeats)
+    subdaily_tskc = np.repeat(tskc, n_repeats)
+    if params['utc_offset']:
+        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0)) /
+                          cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
+        subdaily_tskc = np.roll(subdaily_tskc, -utc_offset)
+
+    return subdaily_tskc
 
 
 def shortwave(sw_rad: np.array, daylength: np.array, day_of_year: np.array,

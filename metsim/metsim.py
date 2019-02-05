@@ -135,7 +135,7 @@ class MetSim(object):
         "tday_coef": 0.45,
         "lapse_rate": 0.0065,
         "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'wind', 'vapor_pressure', 'rel_humid'],
+                     'vapor_pressure', 'rel_humid'],
         "out_freq": None,
         "chunks": NO_SLICE,
         "scheduler": 'distributed',

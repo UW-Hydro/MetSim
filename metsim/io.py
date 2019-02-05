@@ -142,7 +142,8 @@ def read_netcdf(data_handle, domain=None,
 
     if domain is not None:
         ds = ds.sel({k: domain[k]
-                     for k in list(domain.dims.keys()) if k in ds})
+                     for k in list(domain.dims.keys())
+                     if k in list(ds.dims.keys())})
 
     if 'time' in ds.coords:
         ds['time'] = (ds.indexes['time'] -
