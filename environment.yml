@@ -2,13 +2,13 @@ name: metsim
 channels:
   - conda-forge
 dependencies:
-  - python=3.5
+  - python>=3.5
   - xarray=0.10.9
-  - pandas=0.19.1
-  - netcdf4=1.2.5
+  - pandas
+  - netcdf4>=1.2.5
   - numba
-  - numpy=1.11.2
-  - scipy=0.18.1
+  - numpy>=1.11.2
+  - scipy>=0.18.1
   - dask
   - distributed
   - toolz
