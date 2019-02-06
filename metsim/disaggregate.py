@@ -205,11 +205,10 @@ def temp(t_min: np.array, t_max: np.array, out_len: int,
     temps:
         A sub-daily timeseries of temperature.
     """
-    # Calculate times of min/max temps
-    time = np.array(list(next(it) for it in itertools.cycle(
-        [iter(t_t_min), iter(t_t_max)])))
-    temp = np.array(list(next(it) for it in itertools.cycle(
-        [iter(t_min), iter(t_max)])))
+    # Calculate times of min/max temps by interweaving arrays
+    time = np.ravel(np.column_stack((t_t_min, t_t_max)))
+    temp = np.ravel(np.column_stack((t_min, t_max)))
+
     # Account for end points
     ts_ends = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
     time = np.append(np.insert(time, 0, time[0:2] - ts_ends),
