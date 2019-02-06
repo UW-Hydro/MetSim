@@ -11,8 +11,7 @@ Command line tool for MetSim
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
@@ -25,7 +24,7 @@ import logging
 import os
 import sys
 from collections import OrderedDict
-from configparser import SafeConfigParser
+from configparser import ConfigParser
 
 
 def _is_valid_file(parser, arg):
@@ -52,24 +51,23 @@ def parse(args):
 
 def init(opts):
     """Initialize some information based on the options & config"""
-    config = SafeConfigParser()
+    config = ConfigParser()
     config.optionxform = str
     config.read(opts.config)
     conf = OrderedDict(config['MetSim'])
+
+    def invert_dict(d):
+        return OrderedDict({v: k for k, v in d.items()})
+
+    def to_list(s):
+        return json.loads(s.replace("'", '"'))
+
     conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
-    conf['domain_vars'] = OrderedDict(config['domain_vars'])
-    conf['state_vars'] = OrderedDict(config['state_vars'])
+    if conf['forcing_fmt'] != 'binary':
+        conf['forcing_vars'] = invert_dict(conf['forcing_vars'])
+    conf['domain_vars'] = invert_dict(OrderedDict(config['domain_vars']))
+    conf['state_vars'] = invert_dict(OrderedDict(config['state_vars']))
     conf['chunks'] = OrderedDict(config['chunks'])
-    out_dir = os.path.abspath(conf['out_dir'])
-    out_state = conf.get('out_state', None)
-    if out_state is None:
-        out_state = os.path.join(out_dir, 'state.nc')
-
-    method = conf['method']
-
-    prec_type = conf.get('prec_type', None)
-    if prec_type is None:
-        prec_type = 'uniform'
 
     # If the forcing variable is a directory, scan it for files
     if os.path.isdir(conf['forcing']):
@@ -78,26 +76,14 @@ def init(opts):
     else:
         forcing_files = conf['forcing']
 
-    # We assume there is only one domain file and one state file
-    domain_file = conf['domain']
-    state_file = conf['state']
-    chunks = conf['chunks']
-
-    def to_list(s):
-        return json.loads(s.replace("'", '"'))
-
+    # Update the full configuration
     conf.update({"calendar": conf.get('calendar', 'standard'),
                  "scheduler": opts.scheduler,
                  "num_workers": opts.num_workers,
-                 "method": method,
-                 "out_dir": out_dir,
-                 "out_state": out_state,
-                 "state": state_file,
-                 "domain": domain_file,
-                 "forcing": forcing_files,
-                 "chunks": chunks,
                  "verbose": logging.DEBUG if opts.verbose else logging.INFO,
-                 "prec_type": prec_type})
+                 "forcing": forcing_files,
+                 "out_dir": os.path.abspath(conf['out_dir']),
+                 "prec_type": conf.get('prec_type', 'uniform')})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
     conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
     conf = {k: v for k, v in conf.items() if v != []}
