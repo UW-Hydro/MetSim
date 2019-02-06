@@ -25,7 +25,7 @@ main interface through which the other modules are accessed.
 **2. Simulation of daily meteorological forcings**
 
 The base implementation of the meteorological simulator is based off of
-the algorithms described in[^1]. This component has been designed to be
+the algorithms described in[1]. This component has been designed to be
 flexible in allowing for alternative implementations which may be
 specified during the setup of the MetSim object. The default
 implementation allows for the daily simulation of:
@@ -37,15 +37,16 @@ implementation allows for the daily simulation of:
 -   Vapor pressure
 
 For the "triangle" and "mix" methods of precipitation disaggregation,
-doumentation can be found [here](PtriangleMethod.pdf). This will eventually
-be superceded by a journal article that is currently in review [^7].
+doumentation can be found [here](https://github.com/UW-Hydro/MetSim/blob/develop/docs/PtriangleMethod.pdf).
+This will eventually
+be superceded by a journal article that is currently in review [7].
 
 **3. Disaggregation of daily simulation values to sub-daily timesteps**
 
 Daily data from given input or simulated via the forcings generation
 component of MetSim can be disaggregated down to sub-daily values at
 intervals specified in minutes (provided they divide evenly into 24
-hours). The operation of these algorithms is also described in[^1].
+hours). The operation of these algorithms is also described in [1].
 The variables estimated are:
 
 -  Temperature
@@ -111,35 +112,35 @@ processsors (or threads) that the machine you are running on has.
 References
 ==========
 
-[^1]: Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen,
+[1]: Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen,
     and D. P. Lettenmaier, 2013a: Global evaluation of MTCLIM and
     related algorithms for forcing of ecological and hydrological
     models, Agr. Forest. Meteorol., 176, 38-49,
     <doi:10.1016/j.agrformet.2013.03.003>.
 
-[^2]: Bristow, K.L., and G.S. Campbell, 1984. On the relationship between
+[2]: Bristow, K.L., and G.S. Campbell, 1984. On the relationship between
     incoming solar radiation and daily maximum and minimum temperature.
     Agricultural and Forest Meteorology, 31:159-166.
 
-[^3]: Running, S.W., R.R. Nemani, and R.D. Hungerford, 1987. Extrapolation of
+[3]: Running, S.W., R.R. Nemani, and R.D. Hungerford, 1987. Extrapolation of
     synoptic meteorological data in mountainous terrain and its use for
     simulating forest evaporation and photosynthesis. Canadian Journal of
     Forest Research, 17:472-483.
 
-[^4]: Glassy, J.M., and S.W. Running, 1994. Validating diurnal climatology of
+[4]: Glassy, J.M., and S.W. Running, 1994. Validating diurnal climatology of
     the MT-CLIM model across a climatic gradient in Oregon. Ecological
     Applications, 4(2):248-257.
 
-[^5]: Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for
+[5]: Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for
     estimating surface humidity from daily minimum temperature. Agricultural
     and Forest Meteorology, 85:87-98.
 
-[^6]: Thornton, P.E., and S.W. Running, 1999. An improved algorithm for
+[6]: Thornton, P.E., and S.W. Running, 1999. An improved algorithm for
     estimating incident daily solar radiation from measurements of
     temperature, humidity, and precipitation. Agricultural and Forest
     Meteorology, 93:211-228.
 
-[^7]: Bohn, T. J., K. M. Whitney, G. Mascaro, and E. R. Vivoni, 2019. A
+[7]: Bohn, T. J., K. M. Whitney, G. Mascaro, and E. R. Vivoni, 2019. A
     deterministic approach for approximating the diurnal cycle of
     precipitation for large-scale hydrological simulations. Journal of
     Hydrometeorology (accepted). doi: 10.1175/JHM-D-18-0203.1.
