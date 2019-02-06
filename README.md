@@ -8,9 +8,9 @@ METSIM: Meteorology Simulator
 | Current Release DOI    | [![DOI](https://zenodo.org/badge/69834400.svg)](https://zenodo.org/badge/latestdoi/69834400) |
 
 MetSim is a meteorological simulator and forcing disaggregator for
-hydrologic modeling and climate applications. Metsim is based on 
+hydrologic modeling and climate applications. Metsim is based on
 [MtClim](http://www.ntsg.umt.edu/project/mtclim)
-and the preprocessor from version 4 of the [VIC hydrologic 
+and the preprocessor from version 4 of the [VIC hydrologic
 model](https://github.com/UW-Hydro/VIC).
 
 MetSim consists of 3 main modules that govern the operation of 3 major
@@ -22,7 +22,7 @@ The MetSim object provides high level support for setting up jobs and
 infrastructure for running simulation/disaggregation steps. It is the
 main interface through which the other modules are accessed.
 
-**2. Simulation of meteorological forcings**
+**2. Simulation of daily meteorological forcings**
 
 The base implementation of the meteorological simulator is based off of
 the algorithms described in[^1]. This component has been designed to be
@@ -31,11 +31,14 @@ specified during the setup of the MetSim object. The default
 implementation allows for the daily simulation of:
 
 -   Mean daily temperature
--   Snow Water Equivalent (SWE)
 -   Incoming shortwave radiation
 -   Cloud cover fraction
 -   Potential evapotranspiration
 -   Vapor pressure
+
+For the "triangle" and "mix" methods of precipitation disaggregation,
+doumentation can be found [here](PtriangleMethod.pdf). This will eventually
+be superceded by a journal article that is currently in review [^7].
 
 **3. Disaggregation of daily simulation values to sub-daily timesteps**
 
@@ -43,10 +46,17 @@ Daily data from given input or simulated via the forcings generation
 component of MetSim can be disaggregated down to sub-daily values at
 intervals specified in minutes (provided they divide evenly into 24
 hours). The operation of these algorithms is also described in[^1].
+The variables estimated are:
 
-Depending on the setup of these various components MetSim can be used
-for different purposes. For examples on how you can use MetSim see the
-examples page in the [documentation](http://metsim.readthedocs.io/en/develop/).
+-  Temperature
+-  Vapor pressure
+-  Relative and specific humidity
+-  Air pressure
+-  Cloud cover fraction
+-  Longwave radiation
+-  Shortwave radiation
+-  Precipitation
+-  Wind speed
 
 Getting Started
 ===============
@@ -57,23 +67,22 @@ Installation
 MetSim itself is a pure Python package, but its dependencies are not.
 You should ensure that you have all of the required dependencies:
 
--   Python 3.5 or 3.6
--   [xarray](http://xarray.pydata.org/) (0.9.1 or later)
+-   Python 3.5 or greater
+-   [xarray](http://xarray.pydata.org/) (0.10.9 or later)
 -   [pandas](http://pandas.pydata.org/) (0.19.0 or later)
 -   [numba](http://numba.pydata.org/) (0.31.0 or later)
 -   [netCDF4](https://github.com/Unidata/netcdf4-python)
 -   [scipy](http://scipy.org/)
 
-Then, install MetSim with pip:
+Then, install MetSim with pip or conda:
 
     $ pip install metsim
 
-To run the test suite after installing MetSim, install
-[py.test](https://pytest.org) (`pip install pytest`) and run
-`py.test --verbose`.
+or
 
-Finally, you can install MetSim directly from the source if you desire
-to:
+    $ conda install -c conda-forge metsim
+
+Alternatively, you can install MetSim directly from the source if you desire to:
 
     $ git clone https://github.com/UW-Hydro/MetSim.git
     $ cd MetSim
@@ -129,5 +138,10 @@ References
     estimating incident daily solar radiation from measurements of
     temperature, humidity, and precipitation. Agricultural and Forest
     Meteorology, 93:211-228.
+
+[^7]: Bohn, T. J., K. M. Whitney, G. Mascaro, and E. R. Vivoni, 2019. A
+    deterministic approach for approximating the diurnal cycle of
+    precipitation for large-scale hydrological simulations. Journal of
+    Hydrometeorology (accepted). doi: 10.1175/JHM-D-18-0203.1.
 
 
