@@ -24,7 +24,7 @@ import logging
 import os
 import sys
 from collections import OrderedDict
-from configparser import ConfigParser
+from configparser import SafeConfigParser
 
 
 def _is_valid_file(parser, arg):
@@ -51,7 +51,7 @@ def parse(args):
 
 def init(opts):
     """Initialize some information based on the options & config"""
-    config = ConfigParser()
+    config = SafeConfigParser()
     config.optionxform = str
     config.read(opts.config)
     conf = OrderedDict(config['MetSim'])
