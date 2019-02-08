@@ -48,23 +48,14 @@ def read_met_data(params: dict, domain: xr.Dataset) -> xr.Dataset:
 
 def read_domain(params: dict) -> xr.Dataset:
     """Load in a domain file"""
-    read_funcs = {
-        "netcdf": read_netcdf,
-        "data": read_data
-    }
-    return read_funcs[params['domain_fmt']](
+    return read_netcdf(
         params['domain'], calendar=params['calendar'],
         var_dict=params.get('domain_vars', None))
 
 
 def read_state(params: dict, domain: xr.Dataset) -> xr.Dataset:
     """Load in a state file"""
-    read_funcs = {
-        "netcdf": read_netcdf,
-        "data": read_data
-    }
-
-    return read_funcs[params['state_fmt']](
+    return read_netcdf(
         params['state'], domain=domain,
         start=params['state_start'], stop=params['state_stop'],
         calendar=params['calendar'],

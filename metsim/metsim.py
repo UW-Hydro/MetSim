@@ -112,17 +112,16 @@ class MetSim(object):
     # Class variables
     methods = {'mtclim': mtclim}
     params = {
-        "method": '',
+        "method": 'mtclim',
         "domain": '',
         "state": '',
         "out_dir": '',
-        "out_prefix": 'forcing',
+        "output_prefix": 'forcing',
         "start": 'forcing',
         "stop": 'forcing',
         "time_step": -1,
         "calendar": 'standard',
         "prec_type": 'uniform',
-        "out_fmt": '',
         "out_precision": 'f4',
         "verbose": 0,
         "sw_prec_thresh": 0.0,
@@ -445,7 +444,7 @@ class MetSim(object):
 
     def _get_output_filename(self, times):
         suffix = self.get_nc_output_suffix(times)
-        fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
+        fname = '{}_{}.nc'.format(self.params['output_prefix'], suffix)
         output_filename = os.path.join(
             os.path.abspath(self.params['out_dir']), fname)
         return output_filename
@@ -531,8 +530,7 @@ class MetSim(object):
             errs.append("Requires input forcings to be specified")
 
         # Parameters that can't be empty strings or None
-        non_empty = ['method', 'out_dir', 'time_step',
-                     'forcing_fmt', 'domain_fmt', 'state_fmt']
+        non_empty = ['out_dir', 'time_step', 'forcing_fmt']
         for each in non_empty:
             if self.params.get(each, None) is None or self.params[each] == '':
                 errs.append("Cannot have empty value for {}".format(each))

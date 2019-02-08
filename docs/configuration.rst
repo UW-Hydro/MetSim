@@ -32,27 +32,13 @@ __domain_vars__ for more details.
 ``out_dir :: path``: The location to write output to.  If this path doesn't
 exist, it will be created.
 
-``out_state :: path/filename.nc``: The location to write state file to.
-
 ``forcing_fmt :: str``: A string representing the type of input files specified in
 the ``forcing`` entry.  Can be one of the following: ``ascii``, ``binary``,
 ``netcdf``, or ``data``.
 
-``state_fmt :: str``: A string representing the type of state file specified in
-the ``state`` entry.  Can be either ``netcdf`` or ``data``.
-
-``domain_fmt :: str``: A string representing the type of state file specified in
-the ``domain`` entry.  Can be either ``netcdf`` or ``data``.
-
-``out_fmt:: str``: A string representing the type of output to write to
-``out_dir``.  Can be either ``netcdf``, ``data``, or ``ascii``.
-
-``method :: str``: A string representing the simulation methods to use.  The
-current implementation only supports ``mtclim``.
-
 **Optional Variables**
 
-``out_prefix :: str``: The output file base name. Defaults to ``forcing``.
+``output_prefix :: str``: The output file base name. Defaults to ``forcing``.
 
 ``out_precision :: str``: Precision to use when writing output.  Defaults to
 ``f8``.  Can be either ``f4`` or ``f8``.
@@ -63,18 +49,12 @@ memory.  Each chunk of output is written as ``{out_prefix}_{date_range}`` when
 active. Any valid ``pandas.TimeGrouper`` string may be used (e.g. use '10AS'
 for 10 year chunks).
 
-``iter_dims :: list``: The dimensions of input data to iterate over to
-accumulate sites.  Defaults to ``['lat', 'lon']``.
-
 ``verbose :: bool``: Whether to print output to ``stdout``.  Should be set using
 the ``-v`` flag for command line usage.  This can be set for scripting purposes,
 if desired. Set to ``1`` to print output; defaults to ``0``.
 
 ``sw_prec_thresh :: float``: Minimum precipitation threshold to take into
 account when simulating incoming shortwave radiation.  Defaults to ``0``.
-
-``mtclim_swe_corr :: bool``: Whether to activate MtClim's SWE correction
-algorithm. Default to ``False``.
 
 ``utc_offset :: bool``: Whether to use UTC timecode offsets for shifting
 timeseries. Without this option all times should be considered local to
@@ -95,12 +75,6 @@ dewpoint temperature in MtClim.  Defaults to ``1e-6``.
 
 ``tmax_daylength_fraction :: float`` : Weight for calculation of time of maximum
 daily temperature.  Must be between ``0`` and ``1``.  Defaults to ``0.67``.
-
-``snow_crit_temp :: float``: Critical temperature for snow to melt.  Defaults to
-``-6.0 C``.
-
-``snow_melt_rate :: float``: Melt rate when temperature is less than
-``snow_crit_temp``.  Defaults to ``0.042 cm/K``.
 
 ``rain_scalar :: float``: Scale factor for calculation of cloudy sky
 transmittance.  Defaults to ``0.75``, range should be between ``0`` and
