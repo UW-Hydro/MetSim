@@ -340,7 +340,7 @@ class MetSim(object):
 
     def write_chunk(self, locks=None):
         '''write data from a single chunk'''
-        if not self.params['out_vars']:
+        if not len(self.params['out_vars']):
             return
         for times in self._times:
             filename = self._get_output_filename(times)

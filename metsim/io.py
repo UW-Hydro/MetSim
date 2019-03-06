@@ -129,7 +129,10 @@ def read_netcdf(data_handle, domain=None,
                 start=None, stop=None, calendar='standard',
                 var_dict=None) -> xr.Dataset:
     """Read in a NetCDF file"""
-    ds = xr.open_dataset(data_handle)
+    if '*' in data_handle:
+        ds = xr.open_mfdataset(data_handle)
+    else:
+        ds = xr.open_dataset(data_handle)
 
     if domain is not None:
         ds = ds.sel({k: domain[k]
