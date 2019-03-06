@@ -163,8 +163,8 @@ def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
 
     # time of maximum and minimum temperature calculated thusly
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
-               rise_times)
-    t_t_min = rise_times -ts
+               rise_times) - ts
+    t_t_min = rise_times - ts
     return t_t_min, t_t_max
 
 
@@ -566,6 +566,7 @@ def longwave(air_temp: np.array, vapor_pressure: np.array,
         # water surface and the atmosphere. Tennessee Valley Authority, Norris,
         # TN. Laboratory report no. 14. Water resources research report
         # no. 0-6803.
+        'DEFAULT': lambda vp: 0.74 + 0.0049 * vp,
         'TVA': lambda vp: 0.74 + 0.0049 * vp,
         # Anderson 1954
         # Anderson, E.R., 1954. Energy budget studies, water loss
@@ -597,6 +598,7 @@ def longwave(air_temp: np.array, vapor_pressure: np.array,
             -np.sqrt((1.2 + 3. * (46.5 * vp / air_temp)))))}
     cloud_calc = {
         # TVA 1972 (see above)
+        'DEFAULT': lambda emis, tskc: (1.0 + (0.17 * tskc ** 2)) * emis,
         'TVA': lambda emis, tskc: (1.0 + (0.17 * tskc ** 2)) * emis,
         # Deardorff 1978
         # Deardorff, J.W., 1978. Efficient prediction of ground surface
