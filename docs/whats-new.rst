@@ -3,6 +3,22 @@
 What's New
 ==========
 
+.. _whats-new.2.0.0:
+
+v.2.0.0
+-------
+
+Enhancements
+~~~~~~~~~~~~
+- Implemented UTC offsets, which puts all gridcell times in reference to UTC.
+- Moved parallelism to dask, which allows for greater scalability and
+  significantly less memory overhead.
+
+Bug fixes
+~~~~~~~~~
+- Disallow timesteps > 6 hours, which raised errors.
+- Raise error when t_min > t_max at beginning of runtime.
+
 .. _whats-new.1.1.1:
 
 v.1.1.1
