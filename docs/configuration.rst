@@ -16,7 +16,7 @@ MetSim Section
 divide 1440 evenly.
 
 ``start :: str``: The time to start simulation given in the format
-``yyyy/mm/dd`` or ``yyyy/mm/dd:hh``.
+``yyyy/mm/dd``
 
 ``stop :: str``: The time to end simulation given in the format
 ``yyyy/mm/dd``.
@@ -56,6 +56,10 @@ if desired. Set to ``1`` to print output; defaults to ``0``.
 ``sw_prec_thresh :: float``: Minimum precipitation threshold to take into
 account when simulating incoming shortwave radiation.  Defaults to ``0``.
 
+``rain_scalar :: float``: Scale factor for calculation of cloudy sky
+transmittance.  Defaults to ``0.75``, range should be between ``0`` and
+``1``.
+
 ``utc_offset :: bool``: Whether to use UTC timecode offsets for shifting
 timeseries. Without this option all times should be considered local to
 the gridcell being processed. Large domain runs probably want to set this
@@ -75,10 +79,6 @@ dewpoint temperature in MtClim.  Defaults to ``1e-6``.
 
 ``tmax_daylength_fraction :: float`` : Weight for calculation of time of maximum
 daily temperature.  Must be between ``0`` and ``1``.  Defaults to ``0.67``.
-
-``rain_scalar :: float``: Scale factor for calculation of cloudy sky
-transmittance.  Defaults to ``0.75``, range should be between ``0`` and
-``1``.
 
 ``tday_coef :: float``: Scale factor for calculation of daily mean temperature.
 Defaults to ``0.45``, range should be between ``0`` and ``1``.
@@ -109,6 +109,27 @@ information about the "triangle" method see :doc:`PtriangleMethod.pdf`.
 
 For more information about input and output variables see the :ref:`data` page.
 
+chunks section
+--------------
+The ``chunks`` section describes how parallel computation should be grouped
+in space. For example, to parallelize over 10 by 10 chunks of latitude and
+longitude (with netcdf dimensions named ``lat`` and ``lon``, respectively) you would use:
+
+.. code-block:: ini
+    [chunks]
+    lat = 10
+    lon = 10
+
+Alternatively, for an HRU based run chunked into 50 element jobs you would use:
+
+.. code-block:: ini
+    [chunks]
+    hru = 50
+
+As a general rule of thumb, try to evenly chunk the domain in such a way that
+the number of jobs to run is some multiple of the number of processors you wish
+to run on.
+
 forcing_vars and state_vars section
 ---------------
 The ``forcing_vars`` and ``state_vars`` sections are where you can specify which variables are in your
@@ -122,7 +143,7 @@ netcdf and data
 ```````````````
 The ``in_vars`` section for NetCDF and xarray input acts as a mapping between the variable
 names in the input dataset to the variable names expected by MetSim.  The format
-is given as ``netcdf_varname = metsim_varname``.  The minimum required variables
+is given as ``metsim_varname = netcdf_varname``.  The minimum required variables
 given have ``metsim_varname``\s corresponding to ``t_min``, ``t_max``, and
 ``prec``; these variable names correspond to minimum daily temperature (Celcius),
 maximum daily temperature (Celcius), and precipitation (mm/day).
@@ -155,7 +176,7 @@ domain_vars section
 The ``domain_vars`` section is where information about the domain file is given.
 Since the domain file is given as a NetCDF file this section has a similar
 format to that of the NetCDF input file format described above.  That is,
-entries should be of the form ``netcdf_varname = metsim_varname``. The minimum
+entries should be of the form ``metsim_varname = netcdfvarname``. The minimum
 required variables have ``metsim_varname``\s corresponding to ``lat``, ``lon``,
 ``mask``, and ``elev``; these variable names correspond to latitude, longitude,
 a mask of valid cells in the domain, and the elevation given in meters. If

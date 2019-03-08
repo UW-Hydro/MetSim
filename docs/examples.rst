@@ -19,7 +19,7 @@ contents are:
     time_step = 60
 
     # Forcings begin here (year/month/day:hour)
-    start = 1950/1/1:0
+    start = 1950/1/1
 
     # Forcings end at this date (year/month/day)
     stop = 1950/1/31
@@ -29,23 +29,20 @@ contents are:
     domain  = ./tests/data/domain.nc
     state = ./tests/data/state_nc.nc
     in_fmt = netcdf
-    domain_fmt = netcdf
-    state_fmt = netcdf
 
     # Output specification
-    out_fmt = netcdf
     out_dir = ./results
-    out_state = ./results/state.nc
     out_prefix = forcing
     out_precision = f8
 
-    # How to disaggregate
-    method = mtclim
+    [chunks]
+    lat = 3
+    lon = 3
 
     [forcing_vars]
-    Prec = prec
-    Tmax = t_max
-    Tmin = t_min
+    prec = Prec
+    t_max = Tmax
+    t_min = Tmin
 
     [state_vars]
     prec = prec
