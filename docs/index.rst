@@ -119,7 +119,7 @@ References
 .. [1] Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen, and D. P.
        Lettenmaier, 2013. Global evaluation of MTCLIM and related algorithms for
        forcing of ecological and hydrological models, Agricultural and Forest
-       Meteorology, 176, 38-49, doi:10.1016/j.agrformet.2013.03.003.
+       Meteorology, 176:38-49, doi:10.1016/j.agrformet.2013.03.003.
 
 .. [2] Bristow, K.L., and G.S. Campbell, 1984. On the relationship between
        incoming solar radiation and daily maximum and minimum temperature.
@@ -146,7 +146,7 @@ References
 .. [7] Bohn, T. J., K. M. Whitney, G. Mascaro, and E. R. Vivoni, 2019. A
        deterministic approach for approximating the diurnal cycle of
        precipitation for large-scale hydrological simulations. Journal of
-       Hydrometeorology (accepted). doi: 10.1175/JHM-D-18-0203.1.
+       Hydrometeorology, 20(2):297-317. doi: 10.1175/JHM-D-18-0203.1.
 
 Sitemap
 =======
