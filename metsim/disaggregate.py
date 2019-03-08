@@ -71,12 +71,12 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     ts = int(params['time_step'])
     df_disagg['shortwave'] = shortwave(df_daily['shortwave'].values,
                                        df_daily['daylength'].values,
-                                       df_daily.index.dayofyear.values,
+                                       df_daily.index.dayofyear,
                                        solar_geom['tiny_rad_fract'],
                                        params)
 
     t_Tmin, t_Tmax = set_min_max_hour(solar_geom['tiny_rad_fract'],
-                                      df_daily.index.dayofyear.values - 1,
+                                      df_daily.index.dayofyear - 1,
                                       n_days, ts, params)
 
     df_disagg['temp'] = temp(
@@ -97,16 +97,17 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         df_disagg['vapor_pressure'].values,
         df_disagg['air_pressure'].values)
 
-    df_disagg['tskc'] = tskc(df_daily['tskc'].values, ts)
+    df_disagg['tskc'] = tskc(df_daily['tskc'].values, ts, params)
 
     df_disagg['longwave'] = longwave(
         df_disagg['temp'].values, df_disagg['vapor_pressure'].values,
         df_disagg['tskc'].values, params)
 
-    df_disagg['prec'] = prec(df_daily['prec'].values, ts)
+    df_disagg['prec'] = prec(df_daily['prec'].values, df_daily['t_min'].values,
+                             ts, params, df_daily.index.month)
 
     if 'wind' in df_daily:
-        df_disagg['wind'] = wind(df_daily['wind'].values, ts)
+        df_disagg['wind'] = wind(df_daily['wind'].values, ts, params)
 
     return df_disagg.fillna(method='ffill')
 
@@ -162,8 +163,8 @@ def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
 
     # time of maximum and minimum temperature calculated thusly
     t_t_max = (params['tmax_daylength_fraction'] * (set_times - rise_times) +
-               rise_times) + ts
-    t_t_min = rise_times
+               rise_times) - ts
+    t_t_min = rise_times - ts
     return t_t_min, t_t_max
 
 
@@ -204,11 +205,10 @@ def temp(t_min: np.array, t_max: np.array, out_len: int,
     temps:
         A sub-daily timeseries of temperature.
     """
-    # Calculate times of min/max temps
-    time = np.array(list(next(it) for it in itertools.cycle(
-        [iter(t_t_min), iter(t_t_max)])))
-    temp = np.array(list(next(it) for it in itertools.cycle(
-        [iter(t_min), iter(t_max)])))
+    # Calculate times of min/max temps by interweaving arrays
+    time = np.ravel(np.column_stack((t_t_min, t_t_max)))
+    temp = np.ravel(np.column_stack((t_min, t_max)))
+
     # Account for end points
     ts_ends = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
     time = np.append(np.insert(time, 0, time[0:2] - ts_ends),
@@ -229,31 +229,166 @@ def temp(t_min: np.array, t_max: np.array, out_len: int,
     return temps
 
 
-def prec(prec: np.array, ts: int) -> np.array:
+def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
+         month_of_year: int):
     """
-    Splits the daily precipitation evenly throughout the day
-    Note: this returns only through to the beginning of the
-          last day.  Final values are filled in using a
-          forward fill in the top level disaggregate function
+    Distributes sub-daily precipitation either evenly (uniform) or with a
+    triangular (triangle) distribution, depending upon the chosen method.
+
+    Note: The uniform disaggregation returns only through to the beginning of
+          the last day. Final values are filled in using a forward fill in the
+          top level disaggregate function
 
     Parameters
     ----------
     prec:
-        Daily timeseries of precipitation
+        Daily timeseries of precipitation. [mm]
+    t_min:
+        Daily timeseries of minimum daily temperature. [C]
     ts:
-        Timestep to disaggregate down to
+        Timestep length to disaggregate down to. [minutes]
+    params:
+        A dictionary of parameters, which contains
+        information about which precipitation disaggregation
+        method to use.
+    month_of_year:
+        Timeseries of index of month of year
 
     Returns
     -------
     prec:
-        A sub-daily timeseries of precipitation
+        A sub-daily timeseries of precipitation. [mm]
     """
-    scale = ts / (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY)
-    n_repeats = 1 / scale
-    return np.repeat(prec * scale, n_repeats)
+    def prec_TRIANGLE(prec: pd.Series, t_min: pd.Series,
+                      month_of_year: int, do_mix: bool, params: dict):
+
+        def P_kernel(t_corners, m, t):
+            # calculating precipitation intensity of current time t
+            t_start = t_corners[0]
+            t_pk = t_corners[1]
+            t_end = t_corners[2]
+            if (t < t_start) | (t > t_end):
+                P = 0
+            elif t <= t_pk:
+                P = m * (t - t_start)
+            elif t >= t_pk:
+                P = m * (t_end - t)
+            return P
+
+        dur = params['dur']
+        t_pk = params['t_pk']
+        n_days = len(prec)
+        steps_per_day = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
+        offset = np.ceil(steps_per_day / 2)
+        output_length = int(steps_per_day * n_days)
+        index = np.arange(output_length)
+        steps_per_two_days = int(((np.ceil(steps_per_day / 2)) * 2) +
+                                 steps_per_day)
+        # time of step on next day [minutes]
+        t_next = 2 * cnst.MIN_PER_DAY + 2
+        P_return = pd.Series(np.zeros(output_length, dtype='float'),
+                             index=index)
+
+        # create kernel of unit hyetographs, one for each month
+        kernels = np.zeros(shape=(12, steps_per_two_days))
+
+        for month in np.arange(12, dtype=int):
+            # Calculating the unit hyetograph (kernels) with area of 1 mm
+
+            # Computing monthly constants
+            P_pk = 2. / dur[month]  # peak precipitation intensity
+            m = P_pk / (dur[month] / 2.)  # slope of precipitation rising limb
+            # time of storm start [minutes]
+            t_start = (t_pk[month] - (dur[month] / 2.))
+            # time of storm end [minutes]
+            t_end = (t_pk[month] + (dur[month] / 2.))
+            # time step of storm start
+            i_start = int(np.floor(t_start) + offset)
+            # time step of storm end
+            i_end = int(np.floor(t_end) + offset)
+
+            # Initializing timestep variables
+            i = i_start  # current timestep
+            t = i_start  # current time [minutes]
+            t_0 = t     # start time of current timestep [minutes]
+            # times of key corners of unit hyetograph
+            t_corners = [t_start, t_pk[month], t_end, t_next] + offset
+            c = 0   # current corner index
+            # end time of current timestep [minutes]
+            t_1 = min(t_0, t_corners[c])
+            area = 0  # area under curve for current timestep
+
+            # Looping through kernel timesteps
+            while i <= i_end:
+                P_0 = P_kernel(t_corners, m, t_0)
+                P_1 = P_kernel(t_corners, m, t_1)
+                area += 0.5 * (P_0 + P_1) * (t_1 - t_0)
+                if t_1 == t:  # end of timestep check
+                    kernels[month, i] = area
+                    area = 0
+                    t += 1
+                    i += 1
+                if t_1 == t_corners[c]:
+                    c += 1
+                t_0 = t_1
+                t_1 = min(t, t_corners[c])
+
+        # Loop through each rain day of the timeseries and apply the kernel for
+        # the appropriate month of year
+        rain_days = np.asarray(np.where(prec > 0))[0]
+        if len(rain_days) > 0:
+            for d in rain_days:
+                mon = month_of_year[d] - 1
+                if do_mix and t_min[d] < 0:
+                    i0 = d * steps_per_day
+                    i1 = i0 + steps_per_day
+                    P_return[i0:i1] += prec[d] * 1 / steps_per_day
+                elif d == 0:
+                    # beginning of kernel is clipped;
+                    # rescale so that clipped kernel sums to original total
+                    k0 = int(np.ceil(steps_per_day / 2))
+                    i1 = int(np.ceil(steps_per_day * 1.5))
+                    P_return[:i1] += (prec[d] / sum(kernels[mon, k0:])
+                                      * kernels[mon, k0:])
+                elif d == (n_days - 1):
+                    # end of kernel is clipped;
+                    # rescale so that clipped kernel sums to original total
+                    k1 = int(np.ceil(steps_per_day * 1.5))
+                    i0 = int(np.floor((d - 0.5) * steps_per_day))
+                    P_return[i0:] += (prec[d] / sum(kernels[mon, :k1])
+                                      * kernels[mon, :k1])
+                else:
+                    i0 = int(np.floor((d - 0.5) * steps_per_day))
+                    i1 = int(i0 + (2 * steps_per_day))
+                    P_return[i0:i1] += prec[d] * kernels[mon]
+        P_return = np.around(P_return, decimals=5)
+        return P_return.values
+
+    def prec_UNIFORM(prec: pd.Series, *args):
+        return np.repeat(prec / cnst.MIN_PER_DAY, cnst.MIN_PER_DAY)
+
+    prec_function = {
+        'UNIFORM': prec_UNIFORM,
+        'TRIANGLE': prec_TRIANGLE,
+        'MIX': prec_TRIANGLE,
+    }
+    if params['prec_type'].upper() == 'MIX':
+        do_mix = True
+    else:
+        do_mix = False
+
+    P_return = prec_function[params['prec_type'].upper()](prec, t_min,
+                                                          month_of_year,
+                                                          do_mix, params)
+
+    if params['utc_offset']:
+        offset = int(((params["lon"] / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY))
+        P_return = np.roll(P_return, -offset)
+    P_return = np.sum(P_return.reshape(-1, int(ts)), axis=1).flatten()
+    return P_return
 
 
-def wind(wind: np.array, ts: int) -> np.array:
+def wind(wind: np.array, ts: int, params: dict) -> np.array:
     """
     Wind is assumed constant throughout the day
     Note: this returns only through to the beginning of the
@@ -272,8 +407,13 @@ def wind(wind: np.array, ts: int) -> np.array:
     wind:
         A sub-daily timeseries of wind
     """
-    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / ts
-    return np.repeat(wind, n_repeats)
+    sd_wind = np.repeat(wind, cnst.MIN_PER_DAY)
+    if params['utc_offset']:
+        offset = int((params["lon"] / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
+        sd_wind = np.roll(sd_wind, -offset)
+
+    sd_wind = np.mean(sd_wind.reshape(-1, int(ts)), axis=1).flatten()
+    return sd_wind
 
 
 def pressure(temp: np.array, elev: float, lr: float) -> np.array:
@@ -426,6 +566,7 @@ def longwave(air_temp: np.array, vapor_pressure: np.array,
         # water surface and the atmosphere. Tennessee Valley Authority, Norris,
         # TN. Laboratory report no. 14. Water resources research report
         # no. 0-6803.
+        'DEFAULT': lambda vp: 0.74 + 0.0049 * vp,
         'TVA': lambda vp: 0.74 + 0.0049 * vp,
         # Anderson 1954
         # Anderson, E.R., 1954. Energy budget studies, water loss
@@ -457,6 +598,7 @@ def longwave(air_temp: np.array, vapor_pressure: np.array,
             -np.sqrt((1.2 + 3. * (46.5 * vp / air_temp)))))}
     cloud_calc = {
         # TVA 1972 (see above)
+        'DEFAULT': lambda emis, tskc: (1.0 + (0.17 * tskc ** 2)) * emis,
         'TVA': lambda emis, tskc: (1.0 + (0.17 * tskc ** 2)) * emis,
         # Deardorff 1978
         # Deardorff, J.W., 1978. Efficient prediction of ground surface
@@ -477,7 +619,7 @@ def longwave(air_temp: np.array, vapor_pressure: np.array,
     return lwrad
 
 
-def tskc(tskc: np.array, ts: int) -> np.array:
+def tskc(tskc: np.array, ts: int, params: dict) -> np.array:
     """
     Disaggregate cloud fraction with uniform interpolation
 
@@ -493,8 +635,13 @@ def tskc(tskc: np.array, ts: int) -> np.array:
     tskc:
         Sub-daily timeseries of cloud fraction
     """
-    n_repeats = (cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY) / ts
-    return np.repeat(tskc, n_repeats)
+    sd_tskc = np.repeat(tskc, cnst.MIN_PER_DAY)
+    if params['utc_offset']:
+        offset = int((params["lon"] / cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
+        sd_tskc = np.roll(sd_tskc, -offset)
+
+    sd_tskc = np.mean(sd_tskc.reshape(-1, int(ts)), axis=-1).flatten()
+    return sd_tskc
 
 
 def shortwave(sw_rad: np.array, daylength: np.array, day_of_year: np.array,

@@ -26,7 +26,7 @@ and infrastructure for running simulation/disaggregation
 steps. It is the main interface through which the other modules
 are accessed.
 
-**2. Simulation of meteorological forcings**
+**2. Simulation of daily meteorological forcings**
 
 The base implementation of the meteorological simulator is
 based off of the algorithms described in [1]_. This component
@@ -36,7 +36,6 @@ MetSim object.  The default implementation allows for the
 daily simulation of:
 
  * Mean daily temperature
- * Snow water equivalent (SWE)
  * Incoming shortwave radiation
  * Cloud cover fraction
  * Potential evapotranspiration
@@ -48,8 +47,22 @@ Daily data from given input or simulated via the forcings generation
 component of MetSim can be disaggregated down to sub-daily values at
 intervals specified in minutes (provided they divide evenly into 24
 hours).  The operation of these algorithms is also described in [1]_.
+The variables estimated are:
 
-This documentation is a work in progress.
+ * Temperature
+ * Vapor pressure
+ * Relative and specific humidity
+ * Air pressure
+ * Cloud cover fraction
+ * Longwave radiation
+ * Shortwave radiation
+ * Precipitation
+ * Wind speed
+
+For the "triangle" and "mix" methods of precipitation disaggregation,
+doumentation can be found `here <PtriangleMethod.pdf>`_. This will eventually
+be superceded by a journal article that is currently in review [7]_.
+
 If you don't find what you're looking for here, check out MetSim's Github page.
 
 Getting Started
@@ -60,23 +73,23 @@ Installation
 MetSim itself is a pure Python package, but its dependencies are not. You should
 ensure that you have all of the required dependencies:
 
-- Python 3.5 or 3.6
-- `xarray <http://xarray.pydata.org/>`__ (0.9.1 or later)
+- Python 3.5 or greater
+- `xarray <http://xarray.pydata.org/>`__ (0.10.9 or later)
 - `pandas <http://pandas.pydata.org/>`__ (0.19.0 or later)
 - `numba <http://numba.pydata.org/>`__ (0.31.0 or later)
 - `netCDF4 <https://github.com/Unidata/netcdf4-python>`__
 - `scipy <http://scipy.org/>`__
 
 
-Then, install MetSim with pip::
+Then, install MetSim with pip or conda::
 
     $ pip install metsim
 
-To run the test suite after installing MetSim, install
-`py.test <https://pytest.org>`__ (``pip install pytest``) and run
-``py.test --verbose``.
+or::
 
-Finally, you can install MetSim directly from the source if you desire to::
+    $ conda install -c conda-forge metsim
+
+Alternatively, you can install MetSim directly from the source if you desire to::
 
     $ git clone https://github.com/UW-Hydro/MetSim.git
     $ cd MetSim
@@ -88,7 +101,7 @@ Basic Usage
 -----------
 MetSim provides a simple command line interface which is primarily operated via
 configuration files.  For more information about the options available to be set
-in the configuration files see the :ref:`configuration` page.
+in the configuration files see the `configuration <configuration.rst>`_ page.
 
 Once installed, MetSim can be used from the command line via:
 
@@ -112,9 +125,9 @@ References
 ==========
 
 .. [1] Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen, and D. P.
-       Lettenmaier, 2013a: Global evaluation of MTCLIM and related algorithms for
-       forcing of ecological and hydrological models, Agr. Forest. Meteorol., 176,
-       38-49, doi:10.1016/j.agrformet.2013.03.003.
+       Lettenmaier, 2013. Global evaluation of MTCLIM and related algorithms for
+       forcing of ecological and hydrological models, Agricultural and Forest
+       Meteorology, 176:38-49, doi:10.1016/j.agrformet.2013.03.003.
 
 .. [2] Bristow, K.L., and G.S. Campbell, 1984. On the relationship between
        incoming solar radiation and daily maximum and minimum temperature.
@@ -137,6 +150,11 @@ References
        estimating incident daily solar radiation from measurements of
        temperature, humidity, and precipitation. Agricultural and Forest
        Meteorology, 93:211-228.
+
+.. [7] Bohn, T. J., K. M. Whitney, G. Mascaro, and E. R. Vivoni, 2019. A
+       deterministic approach for approximating the diurnal cycle of
+       precipitation for large-scale hydrological simulations. Journal of
+       Hydrometeorology, 20(2):297-317. doi: 10.1175/JHM-D-18-0203.1.
 
 Sitemap
 =======

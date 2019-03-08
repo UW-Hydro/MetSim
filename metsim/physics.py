@@ -144,6 +144,8 @@ def svp(temp: np.array, a: float=0.61078, b: float=17.269, c: float=237.3):
     svp:
         Saturated vapor pressure (Pa)
     '''
+    if isinstance(temp, pd.Series):
+        raise Exception()
     svp = a * np.exp((b * temp) / (c + temp))
     inds = np.nonzero(temp < 0.)[0]
     svp[inds] *= 1.0 + .00972 * temp[inds] + .000042 * np.power(temp[inds], 2)

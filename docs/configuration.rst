@@ -16,7 +16,7 @@ MetSim Section
 divide 1440 evenly.
 
 ``start :: str``: The time to start simulation given in the format
-``yyyy/mm/dd`` or ``yyyy/mm/dd:hh``.
+``yyyy/mm/dd``
 
 ``stop :: str``: The time to end simulation given in the format
 ``yyyy/mm/dd``.
@@ -32,27 +32,13 @@ __domain_vars__ for more details.
 ``out_dir :: path``: The location to write output to.  If this path doesn't
 exist, it will be created.
 
-``out_state :: path/filename.nc``: The location to write state file to.
-
 ``forcing_fmt :: str``: A string representing the type of input files specified in
 the ``forcing`` entry.  Can be one of the following: ``ascii``, ``binary``,
 ``netcdf``, or ``data``.
 
-``state_fmt :: str``: A string representing the type of state file specified in
-the ``state`` entry.  Can be either ``netcdf`` or ``data``.
-
-``domain_fmt :: str``: A string representing the type of state file specified in
-the ``domain`` entry.  Can be either ``netcdf`` or ``data``.
-
-``out_fmt:: str``: A string representing the type of output to write to
-``out_dir``.  Can be either ``netcdf``, ``data``, or ``ascii``.
-
-``method :: str``: A string representing the simulation methods to use.  The
-current implementation only supports ``mtclim``.
-
 **Optional Variables**
 
-``out_prefix :: str``: The output file base name. Defaults to ``forcing``.
+``output_prefix :: str``: The output file base name. Defaults to ``forcing``.
 
 ``out_precision :: str``: Precision to use when writing output.  Defaults to
 ``f8``.  Can be either ``f4`` or ``f8``.
@@ -63,9 +49,6 @@ memory.  Each chunk of output is written as ``{out_prefix}_{date_range}`` when
 active. Any valid ``pandas.TimeGrouper`` string may be used (e.g. use '10AS'
 for 10 year chunks).
 
-``iter_dims :: list``: The dimensions of input data to iterate over to
-accumulate sites.  Defaults to ``['lat', 'lon']``.
-
 ``verbose :: bool``: Whether to print output to ``stdout``.  Should be set using
 the ``-v`` flag for command line usage.  This can be set for scripting purposes,
 if desired. Set to ``1`` to print output; defaults to ``0``.
@@ -73,8 +56,9 @@ if desired. Set to ``1`` to print output; defaults to ``0``.
 ``sw_prec_thresh :: float``: Minimum precipitation threshold to take into
 account when simulating incoming shortwave radiation.  Defaults to ``0``.
 
-``mtclim_swe_corr :: bool``: Whether to activate MtClim's SWE correction
-algorithm. Default to ``False``.
+``rain_scalar :: float``: Scale factor for calculation of cloudy sky
+transmittance.  Defaults to ``0.75``, range should be between ``0`` and
+``1``.
 
 ``utc_offset :: bool``: Whether to use UTC timecode offsets for shifting
 timeseries. Without this option all times should be considered local to
@@ -96,16 +80,6 @@ dewpoint temperature in MtClim.  Defaults to ``1e-6``.
 ``tmax_daylength_fraction :: float`` : Weight for calculation of time of maximum
 daily temperature.  Must be between ``0`` and ``1``.  Defaults to ``0.67``.
 
-``snow_crit_temp :: float``: Critical temperature for snow to melt.  Defaults to
-``-6.0 C``.
-
-``snow_melt_rate :: float``: Melt rate when temperature is less than
-``snow_crit_temp``.  Defaults to ``0.042 cm/K``.
-
-``rain_scalar :: float``: Scale factor for calculation of cloudy sky
-transmittance.  Defaults to ``0.75``, range should be between ``0`` and
-``1``.
-
 ``tday_coef :: float``: Scale factor for calculation of daily mean temperature.
 Defaults to ``0.45``, range should be between ``0`` and ``1``.
 
@@ -115,8 +89,46 @@ Defaults to ``0.45``, range should be between ``0`` and ``1``.
 ``out_vars :: list`` : List of variables to write to output.  Should be a list
 containing valid variables.  The list of valid variables is dependent on which
 simulation method is used, as well as whether disaggregation is used. Defaults
-to ``['temp', 'prec', 'shortwave', 'longwave', 'vapor_pressure', 'rel_humid']``.
+to ``['temp', 'prec', 'shortwave', 'longwave', 'vapor_pressure', 'red_humid']``.
+
+``prec_type :: str``: Type of precipitation disaggregation method to use. Can be
+one of the following: ``uniform``, ``triangle``, or ``mix``. Defaults to
+``uniform``.  Capitalization does not matter. Under ``uniform`` method,
+precipitation is disaggregated by dividing uniformly over all sub-daily
+timesteps. Under ``triangle`` the "triangle" method is employed whereby daily
+precipitation is distributed assuming an isosceles triangle shape with peak and
+width determined from two domain variables, ``t_pk`` and ``dur``.  Under
+``mix``, the "uniform" method is used on days when ``t_min`` < 0 C, and
+"triangle" is used on all other days; this hybrid method retains the improved
+accuracy of "triangle" in terms of warm season runoff but avoids the biases
+in snow accumulation that the "triangle" method sometimes yields due to fixed
+event timing within the diurnal cycle of temperature. A domain file for the
+CONUS+Mexico domain, containing the ``dur`` and ``t_pk`` parameters is
+available at: `<https://zenodo.org/record/1402223#.XEI-mM2IZPY>`.  For more
+information about the "triangle" method see :doc:`PtriangleMethod.pdf`.
+
 For more information about input and output variables see the :ref:`data` page.
+
+chunks section
+--------------
+The ``chunks`` section describes how parallel computation should be grouped
+in space. For example, to parallelize over 10 by 10 chunks of latitude and
+longitude (with netcdf dimensions named ``lat`` and ``lon``, respectively) you would use:
+
+.. code-block:: ini
+    [chunks]
+    lat = 10
+    lon = 10
+
+Alternatively, for an HRU based run chunked into 50 element jobs you would use:
+
+.. code-block:: ini
+    [chunks]
+    hru = 50
+
+As a general rule of thumb, try to evenly chunk the domain in such a way that
+the number of jobs to run is some multiple of the number of processors you wish
+to run on.
 
 forcing_vars and state_vars section
 ---------------
@@ -131,7 +143,7 @@ netcdf and data
 ```````````````
 The ``in_vars`` section for NetCDF and xarray input acts as a mapping between the variable
 names in the input dataset to the variable names expected by MetSim.  The format
-is given as ``netcdf_varname = metsim_varname``.  The minimum required variables
+is given as ``metsim_varname = netcdf_varname``.  The minimum required variables
 given have ``metsim_varname``\s corresponding to ``t_min``, ``t_max``, and
 ``prec``; these variable names correspond to minimum daily temperature (Celcius),
 maximum daily temperature (Celcius), and precipitation (mm/day).
@@ -164,7 +176,10 @@ domain_vars section
 The ``domain_vars`` section is where information about the domain file is given.
 Since the domain file is given as a NetCDF file this section has a similar
 format to that of the NetCDF input file format described above.  That is,
-entries should be of the form ``netcdf_varname = metsim_varname``. The minimum
+entries should be of the form ``metsim_varname = netcdfvarname``. The minimum
 required variables have ``metsim_varname``\s corresponding to ``lat``, ``lon``,
 ``mask``, and ``elev``; these variable names correspond to latitude, longitude,
-a mask of valid cells in the domain, and the elevation given in meters.
+a mask of valid cells in the domain, and the elevation given in meters. If
+``prec_type`` = ``triangle`` or ``mix``, two additonal variables are required
+including ``dur`` and ``t_pk`` for disaggregating daily precipitation according
+to the "triangle" method.

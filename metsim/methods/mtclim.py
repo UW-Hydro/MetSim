@@ -80,8 +80,11 @@ def tdew(pet, t_min, seasonal_prec, dtr):
     parray = seasonal_prec < 80.0
     seasonal_prec[parray] = 80.0
     ratio = pet / seasonal_prec
-    return ((t_min + cnst.KELVIN) * (-0.127 + 1.121 * (1.003 - 1.444 * ratio + 12.312 * \
-            np.power(ratio, 2) - 32.766 * np.power(ratio, 3)) + 0.0006 * dtr) - cnst.KELVIN)
+    return np.array((t_min + cnst.KELVIN)
+                    * (-0.127 + 1.121 * (1.003 - 1.444 * ratio + 12.312
+                                         * np.power(ratio, 2) - 32.766
+                                         * np.power(ratio, 3)) + 0.0006 * dtr)
+                    - cnst.KELVIN)
 
 
 def vapor_pressure(tdew):
