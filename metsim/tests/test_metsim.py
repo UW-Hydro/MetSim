@@ -251,24 +251,29 @@ def test_disaggregation_values():
 
     # Run MetSim and load in the validated data
     ms.run()
-    out = ms.open_output().isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
+    ds = ms.open_output()
+    out = ds.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
     good = pd.read_table('./metsim/data/validated_48.3125_-120.5625',
                          names=out_vars)
     good.index = out.index
 
     # Make sure the data comes out right
     check_data(out, good)
+    ds.close()
 
-    ## Now do 3 hourly
-    #ms.params['time_step'] = '180'
-    #ms.run()
-    #out = ms.open_output().isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
-    #good = pd.read_table('./metsim/data/three_hourly_48.3125_-120.5625',
-    #                     names=out_vars)
-    #good.index = out.index
+    # Now do 3 hourly
+    params['time_step'] = '180'
+    ms = MetSim(params)
+    ms.run()
+    ds = ms.open_output()
+    out = ds.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
+    good = pd.read_table('./metsim/data/three_hourly_48.3125_-120.5625',
+                         names=out_vars)
+    good.index = out.index
 
-    ## Make sure the data comes out right
-    #check_data(out, good, tol=0.2)
+    # Make sure the data comes out right
+    check_data(out, good, tol=0.2)
+    ds.close()
 
 
 @pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc'])
