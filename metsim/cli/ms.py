@@ -61,7 +61,7 @@ def init(opts):
         return OrderedDict({v: k for k, v in d.items()})
 
     def to_list(s):
-        return json.loads(s.replace("'", '"'))
+        return json.loads(s.replace("'", '"').split('#')[0])
 
     conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
     if conf['forcing_fmt'] != 'binary':
@@ -86,7 +86,7 @@ def init(opts):
                  "out_dir": os.path.abspath(conf['out_dir']),
                  "prec_type": conf.get('prec_type', 'uniform')})
     conf['out_vars'] = to_list(conf.get('out_vars', '[]'))
-    conf['iter_dims'] = to_list(conf.get('iter_dims', '["lat", "lon"]'))
+
     conf = {k: v for k, v in conf.items() if v != []}
     return conf
 
