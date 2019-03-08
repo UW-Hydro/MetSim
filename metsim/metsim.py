@@ -329,6 +329,35 @@ class MetSim(object):
                 units=attrs['time'].get('units', DEFAULT_TIME_UNITS),
                 calendar=time_var.calendar)
 
+            dtype_map = {'float64': 'f8', 'float32': 'f4',
+                         'int64': 'i8', 'int32': 'i4'}
+            for dim in self.domain['mask'].dims:
+                dim_vals = self.domain[dim].values
+                dim_dtype = dtype_map.get(
+                    dim_vals.dtype, self.params['out_precision'])
+                dim_var = ncout.createVariable(dim, dim_dtype, (dim, ))
+                dim_var[:] = dim_vals
+
+            for p in ['elev', 'lat', 'lon']:
+                if p in self.params:
+                    self.params.pop(p)
+            for k, v in self.params.items():
+                # Need to convert some parameters to strings
+                if k in ['start', 'stop', 'utc_offset']:
+                    v = str(v)
+                elif k in ['state_start', 'state_stop', 'out_freq']:
+                    # skip
+                    continue
+                # Don't include complex types
+                if isinstance(v, dict):
+                    v = json.dumps(v)
+                elif not isinstance(v, str) and isinstance(v, Iterable):
+                    v = ', '.join(v)
+
+                if isinstance(v, str):
+                    v = v.replace("'", "").replace('"', "")
+                attrs['_global'][k] = v
+
             # set global attrs
             for key, val in attrs['_global'].items():
                 setattr(ncout, key, val)
@@ -435,11 +464,11 @@ class MetSim(object):
                            calendar=self.params['calendar'])
 
         if freq is None or freq == '':
-            return [times]
+            times = [times]
         else:
             dummy = pd.Series(np.arange(len(times)), index=times)
             grouper = pd.Grouper(freq=freq)
-            return [t.index for k, t in dummy.groupby(grouper)][:-1]
+            times = [t.index for k, t in dummy.groupby(grouper)][:-1]
         return times
 
     def _get_output_filename(self, times):
@@ -462,26 +491,8 @@ class MetSim(object):
         coords = {'time': times, **self.domain['mask'].coords}
         self.output = xr.Dataset(coords=coords)
         self.output['time'].encoding['calendar'] = self.params['calendar']
-        for p in ['elev', 'lat', 'lon']:
-            if p in self.params:
-                self.params.pop(p)
-        for k, v in self.params.items():
-            # Need to convert some parameters to strings
-            if k in ['start', 'stop', 'utc_offset']:
-                v = str(v)
-            elif k in ['state_start', 'state_stop']:
-                # skip
-                continue
-            # Don't include complex types
-            if isinstance(v, dict):
-                v = json.dumps(v)
-            elif not isinstance(v, str) and isinstance(v, Iterable):
-                v = ', '.join(v)
-            attrs['_global'][k] = v
-        self.output.attrs = attrs['_global']
 
         dtype = self.params['out_precision']
-
         for varname in self.params['out_vars']:
             self.output[varname] = xr.DataArray(
                 data=np.full(shape, np.nan, dtype=dtype),
@@ -692,7 +703,6 @@ def wrap_run_cell(func: callable, params: dict,
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
     ms = MetSim(params, domain_slice=domain_slice)
     ms.load_inputs(lock=HDF5_LOCK)
-    ms.params['out_freq'] = ''
     ms.run_slice()
     ms.write_chunk(locks=write_locks)
 
