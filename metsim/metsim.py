@@ -334,7 +334,7 @@ class MetSim(object):
             for dim in self.domain['mask'].dims:
                 dim_vals = self.domain[dim].values
                 dim_dtype = dtype_map.get(
-                    dim_vals.dtype, self.params['out_precision'])
+                    str(dim_vals.dtype), self.params['out_precision'])
                 dim_var = ncout.createVariable(dim, dim_dtype, (dim, ))
                 dim_var[:] = dim_vals
 
