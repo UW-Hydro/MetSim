@@ -13,7 +13,7 @@ for hydrologic modeling and climate applications.
 Metsim is based on MtClim_ and the preprocessor from version 4 of the
 VIC_ hydrologic model.
 
-.. _MtClim: http://www.ntsg.umt.edu/project/mtclim
+.. _MtClim: http://www.ntsg.umt.edu/project/mt-clim.php
 .. _VIC: https://github.com/UW-Hydro/VIC
 
 MetSim consists of 3 main modules that govern the operation of 3
