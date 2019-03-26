@@ -3,10 +3,11 @@ channels:
   - conda-forge
 dependencies:
   - python=3.5
-  - xarray
+  - xarray=0.10.9
   - pandas
   - netcdf4
   - numba
+  - bottleneck
   - numpy
   - scipy
   - pytest
