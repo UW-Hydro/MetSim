@@ -284,7 +284,7 @@ class MetSim(object):
             self._client.cluster.close()
             self._client.close()
             if self.params['verbose'] == logging.DEBUG:
-                    print()
+                print('closed dask cluster/client')
         except Exception:
             pass
 
@@ -468,7 +468,7 @@ class MetSim(object):
         else:
             dummy = pd.Series(np.arange(len(times)), index=times)
             grouper = pd.Grouper(freq=freq)
-            times = [t.index for k, t in dummy.groupby(grouper)][:-1]
+            times = [t.index for k, t in dummy.groupby(grouper)]  # [:-1]
         return times
 
     def _get_output_filename(self, times):
