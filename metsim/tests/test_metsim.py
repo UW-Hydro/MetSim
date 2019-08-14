@@ -235,7 +235,7 @@ def test_disaggregation_values():
     # The location we will test against
     loc = (1, 4)
 
-    def check_data(out, good, tol=0.1):
+    def check_data(out, good, tol=0.02):
         assert isinstance(out, pd.DataFrame)
         for var in ms.params['out_vars']:
             # Check to make sure each variable has normalized

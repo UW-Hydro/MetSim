@@ -120,7 +120,7 @@ def read_ascii(data_handle, domain=None,
     dates = date_range(start, stop, calendar=calendar)
     names = var_dict.keys()
     ds = pd.read_csv(data_handle, header=None, delim_whitespace=True,
-                     sep='\t', names=names).head(len(dates))
+                     names=names).head(len(dates))
     ds.index = dates
     return ds
 
