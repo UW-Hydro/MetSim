@@ -45,7 +45,8 @@ import dask
 from dask.diagnostics import ProgressBar
 from netCDF4 import Dataset
 from cftime import date2num
-from xarray.backends.common import _get_scheduler_lock, HDF5_LOCK
+
+from xarray.backends.locks import get_write_lock, HDF5_LOCK
 
 import metsim.constants as cnst
 from metsim import io
@@ -271,9 +272,9 @@ class MetSim(object):
         for times in self._times:
             filename = self._get_output_filename(times)
             self.setup_netcdf_output(filename, times)
-            write_locks[filename] = _get_scheduler_lock(
-                self.params['scheduler'], path_or_file=filename)
+            write_locks[filename] = get_write_lock(filename)
         self.logger.info('Starting {} chunks...'.format(len(self.slices)))
+
         delayed_objs = [wrap_run_slice(self.params, write_locks, dslice)
                         for dslice in self.slices]
 
@@ -702,7 +703,7 @@ def wrap_run_cell(func: callable, params: dict,
 @dask.delayed()
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
     ms = MetSim(params, domain_slice=domain_slice)
-    ms.load_inputs(lock=HDF5_LOCK)
+    ms.load_inputs(lock=None)
     ms.run_slice()
     ms.write_chunk(locks=write_locks)
 
