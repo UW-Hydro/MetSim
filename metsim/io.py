@@ -146,7 +146,7 @@ def read_netcdf(data_handle, domain=None,
     if var_dict is not None:
         var_list = list(var_dict.keys())
         ds = ds[var_list]
-        ds.rename(var_dict, inplace=True)
+        ds = ds.rename(var_dict)
 
     if start is not None or stop is not None:
         ds = ds.sel(time=slice(start, stop))
@@ -162,7 +162,7 @@ def read_data(data_handle, domain=None,
     """Read data directly from an xarray dataset"""
     varlist = list(data_handle.keys())
     if var_dict is not None:
-        data_handle.rename(var_dict, inplace=True)
+        data_handle = data_handle.rename(var_dict)
         varlist = list(var_dict.values())
     data_handle = data_handle[varlist]
 

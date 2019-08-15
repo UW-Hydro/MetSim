@@ -46,7 +46,7 @@ from dask.diagnostics import ProgressBar
 from netCDF4 import Dataset
 from cftime import date2num
 
-from xarray.backends.locks import get_write_lock, HDF5_LOCK
+from xarray.backends.locks import get_write_lock, combine_locks, NETCDFC_LOCK
 
 import metsim.constants as cnst
 from metsim import io
@@ -178,6 +178,7 @@ class MetSim(object):
                         scheduler_file=self.params['scheduler'])
                 else:
                     self._client = Client(self.params['scheduler'])
+                print(self._client.scheduler_info())
         else:
             dask.config.set(scheduler=self.params['scheduler'])
 
@@ -272,7 +273,7 @@ class MetSim(object):
         for times in self._times:
             filename = self._get_output_filename(times)
             self.setup_netcdf_output(filename, times)
-            write_locks[filename] = get_write_lock(filename)
+            write_locks[filename] = combine_locks([NETCDFC_LOCK, get_write_lock(filename)])
         self.logger.info('Starting {} chunks...'.format(len(self.slices)))
 
         delayed_objs = [wrap_run_slice(self.params, write_locks, dslice)
@@ -289,16 +290,14 @@ class MetSim(object):
         except Exception:
             pass
 
-    def load_inputs(self, close=True, lock=None):
-        lock = lock if lock is not None else DummyLock()
-        with lock:
-            self._domain = self.domain.load()
-            self._met_data = self.met_data.load()
-            self._state = self.state.load()
-            if close:
-                self._domain.close()
-                self._met_data.close()
-                self._state.close()
+    def load_inputs(self, close=True):
+        self._domain = self.domain.load()
+        self._met_data = self.met_data.load()
+        self._state = self.state.load()
+        if close:
+            self._domain.close()
+            self._met_data.close()
+            self._state.close()
 
     def setup_netcdf_output(self, filename, times):
         '''setup a single netcdf file'''
@@ -376,6 +375,8 @@ class MetSim(object):
             filename = self._get_output_filename(times)
             lock = locks.get(filename, DummyLock())
             time_slice = slice(times[0], times[-1])
+            if lock.locked():
+                print('{} locked? {}'.format(os.path.basename(filename), lock.locked()))
             with lock:
                 with Dataset(filename, mode="r+") as ncout:
                     for varname in self.params['out_vars']:
@@ -384,6 +385,7 @@ class MetSim(object):
                             self._domain_slice[d] for d in dims))
                         ncout.variables[varname][write_slice] = (
                             self.output[varname].sel(time=time_slice).values)
+                # print(f'\ndone writing {filename}\n', flush=True)
 
     def run_slice(self):
         """
@@ -703,7 +705,7 @@ def wrap_run_cell(func: callable, params: dict,
 @dask.delayed()
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
     ms = MetSim(params, domain_slice=domain_slice)
-    ms.load_inputs(lock=None)
+    ms.load_inputs()
     ms.run_slice()
     ms.write_chunk(locks=write_locks)
 
