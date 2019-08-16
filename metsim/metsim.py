@@ -153,6 +153,7 @@ class MetSim(object):
         self._domain_slice = domain_slice
         self.progress_bar = ProgressBar()
         self.params.update(params)
+        logging.captureWarnings(True)
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(self.params['verbose'])
 
@@ -178,7 +179,6 @@ class MetSim(object):
                         scheduler_file=self.params['scheduler'])
                 else:
                     self._client = Client(self.params['scheduler'])
-                print(self._client.scheduler_info())
         else:
             dask.config.set(scheduler=self.params['scheduler'])
 
@@ -375,8 +375,6 @@ class MetSim(object):
             filename = self._get_output_filename(times)
             lock = locks.get(filename, DummyLock())
             time_slice = slice(times[0], times[-1])
-            if lock.locked():
-                print('{} locked? {}'.format(os.path.basename(filename), lock.locked()))
             with lock:
                 with Dataset(filename, mode="r+") as ncout:
                     for varname in self.params['out_vars']:
@@ -385,7 +383,6 @@ class MetSim(object):
                             self._domain_slice[d] for d in dims))
                         ncout.variables[varname][write_slice] = (
                             self.output[varname].sel(time=time_slice).values)
-                # print(f'\ndone writing {filename}\n', flush=True)
 
     def run_slice(self):
         """
@@ -508,7 +505,6 @@ class MetSim(object):
         # Precipitation record
 
         assert self.state.dims['time'] == 90, self.state['time']
-
         record_dates = date_range(self.params['state_start'],
                                   self.params['state_stop'],
                                   calendar=self.params['calendar'])
