@@ -45,7 +45,8 @@ import dask
 from dask.diagnostics import ProgressBar
 from netCDF4 import Dataset
 from cftime import date2num
-from xarray.backends.common import _get_scheduler_lock, HDF5_LOCK
+
+from xarray.backends.locks import get_write_lock, combine_locks, NETCDFC_LOCK
 
 import metsim.constants as cnst
 from metsim import io
@@ -152,6 +153,7 @@ class MetSim(object):
         self._domain_slice = domain_slice
         self.progress_bar = ProgressBar()
         self.params.update(params)
+        logging.captureWarnings(True)
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(self.params['verbose'])
 
@@ -271,9 +273,9 @@ class MetSim(object):
         for times in self._times:
             filename = self._get_output_filename(times)
             self.setup_netcdf_output(filename, times)
-            write_locks[filename] = _get_scheduler_lock(
-                self.params['scheduler'], path_or_file=filename)
+            write_locks[filename] = combine_locks([NETCDFC_LOCK, get_write_lock(filename)])
         self.logger.info('Starting {} chunks...'.format(len(self.slices)))
+
         delayed_objs = [wrap_run_slice(self.params, write_locks, dslice)
                         for dslice in self.slices]
 
@@ -284,20 +286,18 @@ class MetSim(object):
             self._client.cluster.close()
             self._client.close()
             if self.params['verbose'] == logging.DEBUG:
-                    print()
+                print('closed dask cluster/client')
         except Exception:
             pass
 
-    def load_inputs(self, close=True, lock=None):
-        lock = lock if lock is not None else DummyLock()
-        with lock:
-            self._domain = self.domain.load()
-            self._met_data = self.met_data.load()
-            self._state = self.state.load()
-            if close:
-                self._domain.close()
-                self._met_data.close()
-                self._state.close()
+    def load_inputs(self, close=True):
+        self._domain = self.domain.load()
+        self._met_data = self.met_data.load()
+        self._state = self.state.load()
+        if close:
+            self._domain.close()
+            self._met_data.close()
+            self._state.close()
 
     def setup_netcdf_output(self, filename, times):
         '''setup a single netcdf file'''
@@ -468,7 +468,7 @@ class MetSim(object):
         else:
             dummy = pd.Series(np.arange(len(times)), index=times)
             grouper = pd.Grouper(freq=freq)
-            times = [t.index for k, t in dummy.groupby(grouper)][:-1]
+            times = [t.index for k, t in dummy.groupby(grouper)]  # [:-1]
         return times
 
     def _get_output_filename(self, times):
@@ -505,7 +505,6 @@ class MetSim(object):
         # Precipitation record
 
         assert self.state.dims['time'] == 90, self.state['time']
-
         record_dates = date_range(self.params['state_start'],
                                   self.params['state_stop'],
                                   calendar=self.params['calendar'])
@@ -702,7 +701,7 @@ def wrap_run_cell(func: callable, params: dict,
 @dask.delayed()
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
     ms = MetSim(params, domain_slice=domain_slice)
-    ms.load_inputs(lock=HDF5_LOCK)
+    ms.load_inputs()
     ms.run_slice()
     ms.write_chunk(locks=write_locks)
 
