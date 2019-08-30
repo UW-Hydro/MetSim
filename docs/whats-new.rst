@@ -3,6 +3,16 @@
 What's New
 ==========
 
+.. _whats-new.2.0.1.develop:
+
+v.2.0.1.develop
+-------
+Enhancements
+~~~~~~~~~~~~
+- Allow for specification of constant fields, through addition
+  of an optional ``constant_vars`` section.
+
+
 .. _whats-new.2.0.0:
 
 v.2.0.0
