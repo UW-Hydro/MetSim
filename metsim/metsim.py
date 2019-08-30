@@ -93,6 +93,8 @@ attrs = {'pet': {'units': 'mm timestep-1',
                        'standard_name': 'relative_humidity'},
          'spec_humid': {'units': '', 'long_name': 'specific humidity',
                         'standard_name': 'specific_humidity'},
+         'wind': {'units': 'm/s', 'long_name': 'wind speed',
+                  'standard_name': 'wind_speed'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
@@ -247,6 +249,15 @@ class MetSim(object):
             self._met_data['elev'] = self.domain['elev']
             self._met_data['lat'] = self.domain['lat']
             self._met_data['lon'] = self.domain['lon']
+
+            # process constant_vars
+            template_var = list(self.params.get('forcing_vars', None).values())[0]
+            constant_vars = self.params.get('constant_vars', None)
+            for var in constant_vars.keys():
+                constant_value = float(constant_vars[var])
+                self._met_data[var] = self._met_data[template_var].copy()
+                self._met_data[var] += -self._met_data[var] + constant_value
+
             self._validate_force_times(force_times=self._met_data['time'])
         return self._met_data
 
@@ -538,6 +549,12 @@ class MetSim(object):
         # Make sure there's some input
         if not len(self.params.get('forcing', [])):
             errs.append("Requires input forcings to be specified")
+
+        # Make sure there is at least one forcing_var
+        # They cannot all be constant since we use one as a template
+        # for the others
+        if not len(self.params.get('forcing_vars', [])):
+            errs.append("Requires at least one non-constant forcing")
 
         # Parameters that can't be empty strings or None
         non_empty = ['out_dir', 'time_step', 'forcing_fmt']
