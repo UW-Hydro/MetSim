@@ -253,7 +253,10 @@ class MetSim(object):
             # process constant_vars
             constant_vars = self.params.get('constant_vars', None)
             if constant_vars:
-                template_var = list(self.params.get('forcing_vars', None).values())[0]
+                if self.params['forcing_fmt'] != 'binary':
+                    template_var = list(self.params.get('forcing_vars', None).values())[0]
+                else:
+                    template_var = list(self.params.get('forcing_vars', None).keys())[0]
                 for var in constant_vars.keys():
                     constant_value = float(constant_vars[var])
                     self._met_data[var] = self._met_data[template_var].copy()

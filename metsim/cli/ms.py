@@ -64,18 +64,13 @@ def init(opts):
         return json.loads(s.replace("'", '"').split('#')[0])
 
     conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
-    if 'constant_vars' in config:
-        conf['constant_vars'] = OrderedDict(config['constant_vars'])
-        # remove constant_vars from forcings_vars
-        del_keys = list(set(conf['forcing_vars'].keys()).
-                        intersection(conf['constant_vars'].keys()))
-        [conf['forcing_vars'].pop(x) for x in del_keys]
-
     if conf['forcing_fmt'] != 'binary':
         conf['forcing_vars'] = invert_dict(conf['forcing_vars'])
     conf['domain_vars'] = invert_dict(OrderedDict(config['domain_vars']))
     conf['state_vars'] = invert_dict(OrderedDict(config['state_vars']))
     conf['chunks'] = OrderedDict(config['chunks'])
+    if 'constant_vars' in config:
+        conf['constant_vars'] = OrderedDict(config['constant_vars'])
 
     # If the forcing variable is a directory, scan it for files
     if os.path.isdir(conf['forcing']):
