@@ -276,7 +276,10 @@ def test_disaggregation_values():
     ds.close()
 
 
-@pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc'])
+@pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc', 
+                                  'constant_vars_ascii',
+                                  'constant_vars_bin',
+                                  'constant_vars_nc'])
 def test_examples(kind):
     filename = './examples/example_{kind}.conf'.format(kind=kind)
     conf = cli.init(DummyOpts(filename))
