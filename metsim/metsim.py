@@ -258,9 +258,8 @@ class MetSim(object):
                 else:
                     template_var = list(self.params.get('forcing_vars', None).keys())[0]
                 for var in constant_vars.keys():
-                    constant_value = float(constant_vars[var])
-                    self._met_data[var] = self._met_data[template_var].copy()
-                    self._met_data[var] += -self._met_data[var] + constant_value
+                    self._met_data[var] = xr.full_like(self._met_data[template_var], 
+                                                       float(constant_vars[var]))
 
             self._validate_force_times(force_times=self._met_data['time'])
         return self._met_data
