@@ -38,7 +38,7 @@ the ``forcing`` entry.  Can be one of the following: ``ascii``, ``binary``,
 
 **Optional Variables**
 
-``output_prefix :: str``: The output file base name. Defaults to ``forcing``.
+``out_prefix :: str``: The output file base name. Defaults to ``forcing``.
 
 ``out_precision :: str``: Precision to use when writing output.  Defaults to
 ``f8``.  Can be either ``f4`` or ``f8``.
