@@ -63,13 +63,13 @@ def init(opts):
     def to_list(s):
         return json.loads(s.replace("'", '"').split('#')[0])
 
-
-    conf['constant_vars'] = OrderedDict(config['constant_vars'])
     conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
-    # remove constant_vars from forcings_vars
-    del_keys = list(set(conf['forcing_vars'].keys()).
-                    intersection(conf['constant_vars'].keys()))
-    [conf['forcing_vars'].pop(x) for x in del_keys]
+    if 'constant_vars' in config:
+        conf['constant_vars'] = OrderedDict(config['constant_vars'])
+        # remove constant_vars from forcings_vars
+        del_keys = list(set(conf['forcing_vars'].keys()).
+                        intersection(conf['constant_vars'].keys()))
+        [conf['forcing_vars'].pop(x) for x in del_keys]
 
     if conf['forcing_fmt'] != 'binary':
         conf['forcing_vars'] = invert_dict(conf['forcing_vars'])

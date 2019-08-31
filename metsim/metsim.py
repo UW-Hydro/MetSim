@@ -251,12 +251,13 @@ class MetSim(object):
             self._met_data['lon'] = self.domain['lon']
 
             # process constant_vars
-            template_var = list(self.params.get('forcing_vars', None).values())[0]
             constant_vars = self.params.get('constant_vars', None)
-            for var in constant_vars.keys():
-                constant_value = float(constant_vars[var])
-                self._met_data[var] = self._met_data[template_var].copy()
-                self._met_data[var] += -self._met_data[var] + constant_value
+            if constant_vars:
+                template_var = list(self.params.get('forcing_vars', None).values())[0]
+                for var in constant_vars.keys():
+                    constant_value = float(constant_vars[var])
+                    self._met_data[var] = self._met_data[template_var].copy()
+                    self._met_data[var] += -self._met_data[var] + constant_value
 
             self._validate_force_times(force_times=self._met_data['time'])
         return self._met_data
