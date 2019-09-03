@@ -45,7 +45,8 @@ import dask
 from dask.diagnostics import ProgressBar
 from netCDF4 import Dataset
 from cftime import date2num
-from xarray.backends.common import _get_scheduler_lock, HDF5_LOCK
+
+from xarray.backends.locks import get_write_lock, combine_locks, NETCDFC_LOCK
 
 import metsim.constants as cnst
 from metsim import io
@@ -92,6 +93,8 @@ attrs = {'pet': {'units': 'mm timestep-1',
                        'standard_name': 'relative_humidity'},
          'spec_humid': {'units': '', 'long_name': 'specific humidity',
                         'standard_name': 'specific_humidity'},
+         'wind': {'units': 'm/s', 'long_name': 'wind speed',
+                  'standard_name': 'wind_speed'},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
@@ -116,7 +119,7 @@ class MetSim(object):
         "domain": '',
         "state": '',
         "out_dir": '',
-        "output_prefix": 'forcing',
+        "out_prefix": 'forcing',
         "start": 'forcing',
         "stop": 'forcing',
         "time_step": -1,
@@ -152,6 +155,7 @@ class MetSim(object):
         self._domain_slice = domain_slice
         self.progress_bar = ProgressBar()
         self.params.update(params)
+        logging.captureWarnings(True)
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(self.params['verbose'])
 
@@ -245,6 +249,15 @@ class MetSim(object):
             self._met_data['elev'] = self.domain['elev']
             self._met_data['lat'] = self.domain['lat']
             self._met_data['lon'] = self.domain['lon']
+
+            # process constant_vars
+            constant_vars = self.params.get('constant_vars', None)
+            if constant_vars:
+                da_template = self._met_data[list(self._met_data)[0]]
+                for var in constant_vars.keys():
+                    self._met_data[var] = xr.full_like(da_template, 
+                                                       float(constant_vars[var]))
+
             self._validate_force_times(force_times=self._met_data['time'])
         return self._met_data
 
@@ -271,33 +284,31 @@ class MetSim(object):
         for times in self._times:
             filename = self._get_output_filename(times)
             self.setup_netcdf_output(filename, times)
-            write_locks[filename] = _get_scheduler_lock(
-                self.params['scheduler'], path_or_file=filename)
+            write_locks[filename] = combine_locks([NETCDFC_LOCK, get_write_lock(filename)])
         self.logger.info('Starting {} chunks...'.format(len(self.slices)))
+
         delayed_objs = [wrap_run_slice(self.params, write_locks, dslice)
                         for dslice in self.slices]
 
         self.progress_bar(
-            dask.persist(delayed_objs, num_workers=self.params['num_workers']))
+            dask.compute(delayed_objs, num_workers=self.params['num_workers']))
         self.logger.info('Cleaning up...')
         try:
             self._client.cluster.close()
             self._client.close()
             if self.params['verbose'] == logging.DEBUG:
-                    print()
+                print('closed dask cluster/client')
         except Exception:
             pass
 
-    def load_inputs(self, close=True, lock=None):
-        lock = lock if lock is not None else DummyLock()
-        with lock:
-            self._domain = self.domain.load()
-            self._met_data = self.met_data.load()
-            self._state = self.state.load()
-            if close:
-                self._domain.close()
-                self._met_data.close()
-                self._state.close()
+    def load_inputs(self, close=True):
+        self._domain = self.domain.load()
+        self._met_data = self.met_data.load()
+        self._state = self.state.load()
+        if close:
+            self._domain.close()
+            self._met_data.close()
+            self._state.close()
 
     def setup_netcdf_output(self, filename, times):
         '''setup a single netcdf file'''
@@ -468,12 +479,12 @@ class MetSim(object):
         else:
             dummy = pd.Series(np.arange(len(times)), index=times)
             grouper = pd.Grouper(freq=freq)
-            times = [t.index for k, t in dummy.groupby(grouper)][:-1]
+            times = [t.index for k, t in dummy.groupby(grouper)]
         return times
 
     def _get_output_filename(self, times):
         suffix = self.get_nc_output_suffix(times)
-        fname = '{}_{}.nc'.format(self.params['output_prefix'], suffix)
+        fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(
             os.path.abspath(self.params['out_dir']), fname)
         return output_filename
@@ -505,7 +516,6 @@ class MetSim(object):
         # Precipitation record
 
         assert self.state.dims['time'] == 90, self.state['time']
-
         record_dates = date_range(self.params['state_start'],
                                   self.params['state_stop'],
                                   calendar=self.params['calendar'])
@@ -539,6 +549,12 @@ class MetSim(object):
         # Make sure there's some input
         if not len(self.params.get('forcing', [])):
             errs.append("Requires input forcings to be specified")
+
+        # Make sure there is at least one forcing_var
+        # They cannot all be constant since we use one as a template
+        # for the others
+        if not len(self.params.get('forcing_vars', [])):
+            errs.append("Requires at least one non-constant forcing")
 
         # Parameters that can't be empty strings or None
         non_empty = ['out_dir', 'time_step', 'forcing_fmt']
@@ -702,7 +718,7 @@ def wrap_run_cell(func: callable, params: dict,
 @dask.delayed()
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
     ms = MetSim(params, domain_slice=domain_slice)
-    ms.load_inputs(lock=HDF5_LOCK)
+    ms.load_inputs()
     ms.run_slice()
     ms.write_chunk(locks=write_locks)
 
