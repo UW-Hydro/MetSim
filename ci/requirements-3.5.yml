@@ -11,6 +11,9 @@ dependencies:
   - numpy
   - scipy
   - pytest
+  - dask
+  - distributed
+  - toolz
   - pip:
     - coveralls
     - pytest-cov
