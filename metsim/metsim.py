@@ -117,7 +117,7 @@ class MetSim(object):
         "domain": '',
         "state": '',
         "out_dir": '',
-        "output_prefix": 'forcing',
+        "out_prefix": 'forcing',
         "start": 'forcing',
         "stop": 'forcing',
         "time_step": -1,
@@ -473,7 +473,7 @@ class MetSim(object):
 
     def _get_output_filename(self, times):
         suffix = self.get_nc_output_suffix(times)
-        fname = '{}_{}.nc'.format(self.params['output_prefix'], suffix)
+        fname = '{}_{}.nc'.format(self.params['out_prefix'], suffix)
         output_filename = os.path.join(
             os.path.abspath(self.params['out_dir']), fname)
         return output_filename
