@@ -88,7 +88,7 @@ Alternatively, you can install MetSim directly from the source if you desire to:
     $ git clone https://github.com/UW-Hydro/MetSim.git
     $ cd MetSim
     $ python setup.py install
-    $ py.test --verbose
+    $ pytest --verbose
 
 Basic Usage
 -----------

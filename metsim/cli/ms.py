@@ -25,7 +25,7 @@ import logging
 import os
 import sys
 from collections import OrderedDict
-from configparser import SafeConfigParser
+from configparser import ConfigParser
 
 
 def _is_valid_file(parser, arg):
@@ -52,7 +52,7 @@ def parse(args):
 
 def init(opts):
     """Initialize some information based on the options & config"""
-    config = SafeConfigParser()
+    config = ConfigParser()
     config.optionxform = str
     config.read(opts.config)
     conf = OrderedDict(config['MetSim'])
@@ -69,6 +69,8 @@ def init(opts):
     conf['domain_vars'] = invert_dict(OrderedDict(config['domain_vars']))
     conf['state_vars'] = invert_dict(OrderedDict(config['state_vars']))
     conf['chunks'] = OrderedDict(config['chunks'])
+    if 'constant_vars' in config:
+        conf['constant_vars'] = OrderedDict(config['constant_vars'])
 
     # If the forcing variable is a directory, scan it for files
     if os.path.isdir(conf['forcing']):
