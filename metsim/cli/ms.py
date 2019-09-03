@@ -69,6 +69,8 @@ def init(opts):
     conf['domain_vars'] = invert_dict(OrderedDict(config['domain_vars']))
     conf['state_vars'] = invert_dict(OrderedDict(config['state_vars']))
     conf['chunks'] = OrderedDict(config['chunks'])
+    if 'constant_vars' in config:
+        conf['constant_vars'] = OrderedDict(config['constant_vars'])
 
     # If the forcing variable is a directory, scan it for files
     if os.path.isdir(conf['forcing']):

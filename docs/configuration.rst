@@ -183,3 +183,27 @@ a mask of valid cells in the domain, and the elevation given in meters. If
 ``prec_type`` = ``triangle`` or ``mix``, two additonal variables are required
 including ``dur`` and ``t_pk`` for disaggregating daily precipitation according
 to the "triangle" method.
+
+constant_vars section
+-------------------
+The ``constant_vars`` section is optional and allows you to set some of the 
+forcing inputs to a constant value. The specification simply consists of entries 
+of the form ``metsim_varname = value``, where ``value`` is a number that can be
+converted to a double. There can only be one entry per line. If the 
+``metsim_varname`` corresponds to an entry that is already in the ``forcing_vars``
+section, then the constant value will take precedence. In the current 
+implementation there must be at least one non-constant entry in ``forcings_vars``
+(i.e. at least one entry that is not also in ``constant_vars``).
+
+For example:
+``wind = 2.0``
+will result in a constant wind field in the output file. In this case ``wind``
+does not need to be specified in the ``forcing_vars`` section. If it was, it
+will still be set to a constant value of 2 m/s.
+
+Similarly:
+``t_max = 30
+t_min = 10``
+will result in output with a diurnal cycle in which the temperature varies at
+all locations between 10C and 30C. However, all estimation and disaggregation 
+routines are still evaluated, with constant ``t_max`` and ``t_min`` as input.
