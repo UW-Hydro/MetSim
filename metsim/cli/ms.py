@@ -58,7 +58,7 @@ def init(opts):
     conf = OrderedDict(config['MetSim'])
 
     def invert_dict(d):
-        return OrderedDict({v: k for k, v in d.items()})
+        return OrderedDict([reversed(item) for item in d.items()])
 
     def to_list(s):
         return json.loads(s.replace("'", '"').split('#')[0])
