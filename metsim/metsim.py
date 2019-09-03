@@ -253,12 +253,9 @@ class MetSim(object):
             # process constant_vars
             constant_vars = self.params.get('constant_vars', None)
             if constant_vars:
-                if self.params['forcing_fmt'] != 'binary':
-                    template_var = list(self.params.get('forcing_vars', None).values())[0]
-                else:
-                    template_var = list(self.params.get('forcing_vars', None).keys())[0]
+                da_template = self._met_data[list(self._met_data)[0]]
                 for var in constant_vars.keys():
-                    self._met_data[var] = xr.full_like(self._met_data[template_var], 
+                    self._met_data[var] = xr.full_like(da_template, 
                                                        float(constant_vars[var]))
 
             self._validate_force_times(force_times=self._met_data['time'])
