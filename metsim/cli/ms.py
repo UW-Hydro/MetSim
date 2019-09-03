@@ -38,6 +38,7 @@ def _is_valid_file(parser, arg):
 
 def parse(args):
     """Parse the command line arguments"""
+    from metsim import __name__, __version__
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=lambda x: _is_valid_file(parser, x),
                         help='Input configuration file')
@@ -47,6 +48,8 @@ def parse(args):
                         help='Dask scheduler to use')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Increase the verbosity of MetSim')
+    parser.add_argument('--version', action='version', 
+                        version='{} {}'.format(__name__, __version__))
     return parser.parse_args()
 
 
