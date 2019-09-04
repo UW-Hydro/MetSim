@@ -3,6 +3,14 @@
 What's New
 ==========
 
+.. _whats-new.2.1.1.develop:
+
+v.2.1.1.develop
+-------
+Enhancements
+~~~~~~~~~~~~
+- Allow for ``--version`` flag on command-line.
+
 .. _whats-new.2.0.1.develop:
 
 v.2.0.1.develop

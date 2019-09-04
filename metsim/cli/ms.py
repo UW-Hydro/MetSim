@@ -48,8 +48,9 @@ def parse(args):
                         help='Dask scheduler to use')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Increase the verbosity of MetSim')
-    parser.add_argument('--version', action='version', 
-                        version='{} {}'.format(__name__, __version__))
+    parser.add_argument('--version', action='version',
+                        version='{} {}'.format(__name__, __version__),
+                        help='Name and version number')
     return parser.parse_args()
 
 
