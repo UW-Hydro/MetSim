@@ -291,7 +291,7 @@ class MetSim(object):
                         for dslice in self.slices]
         persisted = dask.persist(delayed_objs, num_workers=self.params['num_workers'])
         self.progress_bar(persisted)
-        persisted.compute()
+        dask.compute(persisted)
         self.logger.info('Cleaning up...')
         try:
             self._client.cluster.close()
