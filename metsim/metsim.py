@@ -255,7 +255,7 @@ class MetSim(object):
             if constant_vars:
                 da_template = self._met_data[list(self._met_data)[0]]
                 for var in constant_vars.keys():
-                    self._met_data[var] = xr.full_like(da_template, 
+                    self._met_data[var] = xr.full_like(da_template,
                                                        float(constant_vars[var]))
 
             self._validate_force_times(force_times=self._met_data['time'])
@@ -289,9 +289,9 @@ class MetSim(object):
 
         delayed_objs = [wrap_run_slice(self.params, write_locks, dslice)
                         for dslice in self.slices]
-
-        self.progress_bar(
-            dask.compute(delayed_objs, num_workers=self.params['num_workers']))
+        persisted = dask.persist(delayed_objs, num_workers=self.params['num_workers'])
+        self.progress_bar(persisted)
+        dask.compute(persisted)
         self.logger.info('Cleaning up...')
         try:
             self._client.cluster.close()

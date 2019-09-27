@@ -140,6 +140,8 @@ def read_netcdf(data_handle, domain=None,
                      if k in list(ds.dims.keys())})
 
     if 'time' in ds.coords:
+        if isinstance(ds.indexes['time'], xr.CFTimeIndex):
+            ds['time'] = ds.indexes['time'].to_datetimeindex()
         ds['time'] = (ds.indexes['time'] -
                       pd.Timedelta('11H59M59S')).round('D')
 
