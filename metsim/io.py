@@ -144,7 +144,8 @@ def read_netcdf(data_handle, domain=None, is_worker=False,
         for d in dims_wo_coords:
             if is_worker:
                 logger = logging.getLogger('MetSim')
-                logger.warning('Setting sequential coordinate on dimension {}'.format(d))
+                logger.warning(
+                    'Setting sequential coordinate on dimension {}'.format(d))
             ds[d] = np.arange(0, len(ds[d]))
 
     if 'time' in ds.coords:

@@ -3,17 +3,29 @@
 What's New
 ==========
 
-.. _whats-new.2.1.1.develop:
+.. _whats-new.2.1.2:
 
-v.2.1.1.develop
+v.2.1.2 (under development)
+---------
+
+Bug fixes
+~~~~~~~~~
+- Can now handle dimensions without coordinate variables, which
+  previously caused a bug in the chunk selection of the worker
+  processes. The fix is to simply add a sequential coordinate
+  any time this occurs.
+
+.. _whats-new.2.1.1:
+
+v.2.1.1
 -------
 Enhancements
 ~~~~~~~~~~~~
 - Allow for ``--version`` flag on command-line.
 
-.. _whats-new.2.0.1.develop:
+.. _whats-new.2.0.1:
 
-v.2.0.1.develop
+v.2.0.1
 -------
 Enhancements
 ~~~~~~~~~~~~
