@@ -115,6 +115,7 @@ class MetSim(object):
     # Class variables
     methods = {'mtclim': mtclim}
     params = {
+        "period_ending": False,
         "method": 'mtclim',
         "domain": '',
         "state": '',
@@ -194,7 +195,9 @@ class MetSim(object):
             # If not in verbose mode, create a dummy function
             self.progress_bar = lambda x: x
         # Create time vector(s)
-        self._times = self._get_output_times(freq=self.params['out_freq'])
+        self._times = self._get_output_times(
+            freq=self.params['out_freq'],
+            period_ending=self.params['period_ending'])
 
     def _validate_force_times(self, force_times):
 
@@ -354,7 +357,7 @@ class MetSim(object):
                     self.params.pop(p)
             for k, v in self.params.items():
                 # Need to convert some parameters to strings
-                if k in ['start', 'stop', 'utc_offset']:
+                if k in ['start', 'stop', 'utc_offset', 'period_ending']:
                     v = str(v)
                 elif k in ['state_start', 'state_stop', 'out_freq']:
                     # skip
@@ -422,7 +425,6 @@ class MetSim(object):
                                       self.disagg, times)
 
             # Cut the returned data down to the correct time index
-            self._unpack_state(state, locs)
             for varname in self.params['out_vars']:
                 self.output[varname][locs] = df[varname].values
 
@@ -443,7 +445,7 @@ class MetSim(object):
         self.state['time'].values = date_range(
             state_start, result.index[-1], calendar=self.params['calendar'])
 
-    def _get_output_times(self, freq=None):
+    def _get_output_times(self, freq=None, period_ending=False):
         """
         Generate chunked time vectors
 
@@ -452,6 +454,9 @@ class MetSim(object):
         freq:
             Output frequency. Given as a Pandas timegrouper string.
             If not given, the entire timeseries will be used.
+        period_ending:
+            Flag to specify if output timesteps should be period-
+            ending. Default is period-beginning
 
         Returns
         -------
@@ -467,10 +472,15 @@ class MetSim(object):
                 '{} minutes'.format(self.params['time_step']))
         else:
             delta = pd.Timedelta('0 days')
+        if period_ending:
+            offset = pd.Timedelta(
+                '{} minutes'.format(self.params['time_step']))
+        else:
+            offset = pd.Timedelta('0 minutes')
 
         start = pd.Timestamp(prototype['time'].values[0]).to_pydatetime()
         stop = pd.Timestamp(prototype['time'].values[-1]).to_pydatetime()
-        times = date_range(start, stop + delta,
+        times = date_range(start + offset, stop + offset + delta,
                            freq="{}T".format(self.params['time_step']),
                            calendar=self.params['calendar'])
 
@@ -492,7 +502,8 @@ class MetSim(object):
     def setup_output(self):
 
         # output times
-        times = self._get_output_times(freq=None)[0]
+        times = self._get_output_times(
+            freq=None, period_ending=self.params['period_ending'])[0]
 
         # Number of timesteps
         n_ts = len(times)
@@ -698,6 +709,11 @@ def wrap_run_cell(func: callable, params: dict,
         start = out_times.values[0]
         stop = (out_times.values[-1] + pd.Timedelta('1 days') -
                 pd.Timedelta("{} minutes".format(params['time_step'])))
+
+        if params['period_ending']:
+            start += pd.Timedelta('{} minutes'.format(params['time_step']))
+            stop += pd.Timedelta('{} minutes'.format(params['time_step']))
+
         new_times = date_range(
             start, stop, freq='{}T'.format(params['time_step']),
             calendar=params['calendar'])

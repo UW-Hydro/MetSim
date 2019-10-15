@@ -109,6 +109,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     if 'wind' in df_daily:
         df_disagg['wind'] = wind(df_daily['wind'].values, ts, params)
 
+    if params['period_ending']:
+        df_disagg.index += pd.Timedelta('{} minutes'.format(params['time_step']))
     return df_disagg.fillna(method='ffill')
 
 
