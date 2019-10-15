@@ -115,6 +115,7 @@ class MetSim(object):
     # Class variables
     methods = {'mtclim': mtclim}
     params = {
+        "is_worker": False,
         "method": 'mtclim',
         "domain": '',
         "state": '',
@@ -242,10 +243,7 @@ class MetSim(object):
     @property
     def met_data(self):
         if self._met_data is None:
-            if self.domain is None:
-                self._domain = io.read_domain(self.params).isel(
-                    **self._domain_slice)
-            self._met_data = io.read_met_data(self.params, self._domain)
+            self._met_data = io.read_met_data(self.params, self.domain)
             self._met_data['elev'] = self.domain['elev']
             self._met_data['lat'] = self.domain['lat']
             self._met_data['lon'] = self.domain['lon']
@@ -272,6 +270,7 @@ class MetSim(object):
     def slices(self):
         if not self.params['chunks']:
             return [{d: slice(None) for d in self.domain[['mask']].dims}]
+
         return chunk_domain(self.params['chunks'], self.domain[['mask']].dims)
 
     def open_output(self):
@@ -349,7 +348,7 @@ class MetSim(object):
                 dim_var = ncout.createVariable(dim, dim_dtype, (dim, ))
                 dim_var[:] = dim_vals
 
-            for p in ['elev', 'lat', 'lon']:
+            for p in ['elev', 'lat', 'lon', 'is_worker']:
                 if p in self.params:
                     self.params.pop(p)
             for k, v in self.params.items():
@@ -717,6 +716,7 @@ def wrap_run_cell(func: callable, params: dict,
 
 @dask.delayed()
 def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
+    params['is_worker'] = True
     ms = MetSim(params, domain_slice=domain_slice)
     ms.load_inputs()
     ms.run_slice()
