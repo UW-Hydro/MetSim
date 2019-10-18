@@ -582,7 +582,7 @@ class MetSim(object):
             errs.append("Output variable list must not be empty")
 
         # Check output variables are valid
-        daily_out_vars = ['t_min', 't_max', 'prec', 'vapor_pressure',
+        daily_out_vars = ['t_min', 't_max', 't_day', 'prec', 'vapor_pressure',
                           'shortwave', 'tskc', 'pet', 'wind']
         out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
                          'air_pressure', 'rel_humid', 'spec_humid',
