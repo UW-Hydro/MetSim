@@ -265,18 +265,31 @@ class MetSim(object):
 
     def run(self):
         self._validate_setup()
-        times, grouper = self._get_output_times(freq=self.params['out_freq'])
-        paths = [self._get_output_filename(t) for t in times]
+        times, time_chunks, grouper = self._get_output_times(freq=self.params['out_freq'])
+        paths = [self._get_output_filename(t) for t in time_chunks]
+        self._aggregate_state()
+        data = xr.merge([self.met_data, self.domain])
 
-        ds = self.met_data.map_blocks(run_metsim, times, self.params)
+        # run_metsim using map_blocks
+        ds = data.map_blocks(run_metsim, [times, self.params])
 
         if grouper:
             _, datasets = zip(*ds.groupby(grouper))
-            delayed_obj = xr.save_mfdataset(datasets, paths, compute=False)
+            delayed_obj = xr.save_mfdataset(datasets, paths, compute=True)
         else:
-            delayed_obj = ds.to_netcdf(paths[0], compute=False)
+            del ds['time'].attrs['units']  # TODO: figure out why this is happening
+            delayed_obj = ds.to_netcdf(paths[0], compute=True)
 
         return delayed_obj
+
+
+    def open_output(self):
+        # TODO: maybe just expose the delayed object directly?
+        _, time_chunks, _ = self._get_output_times(
+            freq=self.params['out_freq'])
+        filenames = [self._get_output_filename(times) for times in time_chunks]
+        return xr.open_mfdataset(filenames)
+
 
     def _get_output_times(self, freq=None):
         """
@@ -310,13 +323,13 @@ class MetSim(object):
                            calendar=self.params['calendar'])
 
         if freq is None or freq == '':
-            times = [times]
+            time_chunks = [times]
             grouper = None
         else:
             dummy = pd.Series(np.arange(len(times)), index=times)
             grouper = pd.Grouper(freq=freq)
-            times = [t.index for k, t in dummy.groupby(grouper)]
-        return times, grouper
+            time_chunks = [t.index for k, t in dummy.groupby(grouper)]
+        return times, time_chunks, grouper
 
     def _get_output_filename(self, times):
         suffix = self.get_nc_output_suffix(times)
@@ -329,14 +342,16 @@ class MetSim(object):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
 
-        assert self.state.dims['time'] == 90, self.state['time']
-        record_dates = date_range(self.params['state_start'],
-                                  self.params['state_stop'],
-                                  calendar=self.params['calendar'])
-        trailing = self.state['prec']
-        trailing['time'] = record_dates
-        total_precip = xr.concat([trailing, self.met_data['prec']],
-                                 dim='time').load()
+        # TODO: come up with a cleaner way of handling the state dataset
+        # assert self.state.dims['time'] == 90, self.state['time']
+        # record_dates = date_range(self.params['state_start'],
+        #                           self.params['state_stop'],
+        #                           calendar=self.params['calendar'])
+        # trailing = self.state['prec']
+        # trailing['time'] = record_dates
+        # total_precip = xr.concat([trailing, self.met_data['prec']],
+        #                          dim='time').load()
+        total_precip = self.met_data['prec']
         total_precip = (cnst.DAYS_PER_YEAR * total_precip.rolling(
             time=90).mean().sel(time=slice(self.params['start'],
                                            self.params['stop'])))
@@ -344,15 +359,15 @@ class MetSim(object):
         self.met_data['seasonal_prec'] = total_precip
 
         # Smoothed daily temperature range
-        trailing = self.state['t_max'] - self.state['t_min']
+        # trailing = self.state['t_max'] - self.state['t_min']
 
-        trailing['time'] = record_dates
+        # trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         if (dtr < 0).any():
             raise ValueError("Daily maximum temperature lower"
                              " than daily minimum temperature!")
-        sm_dtr = xr.concat([trailing, dtr], dim='time').load()
-        sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
+        # sm_dtr = xr.concat([trailing, dtr], dim='time').load()
+        sm_dtr = dtr.rolling(time=30).mean() #.drop(record_dates, dim='time')
         self.met_data['dtr'] = dtr
         self.met_data['smoothed_dtr'] = sm_dtr
 
@@ -496,8 +511,8 @@ def wrap_run_cell(func: callable,
             t_begin = [ds['t_min'].sel(time=prevday),
                        ds['t_max'].sel(time=prevday)]
         except (KeyError, ValueError):
-            t_begin = [state['t_min'].values[-1],
-                       state['t_max'].values[-1]]
+            t_begin = [ds['t_min'].values[-1],  # TODO: change (state->ds) needs to be undone. Hopefully we don't need to pass the state df in here
+                       ds['t_max'].values[-1]]
         try:
             nextday = out_times[-1] + pd.Timedelta('1 days')
             t_end = [ds['t_min'].sel(time=nextday),
@@ -528,7 +543,7 @@ def wrap_run_cell(func: callable,
 
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
-    return df_complete, df_base
+    return df_complete  # TODO: figure out how to compute the base df outside of map_blocks
 
 
 def add_prec_tri_vars(domain):
@@ -615,7 +630,7 @@ def run_metsim(ds, out_times, params):
     """
     disagg = int(params['time_step']) < cnst.MIN_PER_DAY
     method = MetSim.methods[params['method']]
-    ds_out = setup_output(ds, out_times, params)
+    ds_out = setup_output(ds['mask'], out_times, params)
     times = ds['time']
     for index, mask_val in np.ndenumerate(ds['mask'].values):
         if mask_val > 0:
