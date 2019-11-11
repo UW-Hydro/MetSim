@@ -276,7 +276,25 @@ def test_disaggregation_values():
     ds.close()
 
 
-@pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc', 
+def test_coordinate_dimension_matchup():
+    """
+    This test checks that MetSim correctely adds a coordinate
+    if an input dataset is missing coordinate variables for the
+    chunked dimensions.
+    """
+    var_rename = OrderedDict(
+        latitude='lat', longitude='lon', mask='mask',
+        elevation='elev', pptrate='prec', maxtemp='t_max', mintemp='t_min')
+    filename = './examples/example_dimtest.conf'
+    conf = cli.init(DummyOpts(filename))
+    conf['out_dir'] = tempfile.mkdtemp('results')
+    ms = MetSim(conf)
+    ds = xr.open_dataset('./metsim/data/dim_test.nc')
+    assert 'hru' not in ds.coords
+    assert 'hru' in ms.met_data.coords
+
+
+@pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc',
                                   'constant_vars_ascii',
                                   'constant_vars_bin',
                                   'constant_vars_nc'])
