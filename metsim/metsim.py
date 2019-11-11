@@ -43,10 +43,7 @@ import xarray as xr
 
 import dask
 from dask.diagnostics import ProgressBar
-from netCDF4 import Dataset
 from cftime import date2num
-
-from xarray.backends.locks import get_write_lock, combine_locks, NETCDFC_LOCK
 
 import metsim.constants as cnst
 from metsim import io
@@ -193,8 +190,6 @@ class MetSim(object):
         else:
             # If not in verbose mode, create a dummy function
             self.progress_bar = lambda x: x
-        # Create time vector(s)
-        self._times = self._get_output_times(freq=self.params['out_freq'])
 
     def _validate_force_times(self, force_times):
 
@@ -268,180 +263,33 @@ class MetSim(object):
             self._aggregate_state()
         return self._state
 
-    @property
-    def slices(self):
-        if not self.params['chunks']:
-            return [{d: slice(None) for d in self.domain[['mask']].dims}]
-        return chunk_domain(self.params['chunks'], self.domain[['mask']].dims)
-
-    def open_output(self):
-        filenames = [self._get_output_filename(times) for times in self._times]
-        return xr.open_mfdataset(filenames)
-
     def run(self):
         self._validate_setup()
-        write_locks = {}
-        for times in self._times:
-            filename = self._get_output_filename(times)
-            self.setup_netcdf_output(filename, times)
-            write_locks[filename] = combine_locks([NETCDFC_LOCK, get_write_lock(filename)])
-        self.logger.info('Starting {} chunks...'.format(len(self.slices)))
+        times, time_chunks, grouper = self._get_output_times(freq=self.params['out_freq'])
+        paths = [self._get_output_filename(t) for t in time_chunks]
+        self._aggregate_state()
+        data = xr.merge([self.met_data, self.domain])
 
-        delayed_objs = [wrap_run_slice(self.params, write_locks, dslice)
-                        for dslice in self.slices]
-        persisted = dask.persist(delayed_objs, num_workers=self.params['num_workers'])
-        self.progress_bar(persisted)
-        dask.compute(persisted)
-        self.logger.info('Cleaning up...')
-        try:
-            self._client.cluster.close()
-            self._client.close()
-            if self.params['verbose'] == logging.DEBUG:
-                print('closed dask cluster/client')
-        except Exception:
-            pass
+        # run_metsim using map_blocks
+        ds = data.map_blocks(run_metsim, [times, self.params])
 
-    def load_inputs(self, close=True):
-        self._domain = self.domain.load()
-        self._met_data = self.met_data.load()
-        self._state = self.state.load()
-        if close:
-            self._domain.close()
-            self._met_data.close()
-            self._state.close()
+        if grouper:
+            _, datasets = zip(*ds.groupby(grouper))
+            delayed_obj = xr.save_mfdataset(datasets, paths, compute=True)
+        else:
+            del ds['time'].attrs['units']  # TODO: figure out why this is happening
+            delayed_obj = ds.to_netcdf(paths[0], compute=True)
 
-    def setup_netcdf_output(self, filename, times):
-        '''setup a single netcdf file'''
-        with Dataset(filename, mode="w") as ncout:
-            # dims
-            dim_sizes = (None, ) + self.domain['mask'].shape
-            var_dims = ('time', ) + self.domain['mask'].dims
-            chunksizes = [len(times)]
-            for d, s in zip(var_dims[1:], dim_sizes[1:]):
-                c = int(self.params['chunks'].get(d, s))
-                if c <= s:
-                    chunksizes.append(c)
-                else:
-                    chunksizes.append(s)
-            create_kwargs = {'chunksizes': chunksizes}
-            for d, size in zip(var_dims, dim_sizes):
-                ncout.createDimension(d, size)
-            # vars
-            for varname in self.params['out_vars']:
-                ncout.createVariable(
-                    varname, self.params['out_precision'], var_dims,
-                    **create_kwargs)
+        return delayed_obj
 
-            # add metadata and coordinate variables (time/lat/lon)
-            time_var = ncout.createVariable('time', 'i4', ('time', ))
-            time_var.calendar = self.params['calendar']
-            time_var[:] = date2num(
-                times.to_pydatetime(),
-                units=attrs['time'].get('units', DEFAULT_TIME_UNITS),
-                calendar=time_var.calendar)
 
-            dtype_map = {'float64': 'f8', 'float32': 'f4',
-                         'int64': 'i8', 'int32': 'i4'}
-            for dim in self.domain['mask'].dims:
-                dim_vals = self.domain[dim].values
-                dim_dtype = dtype_map.get(
-                    str(dim_vals.dtype), self.params['out_precision'])
-                dim_var = ncout.createVariable(dim, dim_dtype, (dim, ))
-                dim_var[:] = dim_vals
+    def open_output(self):
+        # TODO: maybe just expose the delayed object directly?
+        _, time_chunks, _ = self._get_output_times(
+            freq=self.params['out_freq'])
+        filenames = [self._get_output_filename(times) for times in time_chunks]
+        return xr.open_mfdataset(filenames)
 
-            for p in ['elev', 'lat', 'lon']:
-                if p in self.params:
-                    self.params.pop(p)
-            for k, v in self.params.items():
-                # Need to convert some parameters to strings
-                if k in ['start', 'stop', 'utc_offset']:
-                    v = str(v)
-                elif k in ['state_start', 'state_stop', 'out_freq']:
-                    # skip
-                    continue
-                # Don't include complex types
-                if isinstance(v, dict):
-                    v = json.dumps(v)
-                elif not isinstance(v, str) and isinstance(v, Iterable):
-                    v = ', '.join(v)
-
-                if isinstance(v, str):
-                    v = v.replace("'", "").replace('"', "")
-                attrs['_global'][k] = v
-
-            # set global attrs
-            for key, val in attrs['_global'].items():
-                setattr(ncout, key, val)
-
-            # set variable attrs
-            for varname in ncout.variables:
-                for key, val in attrs.get(varname, {}).items():
-                    setattr(ncout.variables[varname], key, val)
-
-    def write_chunk(self, locks=None):
-        '''write data from a single chunk'''
-        if not len(self.params['out_vars']):
-            return
-        for times in self._times:
-            filename = self._get_output_filename(times)
-            lock = locks.get(filename, DummyLock())
-            time_slice = slice(times[0], times[-1])
-            with lock:
-                with Dataset(filename, mode="r+") as ncout:
-                    for varname in self.params['out_vars']:
-                        dims = ncout.variables[varname].dimensions[1:]
-                        write_slice = ((slice(None), ) + tuple(
-                            self._domain_slice[d] for d in dims))
-                        ncout.variables[varname][write_slice] = (
-                            self.output[varname].sel(time=time_slice).values)
-
-    def run_slice(self):
-        """
-        Run a single slice of
-        """
-        self._validate_setup()
-        self.disagg = int(self.params['time_step']) < cnst.MIN_PER_DAY
-        self.method = MetSim.methods[self.params['method']]
-        self.setup_output()
-        times = self.met_data['time']
-        params = self.params.copy()
-        for index, mask_val in np.ndenumerate(self.domain['mask'].values):
-            if mask_val > 0:
-                locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
-                if self.params['prec_type'].upper() in ['TRIANGLE', 'MIX']:
-                    # add variables for triangle precipitation disgregation
-                    # method to parameters
-                    params['dur'], params['t_pk'] = (
-                        add_prec_tri_vars(self.domain.isel(**locs)))
-            else:
-                continue
-
-            df, state = wrap_run_cell(self.method.run, params,
-                                      self.met_data.isel(**locs),
-                                      self.state.isel(**locs),
-                                      self.disagg, times)
-
-            # Cut the returned data down to the correct time index
-            self._unpack_state(state, locs)
-            for varname in self.params['out_vars']:
-                self.output[varname][locs] = df[varname].values
-
-    def _unpack_state(self, result: pd.DataFrame, locs: dict):
-        """Put restart values in the state dataset"""
-        # We concatenate with the old state values in case we don't
-        # have 90 new days to use
-        tmin = np.concatenate((self.state['t_min'].isel(**locs).values[:],
-                               result['t_min'].values))
-        tmax = np.concatenate((self.state['t_max'].isel(**locs).values[:],
-                               result['t_max'].values))
-        prec = np.concatenate((self.state['prec'].isel(**locs).values[:],
-                               result['prec'].values))
-        self.state['t_min'].isel(**locs).values[:] = tmin[-90:]
-        self.state['t_max'].isel(**locs).values[:] = tmax[-90:]
-        self.state['prec'].isel(**locs).values[:] = prec[-90:]
-        state_start = result.index[-1] - pd.Timedelta('89 days')
-        self.state['time'].values = date_range(
-            state_start, result.index[-1], calendar=self.params['calendar'])
 
     def _get_output_times(self, freq=None):
         """
@@ -475,12 +323,13 @@ class MetSim(object):
                            calendar=self.params['calendar'])
 
         if freq is None or freq == '':
-            times = [times]
+            time_chunks = [times]
+            grouper = None
         else:
             dummy = pd.Series(np.arange(len(times)), index=times)
             grouper = pd.Grouper(freq=freq)
-            times = [t.index for k, t in dummy.groupby(grouper)]
-        return times
+            time_chunks = [t.index for k, t in dummy.groupby(grouper)]
+        return times, time_chunks, grouper
 
     def _get_output_filename(self, times):
         suffix = self.get_nc_output_suffix(times)
@@ -489,40 +338,20 @@ class MetSim(object):
             os.path.abspath(self.params['out_dir']), fname)
         return output_filename
 
-    def setup_output(self):
-
-        # output times
-        times = self._get_output_times(freq=None)[0]
-
-        # Number of timesteps
-        n_ts = len(times)
-
-        shape = (n_ts, ) + self.domain['mask'].shape
-        dims = ('time', ) + self.domain['mask'].dims
-        coords = {'time': times, **self.domain['mask'].coords}
-        self.output = xr.Dataset(coords=coords)
-        self.output['time'].encoding['calendar'] = self.params['calendar']
-
-        dtype = self.params['out_precision']
-        for varname in self.params['out_vars']:
-            self.output[varname] = xr.DataArray(
-                data=np.full(shape, np.nan, dtype=dtype),
-                coords=coords, dims=dims,
-                name=varname, attrs=attrs.get(varname, {}))
-        self.output['time'].attrs.update(attrs['time'])
-
     def _aggregate_state(self):
         """Aggregate data out of the state file and load it into `met_data`"""
         # Precipitation record
 
-        assert self.state.dims['time'] == 90, self.state['time']
-        record_dates = date_range(self.params['state_start'],
-                                  self.params['state_stop'],
-                                  calendar=self.params['calendar'])
-        trailing = self.state['prec']
-        trailing['time'] = record_dates
-        total_precip = xr.concat([trailing, self.met_data['prec']],
-                                 dim='time').load()
+        # TODO: come up with a cleaner way of handling the state dataset
+        # assert self.state.dims['time'] == 90, self.state['time']
+        # record_dates = date_range(self.params['state_start'],
+        #                           self.params['state_stop'],
+        #                           calendar=self.params['calendar'])
+        # trailing = self.state['prec']
+        # trailing['time'] = record_dates
+        # total_precip = xr.concat([trailing, self.met_data['prec']],
+        #                          dim='time').load()
+        total_precip = self.met_data['prec']
         total_precip = (cnst.DAYS_PER_YEAR * total_precip.rolling(
             time=90).mean().sel(time=slice(self.params['start'],
                                            self.params['stop'])))
@@ -530,15 +359,15 @@ class MetSim(object):
         self.met_data['seasonal_prec'] = total_precip
 
         # Smoothed daily temperature range
-        trailing = self.state['t_max'] - self.state['t_min']
+        # trailing = self.state['t_max'] - self.state['t_min']
 
-        trailing['time'] = record_dates
+        # trailing['time'] = record_dates
         dtr = self.met_data['t_max'] - self.met_data['t_min']
         if (dtr < 0).any():
             raise ValueError("Daily maximum temperature lower"
                              " than daily minimum temperature!")
-        sm_dtr = xr.concat([trailing, dtr], dim='time').load()
-        sm_dtr = sm_dtr.rolling(time=30).mean().drop(record_dates, dim='time')
+        # sm_dtr = xr.concat([trailing, dtr], dim='time').load()
+        sm_dtr = dtr.rolling(time=30).mean() #.drop(record_dates, dim='time')
         self.met_data['dtr'] = dtr
         self.met_data['smoothed_dtr'] = sm_dtr
 
@@ -615,8 +444,10 @@ class MetSim(object):
                                e.year, e.month, e.day,)
 
 
-def wrap_run_cell(func: callable, params: dict,
-                  ds: xr.Dataset, state: xr.Dataset, disagg: bool,
+def wrap_run_cell(func: callable,
+                  params: dict,
+                  ds: xr.Dataset,
+                  disagg: bool,
                   out_times: pd.DatetimeIndex):
     """
     Iterate over a chunk of the domain. This is wrapped
@@ -680,8 +511,8 @@ def wrap_run_cell(func: callable, params: dict,
             t_begin = [ds['t_min'].sel(time=prevday),
                        ds['t_max'].sel(time=prevday)]
         except (KeyError, ValueError):
-            t_begin = [state['t_min'].values[-1],
-                       state['t_max'].values[-1]]
+            t_begin = [ds['t_min'].values[-1],  # TODO: change (state->ds) needs to be undone. Hopefully we don't need to pass the state df in here
+                       ds['t_max'].values[-1]]
         try:
             nextday = out_times[-1] + pd.Timedelta('1 days')
             t_end = [ds['t_min'].sel(time=nextday),
@@ -712,54 +543,7 @@ def wrap_run_cell(func: callable, params: dict,
 
     # Cut the returned data down to the correct time index
     df_complete = df_complete.loc[new_times[0]:new_times[-1]]
-    return df_complete, df_base
-
-
-@dask.delayed()
-def wrap_run_slice(params, write_locks, domain_slice=NO_SLICE):
-    ms = MetSim(params, domain_slice=domain_slice)
-    ms.load_inputs()
-    ms.run_slice()
-    ms.write_chunk(locks=write_locks)
-
-
-def chunk_domain(chunks, dims):
-    '''
-    Return a dictionary of chunk slices that can be used to decompose a grid
-    '''
-    def left(chunk, dim):
-        return np.arange(0, dim, chunk)
-
-    def right(chunk, dim):
-        nums = np.arange(chunk, dim + chunk, chunk)
-        nums[-1] = dim + 1
-        return nums
-
-    slices = [[slice(*a) for a in (zip(left(int(chunks[dim]), dims[dim]),
-                                       right(int(chunks[dim]), dims[dim])))]
-              for dim in chunks.keys()]
-
-    return [dict(zip(chunks.keys(), p)) for p in itertools.product(*slices)]
-
-
-class DummyLock(object):
-    """DummyLock provides the lock API without any actual locking."""
-    # This will be available in xarray in the next major version
-    def acquire(self, *args):
-        pass
-
-    def release(self, *args):
-        pass
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, *args):
-        pass
-
-    @property
-    def locked(self):
-        return False
+    return df_complete  # TODO: figure out how to compute the base df outside of map_blocks
 
 
 def add_prec_tri_vars(domain):
@@ -809,3 +593,61 @@ def add_prec_tri_vars(domain):
                          '(i.e. the end of a day)')
 
     return dur, t_pk
+
+
+# TODO:
+# - move elsewhere:
+#   - self._validate_setup()
+#   - self._unpack_state(state, locs)  - just pull from ds
+
+# - put mask in met_data
+
+def setup_output(mask, times, params):
+
+    # Number of timesteps
+    n_ts = len(times)
+
+    shape = (n_ts, ) + mask.shape
+    dims = ('time', ) + mask.dims
+    coords = {'time': times, **mask.coords}
+    out_ds = xr.Dataset(coords=coords)
+    out_ds['time'].encoding['calendar'] = params['calendar']
+
+    dtype = params['out_precision']
+    for varname in params['out_vars']:
+        out_ds[varname] = xr.DataArray(
+            data=np.full(shape, np.nan, dtype=dtype),
+            coords=coords, dims=dims,
+            name=varname, attrs=attrs.get(varname, {}))
+    out_ds['time'].attrs.update(attrs['time'])
+
+    return out_ds
+
+
+def run_metsim(ds, out_times, params):
+    """
+    Run metsim over a single chunk
+    """
+    disagg = int(params['time_step']) < cnst.MIN_PER_DAY
+    method = MetSim.methods[params['method']]
+    ds_out = setup_output(ds['mask'], out_times, params)
+    times = ds['time']
+    for index, mask_val in np.ndenumerate(ds['mask'].values):
+        if mask_val > 0:
+            locs = {d: i for d, i in zip(ds['mask'].dims, index)}
+            if params['prec_type'].upper() in ['TRIANGLE', 'MIX']:
+                # add variables for triangle precipitation disgregation
+                # method to parameters
+                prec_params = ds[['dur', 't_pk']].isel(**locs)
+                params['dur'], params['t_pk'] = add_prec_tri_vars(prec_params)
+        else:
+            continue
+
+        df = wrap_run_cell(method.run, params, ds.isel(**locs),
+                           disagg, times)
+
+        # Cut the returned data down to the correct time index
+        for varname in params['out_vars']:
+            ds_out[varname][locs] = df[varname].values
+
+    return ds_out
