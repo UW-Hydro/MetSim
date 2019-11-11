@@ -109,7 +109,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     if 'wind' in df_daily:
         df_disagg['wind'] = wind(df_daily['wind'].values, ts, params)
 
-    return df_disagg.fillna(method='ffill')
+    return df_disagg.fillna(method='ffill').fillna(method='bfill')
 
 
 def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
@@ -514,7 +514,7 @@ def vapor_pressure(vp_daily: np.array, temp: np.array, t_t_min: np.array,
     """
     # Linearly interpolate the values
     interp = scipy.interpolate.interp1d(t_t_min, vp_daily / cnst.MBAR_PER_BAR,
-                                        fill_value='extrapolate')
+                                        bounds_error=False)
     vp_disagg = interp(ts * np.arange(0, n_out))
 
     # Account for situations where vapor pressure is higher than
