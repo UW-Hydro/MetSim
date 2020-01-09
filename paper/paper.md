@@ -25,7 +25,7 @@ bibliography: paper.bib
 
 # Summary
 
-Hydrometeorological modeling is concerned with domains that have uncertain or unknown boundary conditions [@Beven:2012].
+Hydrometeorological modeling is concerned with domains that have uncertain or unknown boundary conditions.
 For example, incoming shortwave radiation, longwave radiation, and humidity have sparse and irregular sensor locations with varying record lengths and observation intervals.
 Further, even when such quantities are measured it is often at a daily resolution, while many environmental models require finer temporal resolution for simulation.
 To provide closure to the model equations in such circumstances we must be able to provide estimates for these quantities at the appropriate temporal resolution.
