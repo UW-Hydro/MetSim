@@ -25,11 +25,11 @@ bibliography: paper.bib
 
 # Summary
 
-Hydrometeorological modeling is concerned with domains that have uncertain or unknown boundary conditions.
-For example, incoming shortwave radiation, longwave radiation, and humidity have sparse and irregular sensor locations with varying record lengths and observation intervals.
+Hydrometeorological modeling is concerned with regions that have uncertain or unknown boundary conditions.
+For example, incoming shortwave radiation, longwave radiation, and humidity have sparse and irregularly placed sensor locations with varying record lengths and observation intervals.
 Further, even when such quantities are measured it is often at a daily resolution, while many environmental models require finer temporal resolution for simulation.
-To provide closure to the model equations in such circumstances we must be able to provide estimates for these quantities at the appropriate temporal resolution.
-``MetSim`` is a software package and standalone tool for the estimation of sparsely observed meteorological quantities at variable temporal resolutions.
+To provide the necessary data to solve the model equations in such circumstances we must be able to provide estimates for these quantities at the appropriate temporal resolution.
+``MetSim`` is a Python package and standalone tool for the estimation of meteorological quantities at variable temporal resolutions that can address the issues described above.
 ``MetSim`` can be used to generate spatially distributed sub-daily timeseries of incoming shortwave radiation, outgoing longwave radiation, air pressure, specific humidity, relative humidity, vapor pressure, precipitation, and air temperature given daily timeseries of minimum temperature, maximum temperature, and precipitation.
 We have based ``MetSim`` on methods from the Mountain Microclimate Simulator (``MTCLIM``) and the forcing preprocessor that was built into the Variable Infiltration Capacity (``VIC``) hydrological model version 4 [@Bohn:2013; @Thornton:1999; @Liang:1994].
 ``MetSim`` provides a modern workflow, building upon previous tools by improving performance, adding new IO routines, allowing for exact restarts, and providing an extensible architecture which can incorporate new features.
@@ -40,7 +40,8 @@ The top level model driver handles all IO routines as well as job scheduling and
 ![Figure 1: A schematic representation of the MetSim software flow](figure1.pdf)
 
 ``MetSim`` has three main computation modules for solar geometry, meteorological simulation, and temporal disaggregation.
-The solar geometry module computes the daily potential radiation, daylength, transmittance, and the fraction of daily radiation received at the top of atmosphere during each 30 second interval are computed using the algorithms described in @Whiteman:1986 as implemented in MTCLIM [@Thornton:1999].
+The solar geometry module computes the daily potential radiation, daylength, transmittance of the atmosphere, and the fraction of daily radiation received at the top of atmosphere during each 30 second interval.
+Computations are based on the algorithms described in @Whiteman:1986 as implemented in MTCLIM [@Thornton:1999].
 The data from the solar geometry module is fed to the meteorology simulation module along with the input forcings.
 ``MetSim`` implements the estimation methods discussed in @Bohn:2013 and @Thornton:1999 to estimate the daily mean temperature, shortwave radiation, vapor pressure, and potential evapotranspiration.
 If disaggregation to shorter time steps is configured, the data is passed from the meteorology simulation module to the disaggregation module.
@@ -61,5 +62,7 @@ The results of the weak scaling experiment are shown in panel b of figure 2.
 Similarly to the strong scaling experiment, we see increasing penalties for adding additional processors.
 
 ![Figure 2: MetSim scaling performance](figure2.pdf)
+
+# Related work
 
 # References
