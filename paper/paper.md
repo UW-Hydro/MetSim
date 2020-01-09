@@ -19,6 +19,8 @@ affiliations:
       index: 1
     - name: Climate and Global Dynamics Laboratory, National Center for Atmospheric Research
       index: 2
+date: 08 January 2020
+bibliography: paper.bib
 ---
 
 # Summary
