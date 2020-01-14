@@ -1,5 +1,5 @@
 ---
-title: 'MetSim: A Python package for estimation and disaggregation of meteorologcal data'
+title: 'MetSim: A Python package for estimation and disaggregation of meteorological data'
 tags:
     - Python
     - meteorology
