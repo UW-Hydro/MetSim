@@ -33,11 +33,14 @@ To provide the necessary data to solve the model equations in such circumstances
 ``MetSim`` can be used to generate spatially distributed sub-daily timeseries of incoming shortwave radiation, outgoing longwave radiation, air pressure, specific humidity, relative humidity, vapor pressure, precipitation, and air temperature given daily timeseries of minimum temperature, maximum temperature, and precipitation.
 We have based ``MetSim`` on methods from the Mountain Microclimate Simulator (``MTCLIM``) and the forcing preprocessor that was built into the Variable Infiltration Capacity (``VIC``) hydrological model version 4 [@Bohn:2013; @Thornton:1999; @Liang:1994].
 ``MetSim`` provides a modern workflow, building upon previous tools by improving performance, adding new IO routines, allowing for exact restarts, and providing an extensible architecture which can incorporate new features.
+We have designed ``MetSim`` to fit into the broader scientific Python ecosystem, building on popular packages such as ``xarray``, ``dask``, ``pandas``, and ``numba`` [@xarray; @dask; @pandas; @numba].
 
 # Architecture and performance
 
 ``MetSim``'s architecture follows the common design of a model driver which coordinates high level operations and which delegates computation to several modules to do the bulk of the work.
 The top level model driver handles all IO routines as well as job scheduling and parallelism, a schematic representation of ``MetSim``'s architecture is shown in figure 1.
+``MetSim`` provides both a command line tool and API access as a Python module.
+The command line tool provides an interface to the driver via configuration files and command line options.
 
 ![Figure 1: A schematic representation of the ``MetSim`` software flow](figure1.pdf)
 
@@ -49,7 +52,7 @@ The data from the solar geometry module is fed to the meteorology simulation mod
 If disaggregation to shorter time steps is configured, the data is passed from the meteorology simulation module to the disaggregation module.
 @Bohn:2013 provides a further description and evaluation of these algorithms.
 
-``MetSim`` implements several options for parallelism, which are primarily managed by the Dask library [@dask].
+``MetSim`` implements several options for parallelism, which are primarily managed by the ``Dask`` and ``xarray`` libraries [@dask; @xarray].
 We explore ``MetSim``'s computational performance by conducting two scaling experiments.
 Strong scaling experiments test how the total runtime is affected by adding processors for a fixed overall problem size.
 Weak scaling experiments test how the total runtime is affected by adding processors proportional to the overall problem size.
@@ -70,7 +73,7 @@ Similarly to the strong scaling experiment, we see increasing penalties for addi
 ``MetSim`` has been used in several research applications predominantly for generating input to hydrologic models, though other applications are possible.
 @Bohn:2019 extended the precipitation disaggregation component to include a new option which was shown to result in better streamflow predictions than the default method.
 @Cheng:2020 used ``MetSim`` as a component of their modeling framework to explore how reservoirs affect stream temperatures, and how reservoir operations may be able to help mitigate the effects of climate change on warming stream temperatures.
-The Climate Toolbox [@ClimateToolbox] uses ``MetSim`` to generate meteorological data as an intermediate step for developing hydrologic predictions.
+The Climate Toolbox [@toolbox] uses ``MetSim`` to generate meteorological data as an intermediate step for developing hydrologic predictions.
 ``MetSim`` has many other possible uses and is developer-friendly enough for it to be extended to provide additional functionality.
 
 # References
