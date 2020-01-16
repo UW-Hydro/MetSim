@@ -48,7 +48,7 @@ A schematic representation of ``MetSim``'s architecture is shown in figure 2.
 ``MetSim`` provides both a command line tool and API access as a Python module.
 The command line tool provides an interface to the driver via configuration files and command line options.
 
-![Figure 2: A schematic representation of the ``MetSim`` software flow](figure2.pdf)
+![Figure 2: A schematic representation of the ``MetSim`` software flow](figure2.png)
 
 ``MetSim`` has three main computation modules for solar geometry, meteorological simulation, and temporal disaggregation.
 The solar geometry module computes the daily potential radiation, daylength, transmittance of the atmosphere, and the fraction of daily radiation received at the top of atmosphere during each 30 second interval.
@@ -74,7 +74,7 @@ We ran 125 cells per 2 processors, resulting in runs of 125, 250, 500, 1000, 200
 The results of the weak scaling experiment are shown in panel b of figure 3.
 Similarly to the strong scaling experiment, we see increasing penalties for adding additional processors.
 
-![Figure 3: ``MetSim`` scaling performance](figure3.pdf)
+![Figure 3: ``MetSim`` scaling performance](figure3.png)
 
 # Applications & Related work
 
