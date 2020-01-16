@@ -206,6 +206,42 @@ def test_setup(test_params, domain_file):
 #    half_hourly = test_setup.open_output().isel(lat=1, lon=3).to_dataframe()
 #    assert len(half_hourly) == (2 * n_days * const.HOURS_PER_DAY)
 
+def test_time_offset():
+    """Tests to make sure that the time_offset option works"""
+    loc = data_locations['binary']
+    data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
+    out_vars = ['prec', 'temp', 'shortwave', 'longwave', 'vapor_pressure',
+                'wind', 'rel_humid', 'spec_humid', 'air_pressure']
+    out_dir = '.'
+    params = {'start': dates['binary'][0],
+              'stop': dates['binary'][1],
+              'forcing_fmt': 'binary',
+              'domain_fmt': 'netcdf',
+              'state_fmt': 'netcdf',
+              'domain': './metsim/data/stehekin.nc',
+              'state': './metsim/data/state_vic.nc',
+              'forcing': data_files,
+              'method': 'mtclim',
+              'scheduler': 'threading',
+              'time_step': "60",
+              'out_dir': out_dir,
+              'out_state': os.path.join(out_dir, 'state.nc'),
+              'out_vars': out_vars,
+              'forcing_vars': in_vars_section['binary'],
+              'domain_vars': domain_section['binary']
+              }
+    params1 = dict()
+    params1.update(params)
+    params2 = dict()
+    params2.update(params)
+    params1['period_ending'] = False
+    params2['period_ending'] = True
+
+    # Set up the MetSim object
+    ms1 = MetSim(params1)
+    ms2 = MetSim(params2)
+    assert ms1._times[1:] == ms2._times[:-1]
+
 
 def test_disaggregation_values():
     """Tests to make sure values are being generated correctly"""
@@ -274,6 +310,24 @@ def test_disaggregation_values():
     # Make sure the data comes out right
     check_data(out, good, tol=0.2)
     ds.close()
+
+
+def test_coordinate_dimension_matchup():
+    """
+    This test checks that MetSim correctely adds a coordinate
+    if an input dataset is missing coordinate variables for the
+    chunked dimensions.
+    """
+    var_rename = OrderedDict(
+        latitude='lat', longitude='lon', mask='mask',
+        elevation='elev', pptrate='prec', maxtemp='t_max', mintemp='t_min')
+    filename = './examples/example_dimtest.conf'
+    conf = cli.init(DummyOpts(filename))
+    conf['out_dir'] = tempfile.mkdtemp('results')
+    ms = MetSim(conf)
+    ds = xr.open_dataset('./metsim/data/dim_test.nc')
+    assert 'hru' not in ds.coords
+    assert 'hru' in ms.met_data.coords
 
 
 @pytest.mark.parametrize('kind', ['ascii', 'bin', 'nc',

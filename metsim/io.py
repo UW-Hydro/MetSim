@@ -20,6 +20,7 @@ IO Module for MetSim
 
 import os
 import struct
+import logging
 
 import numpy as np
 import pandas as pd
@@ -113,7 +114,7 @@ def process_vic(params: dict, domain: xr.Dataset) -> xr.Dataset:
     return met_data
 
 
-def read_ascii(data_handle, domain=None,
+def read_ascii(data_handle, domain=None, is_worker=False,
                start=None, stop=None, calendar='standard',
                var_dict=None) -> xr.Dataset:
     """Read in an ascii forcing file"""
@@ -125,7 +126,7 @@ def read_ascii(data_handle, domain=None,
     return ds
 
 
-def read_netcdf(data_handle, domain=None,
+def read_netcdf(data_handle, domain=None, is_worker=False,
                 start=None, stop=None, calendar='standard',
                 var_dict=None) -> xr.Dataset:
     """Read in a NetCDF file"""
@@ -138,6 +139,14 @@ def read_netcdf(data_handle, domain=None,
         ds = ds.sel({k: domain[k]
                      for k in list(domain.dims.keys())
                      if k in list(ds.dims.keys())})
+    else:
+        dims_wo_coords = set(ds.dims) - set(ds.coords)
+        for d in dims_wo_coords:
+            if is_worker:
+                logger = logging.getLogger('MetSim')
+                logger.warning(
+                    'Setting sequential coordinate on dimension {}'.format(d))
+            ds[d] = np.arange(0, len(ds[d]))
 
     if 'time' in ds.coords:
         if isinstance(ds.indexes['time'], xr.CFTimeIndex):
@@ -158,7 +167,7 @@ def read_netcdf(data_handle, domain=None,
     return ds
 
 
-def read_data(data_handle, domain=None,
+def read_data(data_handle, domain=None, is_worker=False,
               start=None, stop=None, calendar='standard',
               var_dict=None) -> xr.Dataset:
     """Read data directly from an xarray dataset"""
