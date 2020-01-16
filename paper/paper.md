@@ -34,7 +34,7 @@ To provide the necessary data to solve the model equations in such circumstances
 Figure 1 shows an example of ``MetSim``'s transformations of these daily values into some of the available subdaily outputs.
 A summary of the available output variables and tunable parameters are included in the documentation.
 
-![Figure 1: An example of ``MetSim``'s core functionality. The daily values are shown on the left are used as input along with a number of parameters to produce the hourly output shown on the right. The sample data used to generate this figure is included in the ``MetSim`` repository.](figure1.png)
+![Figure 1: An example of ``MetSim`` input and output. The daily values are shown on the left are used as input along with a number of parameters to produce the hourly output shown on the right. The sample data used to generate this figure is included in the ``MetSim`` repository.](figure1.png)
 
 We have based ``MetSim`` on methods from the Mountain Microclimate Simulator (``MTCLIM``) and the forcing preprocessor that was built into the Variable Infiltration Capacity (``VIC``) hydrological model version 4 [@Bohn:2013; @Thornton:1999; @Liang:1994].
 ``MetSim`` provides a modern workflow, building upon previous tools by improving performance, adding new IO routines, allowing for exact restarts, and providing an extensible architecture which can incorporate new features.
