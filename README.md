@@ -6,6 +6,7 @@ METSIM: Meteorology Simulator
 | Travis-CI Build           | [![Build Status](https://travis-ci.org/UW-Hydro/MetSim.png)](https://travis-ci.org/UW-Hydro/MetSim) |
 | License                | [![GitHub license](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://raw.githubusercontent.com/UW-Hydro/MetSim/master/LICENSE) |
 | Current Release DOI    | [![DOI](https://zenodo.org/badge/69834400.svg)](https://zenodo.org/badge/latestdoi/69834400) |
+| MetSim Tutorial        | https://github.com/UW-Hydro/MetSim-tutorial |
 
 MetSim is a meteorological simulator and forcing disaggregator for
 hydrologic modeling and climate applications. Metsim is based on
@@ -61,6 +62,8 @@ The variables estimated are:
 
 Getting Started
 ===============
+A tutorial for running MetSim and working with input/output data can be run
+via binder here: https://github.com/UW-Hydro/MetSim-tutorial
 
 Installation
 ------------
