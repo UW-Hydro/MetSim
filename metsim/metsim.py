@@ -63,7 +63,7 @@ references = '''Thornton, P.E., and S.W. Running, 1999. An improved algorithm fo
 Kimball, J.S., S.W. Running, and R. Nemani, 1997. An improved method for estimating surface humidity from daily minimum temperature. Agricultural and Forest Meteorology, 85:87-98.
 Bohn, T. J., B. Livneh, J. W. Oyler, S. W. Running, B. Nijssen, and D. P. Lettenmaier, 2013a: Global evaluation of MT-CLIM and related algorithms for forcing of ecological and hydrological models, Agr. Forest. Meteorol., 176, 38-49, doi:10.1016/j.agrformet.2013.03.003.'''
 
-DEFAULT_TIME_UNITS = 'hours since 2000-01-01 00:00:00.0'
+DEFAULT_TIME_UNITS = 'minutes since 2000-01-01 00:00:00.0'
 
 now = tm.ctime(tm.time())
 user = getuser()
@@ -299,6 +299,7 @@ class MetSim(object):
             self._client.cluster.close()
             self._client.close()
             if self.params['verbose'] == logging.DEBUG:
+                print()
                 print('closed dask cluster/client')
         except Exception:
             pass
