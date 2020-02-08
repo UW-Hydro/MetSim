@@ -51,7 +51,7 @@ def parse(args):
     parser.add_argument('--version', action='version',
                         version='{} {}'.format(__name__, __version__),
                         help='Name and version number')
-    return parser.parse_args()
+    return parser.parse_args(args)
 
 
 def init(opts):

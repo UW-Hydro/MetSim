@@ -67,6 +67,8 @@ If you don't find what you're looking for here, check out MetSim's Github page.
 
 Getting Started
 ===============
+A tutorial for running MetSim and working with input/output data can be run
+via binder here: https://github.com/UW-Hydro/MetSim-tutorial
 
 Installation
 ------------

@@ -3,6 +3,17 @@
 What's New
 ==========
 
+.. _whats-new.2.2.0:
+
+v2.2.0
+-------
+Enhancements
+~~~~~~~~~~~~
+- Can now specify ``period_ending`` in the configuration to move 
+  timestamps to end of period instead of beginning of period
+- Addition of tutorial in README.md and main documentation
+- Addition of paper to be submitted to JOSS
+
 .. _whats-new.2.1.2:
 
 v.2.1.2 (under development)
