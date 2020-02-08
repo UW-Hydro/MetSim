@@ -11,6 +11,7 @@ setup(name='metsim',
       author='Andrew Bennett',
       author_email='bennett.andr@gmail.com',
       packages=['metsim', 'metsim.methods', 'metsim.cli'],
+      python_requires='>3.6',
       entry_points={
           'console_scripts': ['ms = metsim.cli.ms:main']},
       install_requires=['xarray>=0.11.0', 'numba', 'numpy', 'pandas>=0.25.0',
