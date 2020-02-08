@@ -37,7 +37,7 @@ A summary of the available output variables and tunable parameters are included 
 ![Figure 1: An example of ``MetSim`` input and output. The daily values are shown on the left are used as input along with a number of parameters to produce the hourly output shown on the right. The sample data used to generate this figure is included in the ``MetSim`` repository.](figure1.png)
 
 We have based ``MetSim`` on methods from the Mountain Microclimate Simulator (``MTCLIM``) and the forcing preprocessor that was built into the Variable Infiltration Capacity (``VIC``) hydrological model version 4 [@Bohn:2013; @Thornton:1999; @Liang:1994].
-``MetSim`` provides a modern workflow, building upon previous tools by improving performance, adding new IO routines, allowing for exact restarts, and providing an extensible architecture which can incorporate new features.
+``MetSim`` provides a modern workflow, building upon previous tools by improving performance by adding scalable parallelism, adding new IO routines, allowing for exact restarts, and providing an extensible architecture which can incorporate new features.
 We have designed ``MetSim`` to fit into the broader scientific Python ecosystem, building on popular packages such as ``xarray`` [@xarray], ``dask``[@dask], ``pandas``[@pandas], and ``numba`` [@numba].
 
 # Architecture and performance
