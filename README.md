@@ -91,6 +91,10 @@ Alternatively, you can install MetSim directly from the source if you desire to:
     $ git clone https://github.com/UW-Hydro/MetSim.git
     $ cd MetSim
     $ python setup.py install
+    
+If you are installing from source you may wish to also run the tests. 
+You can do this from the MetSim directory with the command:
+
     $ pytest --verbose
 
 Basic Usage
