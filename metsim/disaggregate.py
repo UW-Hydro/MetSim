@@ -28,6 +28,7 @@ import metsim.constants as cnst
 from metsim.datetime import date_range
 from metsim.physics import svp
 
+import sys
 
 def disaggregate(df_daily: pd.DataFrame, params: dict,
                  solar_geom: dict, t_begin: list=None,
@@ -146,8 +147,31 @@ def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
     # calculate minute of sunrise and sunset for each day of the year
     rad_mask = 1 * (tiny_rad_fract > 0)
     mask = np.diff(rad_mask)
-    rise_times = np.where(mask > 0)[1] * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
-    set_times = np.where(mask < 0)[1] * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
+    #
+    # START OF FIX 
+    #
+    # north of the polar circle radiation values of mask </> 0 are eleminated for
+    # sunset/sunrise resulting in an array containing less than 365 days for one year
+    rise_times = np.zeros(mask.shape[0])
+    for i, j in zip(np.where(mask > 0)[0],np.where(mask > 0)[1]):
+        rise_times[i] = j * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
+    set_times = np.zeros(mask.shape[0])
+    for i, j in zip(np.where(mask < 0)[0],np.where(mask < 0)[1]):
+        set_times[i] = j * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
+    for i in range(mask.shape[0]):
+        if rise_times[i] == 0:
+            if i in range(int(n_days/2-n_days/4),int(n_days/2+n_days/4)):
+                rise_times[i] = 0 * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
+            else:
+                rise_times[i] = (cnst.SEC_PER_DAY / cnst.SW_RAD_DT) * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN) / 2
+        if set_times[i] == 0:
+            if not i in range(int(n_days/2-n_days/4),int(n_days/2+n_days/4)):
+                set_times[i] = (cnst.SEC_PER_DAY / cnst.SW_RAD_DT) * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN) / 2
+            else:
+                set_times[i] = (cnst.SEC_PER_DAY / cnst.SW_RAD_DT) * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
+    #
+    # END OF FIX
+    #
 
     if params['utc_offset']:
         # not used elsewhere:
