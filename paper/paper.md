@@ -44,6 +44,7 @@ We noticed that processors for forcing estimation and disaggregation usually wer
 At the same time, this provides a basis for others to expand a set of commonly available routines.
 
 ``MetSim`` provides a modern workflow, building upon previous tools by improving performance by adding scalable parallelism, adding new IO routines, allowing for exact restarts, and providing an extensible architecture which can incorporate new features.
+We have implemented ``MetSim`` in a way that allows for runs on arbitrary spatial configurations and at arbitrary spatial scales, as opposed to the forced latitude-longitude grid that was used in the VIC preprocessor.
 We have designed ``MetSim`` to fit into the broader scientific Python ecosystem, building on popular packages such as ``xarray`` [@xarray], ``dask``[@dask], ``pandas``[@pandas], and ``numba`` [@numba].
 
 # Architecture and performance
