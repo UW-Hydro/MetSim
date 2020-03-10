@@ -25,11 +25,13 @@ bibliography: paper.bib
 
 # Summary
 
-Hydrometeorological modeling is concerned with regions that have uncertain or unknown boundary conditions.
+While there has been a boom in the availablity of climate, weather, and environmental data thanks to satellite observations, syntheses of in situ observed data sets, and the ubiquity of powerful computers, it is also still often the case that the required data to run complex environmental models is either missing, or at the wrong spatial or temporal resolution.
 For example, incoming shortwave radiation, longwave radiation, and humidity are often observed with varying record lengths and observation intervals.
-Further, even when such quantities are measured it is often at a daily resolution, while many environmental models require finer temporal resolution for simulation.
+Further, even when such quantities are measured it is often at a daily timestep, while many environmental models require finer time scales for simulation.
 To provide the necessary data to solve the model equations in such circumstances we must be able to provide estimates for these quantities at the appropriate temporal resolution.
-``MetSim`` is a Python package and standalone tool for the estimation of meteorological quantities at variable temporal resolutions that can address the issues described above.
+``MetSim`` is a Python package and standalone tool for the estimation of meteorological quantities at variable time scales that can address the issues described above.
+The data that ``MetSim`` can generate covers most of the variables that sophisticated environmental models may require as input, making it possible to run them in a wider variety of situations than is possible with off-the-shelf datasets.
+This is especially important in fields such as hydrology and ecology, where there is an increasing push towards finer scale data than is commonly available.
 ``MetSim`` can be used to generate spatially distributed sub-daily timeseries of incoming shortwave radiation, outgoing longwave radiation, air pressure, specific humidity, relative humidity, vapor pressure, precipitation, and air temperature given daily timeseries of minimum temperature, maximum temperature, and precipitation.
 Figure 1 shows an example of ``MetSim``'s transformations of these daily values into some of the available subdaily outputs.
 A summary of the available output variables and tunable parameters are included in the documentation.
