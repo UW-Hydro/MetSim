@@ -421,10 +421,7 @@ class MetSim(object):
         self.setup_output()
         times = self.met_data['time']
         params = self.params.copy()
-        #
-        # START OF FIX
-        #
-        # transform input parameters to floating point values (some parameters don't get teated as floats)
+        # transform input parameters to floating point values
         params['sw_prec_thresh'] = float(params['sw_prec_thresh'])
         params['rain_scalar'] = float(params['rain_scalar'])
         params['tdew_tol'] = float(params['tdew_tol'])
@@ -432,9 +429,6 @@ class MetSim(object):
         params['tday_coef'] = float(params['tday_coef'])
         params['tmax_daylength_fraction'] = float(params['tmax_daylength_fraction'])
         params['lapse_rate'] = float(params['lapse_rate'])
-        #
-        # END OF FIX
-        #
         for index, mask_val in np.ndenumerate(self.domain['mask'].values):
             if mask_val > 0:
                 locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}

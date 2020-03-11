@@ -78,6 +78,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
 
     t_Tmin, t_Tmax = set_min_max_hour(solar_geom['tiny_rad_fract'],
                                       df_daily.index.dayofyear - 1,
+                                      solar_geom['daylength'],
                                       n_days, ts, params)
 
     df_disagg['temp'] = temp(
@@ -115,8 +116,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     return df_disagg.fillna(method='ffill').fillna(method='bfill')
 
 
-def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
-                     ts: int, params: dict) -> Tuple[np.array]:
+def set_min_max_hour(tiny_rad_fract: np.ndarray, yday: np.ndarray, daylength: np.ndarray,
+                     n_days: int, ts: int, params: dict) -> Tuple[np.ndarray]:
     """
     Determine the time at which min and max temp
     is reached for each day.
@@ -147,34 +148,26 @@ def set_min_max_hour(tiny_rad_fract: np.array, yday: np.array, n_days: int,
     # calculate minute of sunrise and sunset for each day of the year
     rad_mask = 1 * (tiny_rad_fract > 0)
     mask = np.diff(rad_mask)
-    #
-    # START OF FIX 
-    #
+
     # north of the polar circle radiation values of mask </> 0 are eleminated for
     # sunset/sunrise resulting in an array containing less than 365 days for one year
     rise_times = np.zeros(mask.shape[0])
-    for i, j in zip(np.where(mask > 0)[0],np.where(mask > 0)[1]):
+    loc, mult = np.where(mask > 0)
+    for i, j in zip(loc, mult):
         rise_times[i] = j * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
+
     set_times = np.zeros(mask.shape[0])
-    for i, j in zip(np.where(mask < 0)[0],np.where(mask < 0)[1]):
+    loc, mult = np.where(mask < 0)
+    for i, j in zip(loc, mult):
         set_times[i] = j * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
-    for i in range(mask.shape[0]):
-        if rise_times[i] == 0:
-            if i in range(int(n_days/2-n_days/4),int(n_days/2+n_days/4)):
-                rise_times[i] = 0 * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
-            else:
-                rise_times[i] = (cnst.SEC_PER_DAY / cnst.SW_RAD_DT) * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN) / 2
-        if set_times[i] == 0:
-            if not i in range(int(n_days/2-n_days/4),int(n_days/2+n_days/4)):
-                set_times[i] = (cnst.SEC_PER_DAY / cnst.SW_RAD_DT) * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN) / 2
-            else:
-                set_times[i] = (cnst.SEC_PER_DAY / cnst.SW_RAD_DT) * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN)
-    #
-    # END OF FIX
-    #
+
+    # Set rise and set times to be equally spaced when in polar region
+    day_tot = ((cnst.SEC_PER_DAY / cnst.SW_RAD_DT)
+               * (cnst.SW_RAD_DT / cnst.SEC_PER_MIN))
+    rise_times[rise_times == 0] = day_tot / 6
+    set_times[set_times == 0] = 4 * day_tot / 6
 
     if params['utc_offset']:
-        # not used elsewhere:
         # rad_fract_per_day = int(cnst.SEC_PER_DAY/cnst.SW_RAD_DT)
         utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0)) /
                           cnst.DEG_PER_REV) * cnst.MIN_PER_DAY)
