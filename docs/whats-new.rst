@@ -5,11 +5,20 @@ What's New
 
 .. _whats-new.2.2.0:
 
+v2.2.l
+------
+Bug fixes
+~~~~~~~~~
+- Fixed bug where timestamps got duplicated for sub-hourly
+  disaggregation time periods
+- Fixed bug where polar latitudes caused error in setting
+  the rise and set times for temperature disaggregation
+
 v2.2.0
 -------
 Enhancements
 ~~~~~~~~~~~~
-- Can now specify ``period_ending`` in the configuration to move 
+- Can now specify ``period_ending`` in the configuration to move
   timestamps to end of period instead of beginning of period
 - Addition of tutorial in README.md and main documentation
 - Addition of paper to be submitted to JOSS
