@@ -25,11 +25,13 @@ bibliography: paper.bib
 
 # Summary
 
-Hydrometeorological modeling is concerned with regions that have uncertain or unknown boundary conditions.
+While there has been a boom in the availablity of climate, weather, and environmental data thanks to satellite observations, syntheses of in situ observed data sets, and the ubiquity of powerful computers, it is also still often the case that the required data to run complex environmental models is either missing, or at the wrong spatial or temporal resolution.
 For example, incoming shortwave radiation, longwave radiation, and humidity are often observed with varying record lengths and observation intervals.
-Further, even when such quantities are measured it is often at a daily resolution, while many environmental models require finer temporal resolution for simulation.
+Further, even when such quantities are measured it is often at a daily timestep, while many environmental models require finer time scales for simulation.
 To provide the necessary data to solve the model equations in such circumstances we must be able to provide estimates for these quantities at the appropriate temporal resolution.
-``MetSim`` is a Python package and standalone tool for the estimation of meteorological quantities at variable temporal resolutions that can address the issues described above.
+``MetSim`` is a Python package and standalone tool for the estimation of meteorological quantities at variable time scales that can address the issues described above.
+The data that ``MetSim`` can generate covers most of the variables that sophisticated environmental models may require as input, making it possible to run them in a wider variety of situations than is possible with off-the-shelf datasets.
+This is especially important in fields such as hydrology and ecology, where there is an increasing push towards finer scale data than is commonly available.
 ``MetSim`` can be used to generate spatially distributed sub-daily timeseries of incoming shortwave radiation, outgoing longwave radiation, air pressure, specific humidity, relative humidity, vapor pressure, precipitation, and air temperature given daily timeseries of minimum temperature, maximum temperature, and precipitation.
 Figure 1 shows an example of ``MetSim``'s transformations of these daily values into some of the available subdaily outputs.
 A summary of the available output variables and tunable parameters are included in the documentation.
@@ -44,6 +46,7 @@ We noticed that processors for forcing estimation and disaggregation usually wer
 At the same time, this provides a basis for others to expand a set of commonly available routines.
 
 ``MetSim`` provides a modern workflow, building upon previous tools by improving performance by adding scalable parallelism, adding new IO routines, allowing for exact restarts, and providing an extensible architecture which can incorporate new features.
+We have implemented ``MetSim`` in a way that allows for runs on arbitrary spatial configurations and at arbitrary spatial scales, as opposed to the forced latitude-longitude grid that was used in the VIC preprocessor.
 We have designed ``MetSim`` to fit into the broader scientific Python ecosystem, building on popular packages such as ``xarray`` [@xarray], ``dask``[@dask], ``pandas``[@pandas], and ``numba`` [@numba].
 
 # Architecture and performance
@@ -63,6 +66,13 @@ The data from the solar geometry module is fed to the meteorology simulation mod
 ``MetSim`` implements the estimation methods discussed in @Bohn:2013 and @Thornton:1999 to estimate the daily mean temperature, shortwave radiation, vapor pressure, and potential evapotranspiration.
 If disaggregation to shorter time steps is configured, the data is passed from the meteorology simulation module to the disaggregation module.
 @Bohn:2013 provides a further description and evaluation of these algorithms.
+Here we briefly mention the disaggregation procedures for completeness, but no substantial changes were made to the earlier algorithms.
+
+Shortwave is disaggregated by multiplying the total daily shortwave by the fraction of radiation received in a given timestep (provided by the solar geometry module). This calculation is corrected for cloud cover by assuming constant transmissivity throughout the day (which is calculated in the meteorological simulation module). Temperature is disaggregated by estimating the time at which the daily maximum and daily minimum temperatures occur. These are chosen so that the daily minimum temperature occurs at sunrise and the daily maximum temperature occurs at a fixed time during the day (which is configurable by the user as a parameter in the configuration file if desired). Then a Hermite polynomial interpolation is used to obtain the full temperature timeseries at sub-daily time steps. Vapor pressure is disaggregated by linearly interpolating between the saturation vapor pressure values calculated based on the daily minimum temperature and that are assumed to occur at the time of the daily minimum temperature. An additional correction is made to ensure that the vapor pressure at any given time step does not exceed the saturation vapor pressure, which is calculated directly from the disaggregated temperature timeseries. Air pressure is disaggregated by using the disaggregated temperature as well as the elevation data provided by the domain file. Both specific and relative humidity are then disaggregated using the disaggregated temperature and air pressure time series. If provided, wind speed is disaggregated, but is assumed to be constant throughout the day.
+
+As part of the model configuration, the user can select from a number of different algorithms to estimate longwave radiation. Sub-daily values are calculated with the selected method using the disaggregated values for vapor pressure and temperature.
+
+Precipitation can be disaggregated in one of two ways. The first and simplest way is to evenly spread the daily precipitation across the sub-daily time steps. The second method requires two additional parameters to be specified in the domain file to represent the average precipitation duration and the time of peak precipitation for each cell. The method then disaggregates precipitation by constructing a triangular kernel with total area equal to the daily precipitation centered at the time which is specified as the time of peak precipitation.
 
 ``MetSim`` implements several options for parallelism, which are primarily managed by the ``Dask`` [@dask] and ``xarray`` [@xarray] libraries.
 We explore ``MetSim``'s computational performance by conducting two scaling experiments.
