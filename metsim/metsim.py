@@ -70,31 +70,44 @@ user = getuser()
 
 attrs = {'pet': {'units': 'mm timestep-1',
                  'long_name': 'potential evaporation',
-                 'standard_name': 'water_potential_evaporation_flux'},
+                 'standard_name': 'water_potential_evaporation_flux',
+                 'missing_value': np.nan, 'fill_value': np.nan},
          'prec': {'units': 'mm timestep-1', 'long_name': 'precipitation',
-                  'standard_name': 'precipitation_flux'},
+                  'standard_name': 'precipitation_flux',
+                  'missing_value': np.nan, 'fill_value': np.nan},
          'shortwave': {'units': 'W m-2', 'long_name': 'shortwave radiation',
-                       'standard_name': 'surface_downwelling_shortwave_flux'},
+                       'standard_name': 'surface_downwelling_shortwave_flux',
+                       'missing_value': np.nan, 'fill_value': np.nan},
          'longwave': {'units': 'W m-2', 'long_name': 'longwave radiation',
-                      'standard_name': 'surface_downwelling_longwave_flux'},
+                      'standard_name': 'surface_downwelling_longwave_flux',
+                      'missing_value': np.nan, 'fill_value': np.nan},
          't_max': {'units': 'C', 'long_name': 'maximum daily air temperature',
-                   'standard_name': 'daily_maximum_air_temperature'},
+                   'standard_name': 'daily_maximum_air_temperature',
+                   'missing_value': np.nan, 'fill_value': np.nan},
          't_min': {'units': 'C', 'long_name': 'minimum daily air temperature',
-                   'standard_name': 'daily_minimum_air_temperature'},
+                   'standard_name': 'daily_minimum_air_temperature',
+                   'missing_value': np.nan, 'fill_value': np.nan},
          'temp': {'units': 'C', 'long_name': 'air temperature',
-                  'standard_name': 'air_temperature'},
+                  'standard_name': 'air_temperature',
+                  'missing_value': np.nan, 'fill_value': np.nan},
          'vapor_pressure': {'units': 'kPa', 'long_name': 'vapor pressure',
-                            'standard_name': 'vapor_pressure'},
+                            'standard_name': 'vapor_pressure',
+                            'missing_value': np.nan, 'fill_value': np.nan},
          'air_pressure': {'units': 'kPa', 'long_name': 'air pressure',
-                          'standard_name': 'air_pressure'},
+                          'standard_name': 'air_pressure',
+                          'missing_value': np.nan, 'fill_value': np.nan},
          'tskc': {'units': 'fraction', 'long_name': 'cloud fraction',
-                  'standard_name': 'cloud_fraction'},
+                  'standard_name': 'cloud_fraction',
+                  'missing_value': np.nan, 'fill_value': np.nan},
          'rel_humid': {'units': '%', 'long_name': 'relative humidity',
-                       'standard_name': 'relative_humidity'},
+                       'standard_name': 'relative_humidity',
+                       'missing_value': np.nan, 'fill_value': np.nan},
          'spec_humid': {'units': '', 'long_name': 'specific humidity',
-                        'standard_name': 'specific_humidity'},
+                        'standard_name': 'specific_humidity',
+                        'missing_value': np.nan, 'fill_value': np.nan},
          'wind': {'units': 'm/s', 'long_name': 'wind speed',
-                  'standard_name': 'wind_speed'},
+                  'standard_name': 'wind_speed',
+                  'missing_value': np.nan, 'fill_value': np.nan},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
@@ -408,6 +421,14 @@ class MetSim(object):
         self.setup_output()
         times = self.met_data['time']
         params = self.params.copy()
+        # transform input parameters to floating point values
+        params['sw_prec_thresh'] = float(params['sw_prec_thresh'])
+        params['rain_scalar'] = float(params['rain_scalar'])
+        params['tdew_tol'] = float(params['tdew_tol'])
+        params['tmax_daylength_fraction'] = float(params['tmax_daylength_fraction'])
+        params['tday_coef'] = float(params['tday_coef'])
+        params['tmax_daylength_fraction'] = float(params['tmax_daylength_fraction'])
+        params['lapse_rate'] = float(params['lapse_rate'])
         for index, mask_val in np.ndenumerate(self.domain['mask'].values):
             if mask_val > 0:
                 locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
