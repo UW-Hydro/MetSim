@@ -36,7 +36,7 @@ This is especially important in fields such as hydrology and ecology, where ther
 Figure 1 shows an example of ``MetSim``'s transformations of these daily values into some of the available subdaily outputs.
 A summary of the available output variables and tunable parameters are included in the documentation.
 
-![Figure 1: An example of ``MetSim`` input and output. The daily values are shown on the left are used as input along with a number of parameters to produce the hourly output shown on the right. The sample data used to generate this figure is included in the ``MetSim`` repository.](figure1.png)
+![An example of ``MetSim`` input and output. The daily values are shown on the left are used as input along with a number of parameters to produce the hourly output shown on the right. The sample data used to generate this figure is included in the ``MetSim`` repository.](figure1.png)
 
 We have based ``MetSim`` on methods from the Mountain Microclimate Simulator (``MTCLIM``) and the forcing preprocessor that was built into the Variable Infiltration Capacity (``VIC``) hydrological model version 4 [@Bohn:2013; @Thornton:1999; @Liang:1994].
 The development of ``MetSim`` was motivated by gaps in the approaches of both ``MTCLIM`` and the ``VIC`` forcing preprocessor.
@@ -57,7 +57,7 @@ A schematic representation of ``MetSim``'s architecture is shown in figure 2.
 ``MetSim`` provides both a command line tool and API access as a Python module.
 The command line tool provides an interface to the driver via configuration files and command line options.
 
-![Figure 2: A schematic representation of the ``MetSim`` software flow](figure2.png)
+![A schematic representation of the ``MetSim`` software flow](figure2.png)
 
 ``MetSim`` has three main computation modules for solar geometry, meteorological simulation, and temporal disaggregation.
 The solar geometry module computes the daily potential radiation, daylength, transmittance of the atmosphere, and the fraction of daily radiation received at the top of atmosphere during each 30 second interval.
@@ -90,7 +90,7 @@ We ran 125 cells per 2 processors, resulting in runs of 125, 250, 500, 1000, 200
 The results of the weak scaling experiment are shown in panel b of figure 3.
 Similarly to the strong scaling experiment, we see increasing penalties for adding additional processors.
 
-![Figure 3: ``MetSim`` scaling performance](figure3.png)
+![``MetSim`` scaling performance](figure3.png)
 
 # Applications & Related work
 
