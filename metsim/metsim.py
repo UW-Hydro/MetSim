@@ -265,19 +265,35 @@ class MetSim(object):
 
     def run(self):
         self._validate_setup()
-        times, time_chunks, grouper = self._get_output_times(freq=self.params['out_freq'])
-        paths = [self._get_output_filename(t) for t in time_chunks]
+        times, _, _ = self._get_output_times(freq=self.params['out_freq'])
         self._aggregate_state()
         data = xr.merge([self.met_data, self.domain])
 
+        chunks = data['prec'].chunks
+
         # run_metsim using map_blocks
-        ds = data.map_blocks(run_metsim, [times, self.params])
+        if chunks:
+            chunks = list(chunks)
+            chunks[data['prec'].get_axis_num('time')] = -1
+            chunks = tuple(chunks)
+
+            template = setup_output(data['mask'], times, self.params, chunks=chunks)
+
+            ds = xr.map_blocks(run_metsim, data, [times, self.params], template=template)
+        else:
+            ds = run_metsim(data, times, self.params)
+
+        return ds
+
+    def write(self, ds):
+
+        _, time_chunks, grouper = self._get_output_times(freq=self.params['out_freq'])
+        paths = [self._get_output_filename(t) for t in time_chunks]
 
         if grouper:
             _, datasets = zip(*ds.groupby(grouper))
             delayed_obj = xr.save_mfdataset(datasets, paths, compute=True)
         else:
-            del ds['time'].attrs['units']  # TODO: figure out why this is happening
             delayed_obj = ds.to_netcdf(paths[0], compute=True)
 
         return delayed_obj
@@ -602,7 +618,7 @@ def add_prec_tri_vars(domain):
 
 # - put mask in met_data
 
-def setup_output(mask, times, params):
+def setup_output(mask, times, params, chunks=None):
 
     # Number of timesteps
     n_ts = len(times)
@@ -613,10 +629,16 @@ def setup_output(mask, times, params):
     out_ds = xr.Dataset(coords=coords)
     out_ds['time'].encoding['calendar'] = params['calendar']
 
-    dtype = params['out_precision']
+    data_kws = dict(dtype=params['out_precision'])
+    if chunks is not None:
+        full = dask.array.full
+        data_kws['chunks'] = chunks
+    else:
+        full = np.full
+
     for varname in params['out_vars']:
         out_ds[varname] = xr.DataArray(
-            data=np.full(shape, np.nan, dtype=dtype),
+            data=full(shape, np.nan, **data_kws),
             coords=coords, dims=dims,
             name=varname, attrs=attrs.get(varname, {}))
     out_ds['time'].attrs.update(attrs['time'])

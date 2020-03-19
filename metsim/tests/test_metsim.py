@@ -250,8 +250,7 @@ def test_disaggregation_values():
     ms = MetSim(params)
 
     # Run MetSim and load in the validated data
-    ms.run()
-    ds = ms.open_output()
+    ds = ms.run()
     out = ds.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
     good = pd.read_table('./metsim/data/validated_48.3125_-120.5625',
                          names=out_vars)
@@ -264,8 +263,7 @@ def test_disaggregation_values():
     # Now do 3 hourly
     params['time_step'] = '180'
     ms = MetSim(params)
-    ms.run()
-    ds = ms.open_output()
+    ds = ms.run()
     out = ds.isel(lat=loc[0], lon=loc[1]).to_dataframe()[out_vars]
     good = pd.read_table('./metsim/data/three_hourly_48.3125_-120.5625',
                          names=out_vars)
@@ -286,5 +284,5 @@ def test_examples(kind):
     out_dir = tempfile.mkdtemp('results')
     conf['out_dir'] = out_dir
     ms = MetSim(conf)
-    ms.run()
-    assert ms.open_output() is not None
+    ds = ms.run()
+    assert isinstance(ds, xr.Dataset)
