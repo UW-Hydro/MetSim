@@ -47,13 +47,13 @@ At the same time, this provides a basis for others to expand a set of commonly a
 
 ``MetSim`` provides a modern workflow, building upon previous tools by improving performance by adding scalable parallelism, adding new IO routines, allowing for exact restarts, and providing an extensible architecture which can incorporate new features.
 We have implemented ``MetSim`` in a way that allows for runs on arbitrary spatial configurations and at arbitrary spatial scales, as opposed to the forced latitude-longitude grid that was used in the VIC preprocessor.
-We have designed ``MetSim`` to fit into the broader scientific Python ecosystem, building on popular packages such as ``xarray`` [@xarray], ``dask``[@dask], ``pandas``[@pandas], and ``numba`` [@numba].
+We have designed ``MetSim`` to fit into the broader scientific Python ecosystem, building on popular packages such as ``xarray`` [@xarray], ``dask`` [@dask], ``pandas`` [@pandas], and ``numba`` [@numba].
 
 # Architecture and performance
 
-``MetSim``'s architecture follows the common design of a model driver which coordinates high level operations and which delegates computation to several modules to do the bulk of the work.
+``MetSim``'s architecture follows the common design of a model driver that coordinates high level operations and that delegates computation to several modules to do the bulk of the work.
 The top level model driver handles all IO routines as well as job scheduling and parallelism.
-A schematic representation of ``MetSim``'s architecture is shown in figure 2.
+A schematic representation of ``MetSim``'s architecture is shown in Figure 2.
 ``MetSim`` provides both a command line tool and API access as a Python module.
 The command line tool provides an interface to the driver via configuration files and command line options.
 
@@ -82,12 +82,12 @@ In ideal cases the runtime halves when doubling the number of processors for str
 These ideal cases are represented by the "perfect" cases shown in Figure 3.
 All of the times reported for the scaling experiments were for a single year run at an hourly time step with default parameter and output settings.
 For the strong scaling experiment we ran ``MetSim`` for one year at an hourly timestep over a domain of 6333 cells and ran using 2, 4, 8, 16, 32, 64, and 128 processors.
-The time to complete each run is shown in figure 3 panel a.
+The time to complete each run is shown in Figure 3 (left).
 The results show that scaling is nearly linear with the number of processors.
 
 In the weak scaling experiment we ran ``MetSim`` using 2, 4, 8, 16, 32, 64, and 128 processors while varying the number of cells in the run to maintain a constant workload per processor.
 We ran 125 cells per 2 processors, resulting in runs of 125, 250, 500, 1000, 2000, 4000, and 8000 cells, respectively.
-The results of the weak scaling experiment are shown in panel b of figure 3.
+The results of the weak scaling experiment are shown in Figure 3 (right).
 Similarly to the strong scaling experiment, we see increasing penalties for adding additional processors.
 
 ![``MetSim`` scaling performance](figure3.png)
@@ -95,7 +95,7 @@ Similarly to the strong scaling experiment, we see increasing penalties for addi
 # Applications & Related work
 
 ``MetSim`` has been used in several research applications predominantly for generating input to hydrologic models, though other applications are possible.
-@Bohn:2019 extended the precipitation disaggregation component to include a new option which was shown to result in better streamflow predictions than the default method.
+@bohn2019 extended the precipitation disaggregation component to include a new option which was shown to result in better streamflow predictions than the default method.
 @Cheng:2020 used ``MetSim`` as a component of their modeling framework to explore how reservoirs affect stream temperatures, and how reservoir operations may be able to help mitigate the effects of climate change on warming stream temperatures.
 The Climate Toolbox [@toolbox] uses ``MetSim`` to generate meteorological data as an intermediate step for developing hydrologic predictions.
 ``MetSim`` has many other possible uses and is developer-friendly enough for it to be extended to provide additional functionality.
