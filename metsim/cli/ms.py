@@ -88,7 +88,6 @@ def init(opts):
     else:
         conf['utc_offset'] = False
 
-
     # Update the full configuration
     conf.update({"calendar": conf.get('calendar', 'standard'),
                  "scheduler": opts.scheduler,
