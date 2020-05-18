@@ -83,6 +83,14 @@ def init(opts):
     else:
         forcing_files = conf['forcing']
 
+    # Ensure that parameters with boolean values are correctly recorded
+    for bool_param in ['utc_offset', 'period_ending']:
+        if (bool_param in conf.keys()
+            and conf[bool_param].strip().lower() == 'true'):
+            conf[bool_param] = True
+        else:
+            conf[bool_param] = False
+
     # Update the full configuration
     conf.update({"calendar": conf.get('calendar', 'standard'),
                  "scheduler": opts.scheduler,
