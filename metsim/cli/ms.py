@@ -83,6 +83,12 @@ def init(opts):
     else:
         forcing_files = conf['forcing']
 
+    if 'utc_offset' in conf.keys() and conf['utc_offset'].strip() == 'True':
+        conf['utc_offset'] = True
+    else:
+        conf['utc_offset'] = False
+
+
     # Update the full configuration
     conf.update({"calendar": conf.get('calendar', 'standard'),
                  "scheduler": opts.scheduler,
