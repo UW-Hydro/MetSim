@@ -5,6 +5,13 @@ What's New
 
 .. _whats-new.2.2.0:
 
+v2.2.2
+-------
+Bug fixes
+~~~~~~~~~
+- Fixed bug where `utc_offset` doesn't get converted to the
+  correct boolean when reading the configuration.
+
 v2.2.l
 ------
 Bug fixes
