@@ -83,7 +83,8 @@ def init(opts):
     else:
         forcing_files = conf['forcing']
 
-    if 'utc_offset' in conf.keys() and conf['utc_offset'].strip() == 'True':
+    if ('utc_offset' in conf.keys()
+        and conf['utc_offset'].strip().lower() == 'true'):
         conf['utc_offset'] = True
     else:
         conf['utc_offset'] = False
