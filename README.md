@@ -2,6 +2,7 @@ METSIM: Meteorology Simulator
 =============================
 | MetSim Links & Badges              |                                                                             |
 |------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| JOSS Paper             | [![DOI](https://joss.theoj.org/papers/10.21105/joss.02042/status.svg)](https://doi.org/10.21105/joss.02042) |
 | MetSim Documentation      | [![Documentation Status](http://readthedocs.org/projects/metsim/badge/?version=develop)](http://metsim.readthedocs.io/en/develop/?badge=develop) |
 | Travis-CI Build           | [![Build Status](https://travis-ci.org/UW-Hydro/MetSim.png)](https://travis-ci.org/UW-Hydro/MetSim) |
 | License                | [![GitHub license](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://raw.githubusercontent.com/UW-Hydro/MetSim/master/LICENSE) |
@@ -121,6 +122,29 @@ over-utilization of CPU resources, leading to lower performance. If you experien
 this issue try setting the `OMP_NUM_THREADS` environment variable to 1 before running
 MetSim.. This can be done in bash and similar shells by running
 `export OMP_NUM_THREADS=1`.
+
+Citing MetSim
+=============
+If you use MetSim in your work and would like to cite it you can use our JOSS paper as:
+
+ > Bennett et al., (2020). MetSim: A Python package for estimation and disaggregation of meteorological data. Journal of Open Source Software, 5(47), 2042, https://doi.org/10.21105/joss.02042
+
+Or in BibTeX:
+``` 
+ @article{Bennett2020,
+  doi = {10.21105/joss.02042},
+  url = {https://doi.org/10.21105/joss.02042},
+  year = {2020},
+  publisher = {The Open Journal},
+  volume = {5},
+  number = {47},
+  pages = {2042},
+  author = {Andrew Bennett and Joseph Hamman and Bart Nijssen},
+  title = {MetSim: A Python package for estimation and disaggregation of meteorological data},
+  journal = {Journal of Open Source Software}
+}
+```
+
 
 References
 ==========
