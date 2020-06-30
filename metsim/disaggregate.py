@@ -694,19 +694,31 @@ def shortwave(sw_rad: np.array, daylength: np.array, day_of_year: np.array,
     ts_per_day = int(cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
     disaggrad = np.zeros(int(n_days * ts_per_day))
     rad_fract_per_day = int(cnst.SEC_PER_DAY / cnst.SW_RAD_DT)
+    tmp_rad = np.repeat(tmp_rad, rad_fract_per_day)
     if params['utc_offset']:
-        utc_offset = int(((params.get("lon", 0) - params.get("theta_s", 0)) /
-                          cnst.DEG_PER_REV) * rad_fract_per_day)
+        utc_offset = int((params['lon']  / cnst.DEG_PER_REV) * rad_fract_per_day)
         tiny_rad_fract = np.roll(tiny_rad_fract.flatten(), -utc_offset)
+        tmp_rad = np.roll(tmp_rad.flatten(), -utc_offset)
+        tiny_rad_fract = tiny_rad_fract.flatten()
     else:
+        utc_offset = 0
         tiny_rad_fract = tiny_rad_fract.flatten()
     chunk_size = int(ts * (cnst.SEC_PER_MIN / cnst.SW_RAD_DT))
     ts_id = np.repeat(np.arange(ts_per_day), chunk_size)
     for day in range(n_days):
+        # Mask to select out from tiny_rad_fract
         radslice = slice((day_of_year[day] - 1) * rad_fract_per_day,
                          (day_of_year[day]) * rad_fract_per_day)
         rad = tiny_rad_fract[radslice]
+
+        # Mask to select out time chunk to place disaggregated values into
         dslice = slice(int(day * ts_per_day), int((day + 1) * ts_per_day))
-        rad_chunk = np.bincount(ts_id, weights=rad)
-        disaggrad[dslice] = rad_chunk * tmp_rad[day]
+
+        # Mask to weight daily solar radiation with
+        weight_slice = slice(int(day * rad_fract_per_day),
+                             int((day + 1) * rad_fract_per_day))
+
+        rad_chunk = np.bincount(ts_id, weights=rad * tmp_rad[weight_slice])
+        disaggrad[dslice] = rad_chunk
+
     return disaggrad
