@@ -5,6 +5,14 @@ What's New
 
 .. _whats-new.2.2.0:
 
+v2.2.4
+------
+Bug fixes
+~~~~~~~~~
+- Fixed a bug where `utc_offset` causes radiation to be
+  incorrectly scaled
+
+
 v2.2.2
 -------
 Bug fixes
