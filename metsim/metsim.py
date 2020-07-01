@@ -213,6 +213,7 @@ class MetSim(object):
             freq=self.params['out_freq'],
             period_ending=self.params['period_ending'])
 
+
     def _validate_force_times(self, force_times):
 
         for p, i in [('start', 0), ('stop', -1)]:

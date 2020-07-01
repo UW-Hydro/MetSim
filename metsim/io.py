@@ -21,12 +21,86 @@ IO Module for MetSim
 import os
 import struct
 import logging
+import json
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+from collections import OrderedDict
+from configparser import ConfigParser
 from metsim.datetime import date_range
+
+
+def _invert_dict(d):
+    return OrderedDict([reversed(item) for item in d.items()])
+
+
+def _to_list(s):
+    return json.loads(s.replace("'", '"').split('#')[0])
+
+
+def check_config_type(config_file):
+    return 'ini'
+
+
+def read_config(opts):
+    """Initialize some information based on the options & config"""
+    config = ConfigParser()
+    config.optionxform = str
+    config_file = opts.config
+    config_type = check_config_type(config_file)
+    config_readers = {'yaml': read_yaml_config,
+                      'ini': read_ini_config}
+    return config_readers[config_type](config_file, opts)
+
+
+def read_yaml_config(config_file, opts):
+    pass
+
+
+def read_ini_config(config_file, opts):
+    config = ConfigParser()
+    config.optionxform = str
+    config.read(config_file)
+    conf = OrderedDict(config['MetSim'])
+    conf['forcing_vars'] = OrderedDict(config['forcing_vars'])
+    if conf['forcing_fmt'] != 'binary':
+        conf['forcing_vars'] = _invert_dict(conf['forcing_vars'])
+    conf['domain_vars'] = _invert_dict(OrderedDict(config['domain_vars']))
+    conf['state_vars'] = _invert_dict(OrderedDict(config['state_vars']))
+    conf['chunks'] = OrderedDict(config['chunks'])
+    if 'constant_vars' in config:
+        conf['constant_vars'] = OrderedDict(config['constant_vars'])
+
+    # If the forcing variable is a directory, scan it for files
+    if os.path.isdir(conf['forcing']):
+        forcing_files = [os.path.join(conf['forcing'], fn) for fn in
+                         next(os.walk(conf['forcing']))[2]]
+    else:
+        forcing_files = conf['forcing']
+
+    # Ensure that parameters with boolean values are correctly recorded
+    for bool_param in ['utc_offset', 'period_ending']:
+        if (bool_param in conf.keys()
+            and conf[bool_param].strip().lower() == 'true'):
+            conf[bool_param] = True
+        else:
+            conf[bool_param] = False
+
+    # Update the full configuration
+    conf.update({"calendar": conf.get('calendar', 'standard'),
+                 "scheduler": opts.scheduler,
+                 "num_workers": opts.num_workers,
+                 "verbose": logging.DEBUG if opts.verbose else logging.INFO,
+                 "forcing": forcing_files,
+                 "out_dir": os.path.abspath(conf['out_dir']),
+                 "prec_type": conf.get('prec_type', 'uniform')})
+    conf['out_vars'] = _to_list(conf.get('out_vars', '[]'))
+
+    conf = {k: v for k, v in conf.items() if v != []}
+    return conf
+
 
 
 def read_met_data(params: dict, domain: xr.Dataset) -> xr.Dataset:
