@@ -379,3 +379,15 @@ def test_examples(kind):
     ms = MetSim(conf)
     ms.run()
     assert ms.open_output() is not None
+
+
+def test_yaml_config():
+    filename = './examples/example_yaml.yaml'
+    conf = io.read_config(DummyOpts(filename))
+    out_dir = tempfile.mkdtemp('results')
+    conf['out_dir'] = out_dir
+    ms = MetSim(conf)
+    ms.run()
+    assert ms.open_output() is not None
+
+
