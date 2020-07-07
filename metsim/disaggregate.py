@@ -88,6 +88,9 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg['vapor_pressure'] = vapor_pressure(
         df_daily['vapor_pressure'].values, df_disagg['temp'].values,
         t_Tmin, n_disagg, ts)
+    df_disagg['vapor_pressure'] = (df_disagg['vapor_pressure']
+                                   .fillna(method='ffill')
+                                   .fillna(method='bfill'))
 
     df_disagg['rel_humid'] = relative_humidity(
         df_disagg['vapor_pressure'].values, df_disagg['temp'].values)

@@ -246,6 +246,39 @@ def test_time_offset():
     assert ms1._times[1:] == ms2._times[:-1]
 
 
+def test_variable_rename():
+    """Tests to make sure that variable renaming works"""
+    loc = data_locations['binary']
+    data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
+    out_vars = ['prec', 'temp', 'shortwave', 'longwave', 'vapor_pressure',
+                'wind', 'rel_humid', 'spec_humid', 'air_pressure']
+    out_dir = '.'
+    params = {'start': dates['binary'][0],
+              'stop': dates['binary'][1],
+              'forcing_fmt': 'binary',
+              'domain_fmt': 'netcdf',
+              'state_fmt': 'netcdf',
+              'domain': './metsim/data/stehekin.nc',
+              'state': './metsim/data/state_vic.nc',
+              'forcing': data_files,
+              'method': 'mtclim',
+              'scheduler': 'threading',
+              'time_step': "60",
+              'out_dir': out_dir,
+              'out_state': os.path.join(out_dir, 'state.nc'),
+              'out_vars': {
+                  'prec': {'out_name': 'pptrate'},
+                  'shortwave': {'out_name': 'SWRadAtm'}},
+              'forcing_vars': in_vars_section['binary'],
+              'domain_vars': domain_section['binary']
+              }
+    ms = MetSim(params)
+    ms.run()
+    ds = ms.open_output()
+    assert 'pptrate' in ds.variables
+    assert 'SWRadAtm' in ds.variables
+
+
 def test_disaggregation_values():
     """Tests to make sure values are being generated correctly"""
     # Set parameters

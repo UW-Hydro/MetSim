@@ -184,14 +184,51 @@ a mask of valid cells in the domain, and the elevation given in meters. If
 including ``dur`` and ``t_pk`` for disaggregating daily precipitation according
 to the "triangle" method.
 
+out_vars section
+----------------
+The ``out_vars`` section is where you can specify the output variables that you
+want to include. There are two formats for this section. The first is the old format,
+which we provide backwards compatibility for. You simply specify in the top level
+``[MetSim]`` section a list of output variables with the names used by MetSim. They
+will be written out with the same names used internally. Available options are
+dependent on whether daily or subdaily output is being generated. Options for
+daily output are:
+
+- pet
+- shortwave
+- t_max
+- t_min
+- tskc
+
+Options for subdaily output are:
+
+ - prec
+ - shortwave
+ - longwave
+ - temp
+ - vapor_pressure
+ - air_pressure
+ - tskc
+ - rel_humid
+ - spec_humid
+ - wind
+
+It may also be preferable to write the output with different variable names.
+MetSim allows for this in a similar way as the ``forcing_vars`` section.
+The syntax for this type of output specification is as follows:
+
+.. code-block:: ini
+    [out_vars]
+    metsim_varname = output_varname
+
 constant_vars section
 -------------------
-The ``constant_vars`` section is optional and allows you to set some of the 
-forcing inputs to a constant value. The specification simply consists of entries 
+The ``constant_vars`` section is optional and allows you to set some of the
+forcing inputs to a constant value. The specification simply consists of entries
 of the form ``metsim_varname = value``, where ``value`` is a number that can be
-converted to a double. There can only be one entry per line. If the 
+converted to a double. There can only be one entry per line. If the
 ``metsim_varname`` corresponds to an entry that is already in the ``forcing_vars``
-section, then the constant value will take precedence. In the current 
+section, then the constant value will take precedence. In the current
 implementation there must be at least one non-constant entry in ``forcings_vars``
 (i.e. at least one entry that is not also in ``constant_vars``).
 
@@ -205,5 +242,5 @@ Similarly:
 ``t_max = 30
 t_min = 10``
 will result in output with a diurnal cycle in which the temperature varies at
-all locations between 10C and 30C. However, all estimation and disaggregation 
+all locations between 10C and 30C. However, all estimation and disaggregation
 routines are still evaluated, with constant ``t_max`` and ``t_min`` as input.
