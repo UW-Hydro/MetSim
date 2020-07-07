@@ -14,7 +14,9 @@ import pytest
 import xarray as xr
 
 import metsim.cli.ms as cli
+import metsim.metsim
 from metsim.metsim import MetSim
+from metsim import io
 
 
 class DummyOpts:
@@ -226,7 +228,8 @@ def test_time_offset():
               'time_step': "60",
               'out_dir': out_dir,
               'out_state': os.path.join(out_dir, 'state.nc'),
-              'out_vars': out_vars,
+              'out_vars': {n: metsim.metsim.available_outputs[n]
+                           for n in out_vars},
               'forcing_vars': in_vars_section['binary'],
               'domain_vars': domain_section['binary']
               }
@@ -241,6 +244,39 @@ def test_time_offset():
     ms1 = MetSim(params1)
     ms2 = MetSim(params2)
     assert ms1._times[1:] == ms2._times[:-1]
+
+
+def test_variable_rename():
+    """Tests to make sure that variable renaming works"""
+    loc = data_locations['binary']
+    data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
+    out_vars = ['prec', 'temp', 'shortwave', 'longwave', 'vapor_pressure',
+                'wind', 'rel_humid', 'spec_humid', 'air_pressure']
+    out_dir = '.'
+    params = {'start': dates['binary'][0],
+              'stop': dates['binary'][1],
+              'forcing_fmt': 'binary',
+              'domain_fmt': 'netcdf',
+              'state_fmt': 'netcdf',
+              'domain': './metsim/data/stehekin.nc',
+              'state': './metsim/data/state_vic.nc',
+              'forcing': data_files,
+              'method': 'mtclim',
+              'scheduler': 'threading',
+              'time_step': "60",
+              'out_dir': out_dir,
+              'out_state': os.path.join(out_dir, 'state.nc'),
+              'out_vars': {
+                  'prec': {'out_name': 'pptrate'},
+                  'shortwave': {'out_name': 'SWRadAtm'}},
+              'forcing_vars': in_vars_section['binary'],
+              'domain_vars': domain_section['binary']
+              }
+    ms = MetSim(params)
+    ms.run()
+    ds = ms.open_output()
+    assert 'pptrate' in ds.variables
+    assert 'SWRadAtm' in ds.variables
 
 
 def test_disaggregation_values():
@@ -264,7 +300,8 @@ def test_disaggregation_values():
               'time_step': "60",
               'out_dir': out_dir,
               'out_state': os.path.join(out_dir, 'state.nc'),
-              'out_vars': out_vars,
+              'out_vars': {n: metsim.metsim.available_outputs[n]
+                           for n in out_vars},
               'forcing_vars': in_vars_section['binary'],
               'domain_vars': domain_section['binary']
               }
@@ -273,7 +310,7 @@ def test_disaggregation_values():
 
     def check_data(out, good, tol=0.03):
         assert isinstance(out, pd.DataFrame)
-        for var in ms.params['out_vars']:
+        for var in ms.params['out_vars'].keys():
             # Check to make sure each variable has normalized
             # rmse of less than 0.02
             h = max([good[var].max(), out[var].max()])
@@ -322,7 +359,7 @@ def test_coordinate_dimension_matchup():
         latitude='lat', longitude='lon', mask='mask',
         elevation='elev', pptrate='prec', maxtemp='t_max', mintemp='t_min')
     filename = './examples/example_dimtest.conf'
-    conf = cli.init(DummyOpts(filename))
+    conf = io.read_config(DummyOpts(filename))
     conf['out_dir'] = tempfile.mkdtemp('results')
     ms = MetSim(conf)
     ds = xr.open_dataset('./metsim/data/dim_test.nc')
@@ -336,7 +373,7 @@ def test_coordinate_dimension_matchup():
                                   'constant_vars_nc'])
 def test_examples(kind):
     filename = './examples/example_{kind}.conf'.format(kind=kind)
-    conf = cli.init(DummyOpts(filename))
+    conf = io.read_config(DummyOpts(filename))
     out_dir = tempfile.mkdtemp('results')
     conf['out_dir'] = out_dir
     ms = MetSim(conf)
