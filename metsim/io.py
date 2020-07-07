@@ -78,6 +78,9 @@ def read_yaml_config(config_file, opts):
     conf['domain_vars'] = _invert_dict(OrderedDict(config['domain_vars']))
     conf['state_vars'] = _invert_dict(OrderedDict(config['state_vars']))
     conf['out_vars'] = OrderedDict(config['out_vars'])
+    for k, v in conf['out_vars'].items():
+        if 'units' not in v:
+            v['units'] = metsim.available_outputs[k]['units']
     if 'constant_vars' in config:
         conf['constant_vars'] = OrderedDict(config['constant_vars'])
 

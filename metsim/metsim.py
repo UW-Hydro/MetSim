@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import sys
+import warnings
 import time as tm
 from collections import Iterable, OrderedDict
 from getpass import getuser
@@ -54,6 +55,7 @@ from metsim.datetime import date_range
 from metsim.disaggregate import disaggregate
 from metsim.methods import mtclim
 from metsim.physics import solar_geom
+from metsim.units import converters
 
 NO_SLICE = {}
 DASK_CORE_SCHEDULERS = ['multiprocessing', 'threading', 'synchronous',
@@ -105,7 +107,7 @@ attrs = {'pet': {'units': 'mm timestep-1',
          'spec_humid': {'units': 'g g-1', 'long_name': 'specific humidity',
                         'standard_name': 'specific_humidity',
                         'missing_value': np.nan, 'fill_value': np.nan},
-         'wind': {'units': 'm/s', 'long_name': 'wind speed',
+         'wind': {'units': 'm s-1', 'long_name': 'wind speed',
                   'standard_name': 'wind_speed',
                   'missing_value': np.nan, 'fill_value': np.nan},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
@@ -216,6 +218,18 @@ class MetSim(object):
             freq=self.params['out_freq'],
             period_ending=self.params['period_ending'])
 
+        self._update_unit_attrs(self.params['out_vars'])
+
+    def _update_unit_attrs(self, out_vars):
+        for k, v in out_vars.items():
+            if v['units'] in converters[k].keys():
+                attrs[k]['units'] = v['units']
+            else:
+                self.logger.warn(
+                    f'Could not find unit conversion for {k} to {v["units"]}!'
+                    f' We will use the default units of'
+                    f' {available_outputs[k]["units"]} instead.' )
+                v['units'] = available_outputs[k]['units']
 
     def _validate_force_times(self, force_times):
 
@@ -458,8 +472,12 @@ class MetSim(object):
                                       self.disagg, times)
 
             # Cut the returned data down to the correct time index
+            # and do any required unit conversions
             for varname in self.params['out_vars']:
-                self.output[varname][locs] = df[varname].values
+                desired_units = self.params['out_vars'][varname]['units']
+                out_vals = converters[varname][desired_units](
+                     df[varname].values, int(self.params['time_step']))
+                self.output[varname][locs] = out_vals
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""
