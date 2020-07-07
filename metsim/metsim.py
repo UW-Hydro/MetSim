@@ -112,11 +112,14 @@ attrs = {'pet': {'units': 'mm timestep-1',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
                      'history': 'Created: {0} by {1}'.format(now, user),
-                     'references': references,
                      'comment': 'no comment at this time'}}
 
 attrs = {k: OrderedDict(v) for k, v in attrs.items()}
 
+available_outputs = {n : {'out_name': n, 'units': attrs[n]['units']}
+                     for n in attrs if n != '_global'}
+default_outputs = ['temp', 'prec', 'shortwave', 'longwave',
+                     'vapor_pressure', 'rel_humid']
 
 class MetSim(object):
     """
@@ -151,8 +154,7 @@ class MetSim(object):
         "rain_scalar": 0.75,
         "tday_coef": 0.45,
         "lapse_rate": 0.0065,
-        "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'vapor_pressure', 'rel_humid'],
+        "out_vars": {n: available_outputs[n] for n in default_outputs},
         "out_freq": None,
         "chunks": NO_SLICE,
         "scheduler": 'distributed',
@@ -344,9 +346,9 @@ class MetSim(object):
             for d, size in zip(var_dims, dim_sizes):
                 ncout.createDimension(d, size)
             # vars
-            for varname in self.params['out_vars']:
+            for varname, varconf in self.params['out_vars'].items():
                 ncout.createVariable(
-                    varname, self.params['out_precision'], var_dims,
+                    varconf['out_name'], self.params['out_precision'], var_dims,
                     **create_kwargs)
 
             # add metadata and coordinate variables (time/lat/lon)
@@ -366,10 +368,14 @@ class MetSim(object):
                 dim_var = ncout.createVariable(dim, dim_dtype, (dim, ))
                 dim_var[:] = dim_vals
 
-            for p in ['elev', 'lat', 'lon', 'is_worker']:
-                if p in self.params:
-                    self.params.pop(p)
+            # parameters to not record in the metadata
+            skip_params = ['elev', 'lat', 'lon', 'is_worker', 'out_vars',
+                           'forcing_vars', 'domain_vars', 'state_vars',
+                           'constant_vars', 'references', 'verbose',
+                           'num_workers',]
             for k, v in self.params.items():
+                if k in skip_params:
+                    continue
                 # Need to convert some parameters to strings
                 if k in ['start', 'stop', 'utc_offset', 'period_ending']:
                     v = str(v)
@@ -391,9 +397,12 @@ class MetSim(object):
                 setattr(ncout, key, val)
 
             # set variable attrs
-            for varname in ncout.variables:
+            for key, value in attrs.get('time', {}).items():
+                setattr(ncout.variables['time'], key, value)
+            for varname, varconf  in self.params['out_vars'].items():
+                outname = varconf['out_name']
                 for key, val in attrs.get(varname, {}).items():
-                    setattr(ncout.variables[varname], key, val)
+                    setattr(ncout.variables[outname], key, val)
 
     def write_chunk(self, locks=None):
         '''write data from a single chunk'''
@@ -405,11 +414,12 @@ class MetSim(object):
             time_slice = slice(times[0], times[-1])
             with lock:
                 with Dataset(filename, mode="r+") as ncout:
-                    for varname in self.params['out_vars']:
-                        dims = ncout.variables[varname].dimensions[1:]
+                    for varname, varconf in self.params['out_vars'].items():
+                        outname = varconf['out_name']
+                        dims = ncout.variables[outname].dimensions[1:]
                         write_slice = ((slice(None), ) + tuple(
                             self._domain_slice[d] for d in dims))
-                        ncout.variables[varname][write_slice] = (
+                        ncout.variables[outname][write_slice] = (
                             self.output[varname].sel(time=time_slice).values)
 
     def run_slice(self):

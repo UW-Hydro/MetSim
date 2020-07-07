@@ -22,6 +22,7 @@ import os
 import struct
 import logging
 import json
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,7 @@ import xarray as xr
 from collections import OrderedDict
 from configparser import ConfigParser
 from metsim.datetime import date_range
+from metsim import metsim
 
 
 def _invert_dict(d):
@@ -41,6 +43,18 @@ def _to_list(s):
 
 
 def check_config_type(config_file):
+    # Search for first non-comment line
+    line = '#'
+    with open(config_file, 'r') as f:
+        while line.strip().startswith('#'):
+            line = f.readline()
+    # Strip out any inline comment
+    line = line.split('#')[0].strip()
+    if line == '[MetSim]':
+        return 'ini'
+    if line == 'MetSim:':
+        return 'yaml'
+    # fallback
     return 'ini'
 
 
@@ -96,7 +110,21 @@ def read_ini_config(config_file, opts):
                  "forcing": forcing_files,
                  "out_dir": os.path.abspath(conf['out_dir']),
                  "prec_type": conf.get('prec_type', 'uniform')})
-    conf['out_vars'] = _to_list(conf.get('out_vars', '[]'))
+
+    # List variant
+    if 'out_vars' in conf:
+        conf['out_vars'] = _to_list(conf['out_vars'])
+        temp = {}
+        for ov in conf['out_vars']:
+            temp[ov] = metsim.available_outputs[ov]
+        conf['out_vars'] = temp
+    # Dict variant
+    if 'out_vars' in config:
+        temp = {}
+        for varname, outname in config['out_vars'].items():
+            temp[varname] = metsim.available_outputs[varname]
+            temp[varname]['out_name'] = outname
+
 
     conf = {k: v for k, v in conf.items() if v != []}
     return conf
