@@ -118,13 +118,15 @@ def read_ini_config(config_file, opts):
         for ov in conf['out_vars']:
             temp[ov] = metsim.available_outputs[ov]
         conf['out_vars'] = temp
+    else:
+        conf['out_vars'] = {}
     # Dict variant
     if 'out_vars' in config:
         temp = {}
         for varname, outname in config['out_vars'].items():
             temp[varname] = metsim.available_outputs[varname]
             temp[varname]['out_name'] = outname
-
+        conf['out_vars'].update(temp)
 
     conf = {k: v for k, v in conf.items() if v != []}
     return conf
