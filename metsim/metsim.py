@@ -718,13 +718,8 @@ def wrap_run_cell(func: callable, params: dict,
         # chunks - if no data is available, just repeat some
         # default values (this case is used at the very
         # beginning and end of the record)
-        try:
-            prevday = out_times[0] - pd.Timedelta('1 days')
-            t_begin = [ds['t_min'].sel(time=prevday),
-                       ds['t_max'].sel(time=prevday)]
-        except (KeyError, ValueError):
-            t_begin = [state['t_min'].values[-1],
-                       state['t_max'].values[-1]]
+        t_begin = [state['t_min'].values[-1],
+                   state['t_max'].values[-1]]
         try:
             nextday = out_times[-1] + pd.Timedelta('1 days')
             t_end = [ds['t_min'].sel(time=nextday),
