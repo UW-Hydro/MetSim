@@ -22,6 +22,7 @@ import os
 import struct
 import logging
 import json
+import yaml
 import warnings
 
 import numpy as np
@@ -70,7 +71,33 @@ def read_config(opts):
 
 
 def read_yaml_config(config_file, opts):
-    pass
+    with open(config_file, 'r') as f:
+        config = yaml.load(f, Loader=yaml.SafeLoader)
+    conf = OrderedDict(config['MetSim'])
+    conf['forcing_vars'] = _invert_dict(OrderedDict(config['forcing_vars']))
+    conf['domain_vars'] = _invert_dict(OrderedDict(config['domain_vars']))
+    conf['state_vars'] = _invert_dict(OrderedDict(config['state_vars']))
+    conf['out_vars'] = OrderedDict(config['out_vars'])
+    if 'constant_vars' in config:
+        conf['constant_vars'] = OrderedDict(config['constant_vars'])
+
+    # If the forcing variable is a directory, scan it for files
+    if os.path.isdir(conf['forcing']):
+        forcing_files = [os.path.join(conf['forcing'], fn) for fn in
+                         next(os.walk(conf['forcing']))[2]]
+    else:
+        forcing_files = conf['forcing']
+
+    # Update the full configuration
+    conf.update({"calendar": conf.get('calendar', 'standard'),
+                 "scheduler": opts.scheduler,
+                 "num_workers": opts.num_workers,
+                 "verbose": logging.DEBUG if opts.verbose else logging.INFO,
+                 "forcing": forcing_files,
+                 "out_dir": os.path.abspath(conf['out_dir'])})
+
+    conf = {k: v for k, v in conf.items() if v != []}
+    return conf
 
 
 def read_ini_config(config_file, opts):
