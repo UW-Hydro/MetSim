@@ -78,6 +78,7 @@ def read_yaml_config(config_file, opts):
     conf['domain_vars'] = _invert_dict(OrderedDict(config['domain_vars']))
     conf['state_vars'] = _invert_dict(OrderedDict(config['state_vars']))
     conf['out_vars'] = OrderedDict(config['out_vars'])
+    conf['chunks'] = OrderedDict(config['chunks'])
     if 'constant_vars' in config:
         conf['constant_vars'] = OrderedDict(config['constant_vars'])
 
