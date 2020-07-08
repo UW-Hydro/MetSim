@@ -61,9 +61,9 @@ file:
 
     state_vars:
         # Format is metsim_name: input_name
-        prec  : 'prec'
-        t_max : 't_max'
-        t_min : 't_min'
+        prec  : 'Prec'
+        t_max : 'Tmax'
+        t_min : 'Tmin'
 
     domain_vars:
         # Format is metsim_name: input_name
