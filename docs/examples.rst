@@ -7,80 +7,85 @@ Basics
 ------
 Provided in the source are several examples that can help you to
 get started using MetSim. They are located in the ``examples``
-directory.  We will look at the ``example_nc.conf`` file.  Its
-contents are:
+directory.  For demonstration here is an example YAML configuration
+file:
 
-.. code-block:: ini
-
+.. code-block:: yaml
     # This is an example of an input file for MetSim
-    [MetSim]
+    # Overall configuration, specification of parameters and input/output
+    # paths goes in the "MetSim" section
+    MetSim:
+        # Time step in minutes
+        time_step: 30
+        # Forcings begin here (year-month-day)
+        start: 1950-1-1
+        # Forcings end at this date (year-month-day)
+        stop: 1950-1-31
+        # Input and output directories
+        forcing: './metsim/data/test.nc'
+        domain: './metsim/data/tiny_domain.nc'
+        state: './metsim/data/state_nc.nc'
+        forcing_fmt: 'netcdf'
+        in_format: 'netcdf'
+        out_dir: './results'
+        out_prefix: 'yaml_output'
+        prec_type: 'triangle'
+        utc_offset: True
 
-    # Time step in minutes
-    time_step = 60
+    out_vars:
+        temp:
+            out_name: 'airtemp'
+            units: 'K'
+        prec:
+            out_name: 'pptrate'
+            units: 'mm/s'
+        shortwave:
+            out_name: 'SWradAtm'
+        spec_humid:
+            out_name: 'spechum'
+        air_pressure:
+            out_name: 'airpres'
+            units: 'kPa'
+        wind:
+            out_name: 'windspd'
 
-    # Forcings begin here (year/month/day:hour)
-    start = 1950/1/1
+    chunks:
+        lat: 3
+        lon: 3
 
-    # Forcings end at this date (year/month/day)
-    stop = 1950/1/31
+    forcing_vars:
+        # Format is metsim_name: input_name
+        prec  : 'Prec'
+        t_max : 'Tmax'
+        t_min : 'Tmin'
 
-    # Input specification
-    forcing = ./tests/data/test.nc
-    domain  = ./tests/data/domain.nc
-    state = ./tests/data/state_nc.nc
-    in_fmt = netcdf
+    state_vars:
+        # Format is metsim_name: input_name
+        prec  : 'Prec'
+        t_max : 'Tmax'
+        t_min : 'Tmin'
 
-    # Output specification
-    out_dir = ./results
-    out_prefix = forcing
-    out_precision = f8
+    domain_vars:
+        # Format is metsim_name: input_name
+        lat  : 'lat'
+        lon  : 'lon'
+        mask : 'mask'
+        elev : 'elev'
+        t_pk : 't_pk'
+        dur  : 'dur'
 
-    [chunks]
-    lat = 3
-    lon = 3
+    constant_vars:
+        wind : 2.0
 
-    [forcing_vars]
-    prec = Prec
-    t_max = Tmax
-    t_min = Tmin
-
-    [state_vars]
-    prec = prec
-    t_max = t_max
-    t_min = t_min
-
-    [domain_vars]
-    lat = lat
-    lon = lon
-    mask = mask
-    elev = elev
-
-This is a minimal configuration file for MetSim, and contains 3 sections.  The
-first section, ``[MetSim]`` describes some basic settings such as the locations
-of data and parameters used in calculations.  For a complete description of the
-input format see the `configuration <configuration.rst>`_ page.  The key things to note in this section
-are the options specified under the ``# Input specification`` and ``# Output
-specification`` comment headers.  The ``forcing`` and ``domain`` options refer
-to the two types of required input, and the ``in_format`` and ``out_format``
-options tell MetSim how they should be treated.
-
-The second and third sections (``[forcing_vars]`` and ``[state_vars]``) describe the variables in the
-datasets provided in the ``forcing`` and ``state`` options of the first section.
-The left side of the assignment is the name of the variable given
-in the ``forcing`` dataset, while the right hand side is the
-name the variable should be given within MetSim.  Note that the
-variables shown here are the minimum required set to run the
-forcing generation. The names given on the right hand side are
-also important to name correctly, as they are referenced internally.
-If you are unsure what variable names are used internally see the
-`configuration <configuration.rst>`_ page for a full breakdown.
+This is a minimal configuration file for MetSim. For a complete description of the
+input format see the `configuration <configuration.rst>`_ page.
 
 To run this example from the command line, once you have installed
 MetSim, use the following command:
 
-``ms path/to/example_nc.conf --verbose``
+``ms path/to/example.yaml --verbose``
 
-This will run MetSim and disaggregate to hourly data, and write
+This will run MetSim and disaggregate to half-hourly data, and write
 out the results in a NetCDF file located in the directory specified
 under ``out_dir`` in the configuration file (here ``./results``).
 The addition of the ``--verbose`` flag provides some
@@ -95,19 +100,3 @@ Daily values can be output by specifying a ``time_step`` of ``1440`` in the
 configuration file, such as the one shown in the previous section. This will
 prevent MetSim's disaggregation routines from being run, and the results written
 out will be daily values.
-
-Translating formats of daily values
------------------------------------
-
-.. warning:: This section `only` applies to daily input and output.
-
-This section can be useful if you are interested in converting VIC format binary
-or ASCII forcing inputs into NetCDF format.
-
-To configure this behavior, several configuration options will have to be set.
-First, the ``time_step`` variable must be set to ``1440`` to enable daily output.
-Then, the ``forcing_fmt`` and ``out_fmt`` variables should be specified. The final
-option that should be set is ``out_vars``.  This can be set to include only the
-variables you have in your input file, if you wish to not generate any new data,
-or it can be set to include any of the variables generated by the simulator
-specified in the ``method`` option.

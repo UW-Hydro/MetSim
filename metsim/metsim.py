@@ -140,6 +140,7 @@ class MetSim(object):
         "out_prefix": 'forcing',
         "start": 'forcing',
         "stop": 'forcing',
+        "forcing_fmt": 'netcdf',
         "time_step": -1,
         "calendar": 'standard',
         "prec_type": 'uniform',
