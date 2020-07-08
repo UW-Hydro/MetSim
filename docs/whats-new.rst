@@ -10,6 +10,7 @@ v2.3.0
 Enchancements
 ~~~~~~~~~~~~~
 - Allow for variable renaming in INI configuration files.
+- Added capability for new YAML configuration file format
 
 Bug fixes
 ~~~~~~~~~

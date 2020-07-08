@@ -107,8 +107,8 @@ in the configuration files see the `configuration <configuration.rst>`_ page.
 
 Once installed, MetSim can be used from the command line via:
 
-.. code-block:: bash 
- 
+.. code-block:: bash
+
     usage: ms [-h] [-n NUM_WORKERS] [-s SCHEDULER] [-v] [--version] config
 
     positional arguments:
@@ -180,5 +180,6 @@ Sitemap
     examples
     data
     configuration
+    configuration_ini
     api
     whats-new
