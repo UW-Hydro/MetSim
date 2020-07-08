@@ -222,13 +222,16 @@ class MetSim(object):
 
     def _update_unit_attrs(self, out_vars):
         for k, v in out_vars.items():
-            if v['units'] in converters[k].keys():
-                attrs[k]['units'] = v['units']
+            if 'units' in v.keys():
+                if v['units'] in converters[k].keys():
+                    attrs[k]['units'] = v['units']
+                else:
+                    self.logger.warn(
+                        f'Could not find unit conversion for {k} to {v["units"]}!'
+                        f' We will use the default units of'
+                        f' {available_outputs[k]["units"]} instead.' )
+                    v['units'] = available_outputs[k]['units']
             else:
-                self.logger.warn(
-                    f'Could not find unit conversion for {k} to {v["units"]}!'
-                    f' We will use the default units of'
-                    f' {available_outputs[k]["units"]} instead.' )
                 v['units'] = available_outputs[k]['units']
 
     def _validate_force_times(self, force_times):

@@ -250,8 +250,6 @@ def test_variable_rename():
     """Tests to make sure that variable renaming works"""
     loc = data_locations['binary']
     data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
-    out_vars = ['prec', 'temp', 'shortwave', 'longwave', 'vapor_pressure',
-                'wind', 'rel_humid', 'spec_humid', 'air_pressure']
     out_dir = '.'
     params = {'start': dates['binary'][0],
               'stop': dates['binary'][1],
@@ -277,6 +275,61 @@ def test_variable_rename():
     ds = ms.open_output()
     assert 'pptrate' in ds.variables
     assert 'SWRadAtm' in ds.variables
+
+
+def test_unit_conversion():
+    """Tests to make sure that variable renaming works"""
+    loc = data_locations['binary']
+    data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
+    out_dir = '.'
+    params = {'start': dates['binary'][0],
+              'stop': dates['binary'][1],
+              'forcing_fmt': 'binary',
+              'domain_fmt': 'netcdf',
+              'state_fmt': 'netcdf',
+              'domain': './metsim/data/stehekin.nc',
+              'state': './metsim/data/state_vic.nc',
+              'forcing': data_files,
+              'method': 'mtclim',
+              'scheduler': 'threading',
+              'time_step': "60",
+              'out_dir': out_dir,
+              'out_state': os.path.join(out_dir, 'state.nc'),
+              'out_vars': {
+                  'prec': {'out_name': 'pptrate',
+                           'units': 'mm s-1'},
+                  'temp': {'out_name': 'airtemp',
+                           'units': 'K'}},
+              'forcing_vars': in_vars_section['binary'],
+              'domain_vars': domain_section['binary']}
+
+    params1 = dict()
+    params1.update(params)
+    params2 = dict()
+    params2.update(params)
+    params2['out_vars'] = {
+        'prec': {'out_name': 'pptrate',
+                 'units': 'mm timestep-1'},
+        'temp': {'out_name': 'airtemp',
+                 'units': 'C'}}
+    ms1 = MetSim(params1)
+    ms1.run()
+    ds1 = ms1.open_output().load()
+    ds1.close()
+    time_step = int(params['time_step'])
+    sec_per_min = 60.
+    tol = 1e-4
+
+    ms2 = MetSim(params2)
+    ms2.run()
+    ds2 = ms2.open_output().load()
+
+    print(ds1['airtemp'].mean(), ds2['airtemp'].mean() + 273.15, ds1['airtemp'].mean() - ds2['airtemp'].mean() - 273.15)
+    print(time_step * sec_per_min * ds1['pptrate'].mean(), ds2['pptrate'].mean(), (time_step  *sec_per_min * ds1['pptrate'].mean()) - ds2['pptrate'].mean())
+
+    assert np.allclose(ds1['airtemp'].mean(), ds2['airtemp'].mean()+273.15, atol=tol)
+    assert np.allclose(time_step * sec_per_min * ds1['pptrate'].mean(), ds2['pptrate'].mean(), atol=tol)
+
 
 
 def test_disaggregation_values():
