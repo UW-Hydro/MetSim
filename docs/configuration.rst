@@ -217,7 +217,6 @@ The syntax for output specification is as follows:
             out_name: str
             units: str
 
-
 constant_vars section
 -------------------
 The ``constant_vars`` section is optional and allows you to set some of the
