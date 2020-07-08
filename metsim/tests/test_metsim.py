@@ -324,11 +324,10 @@ def test_unit_conversion():
     ms2.run()
     ds2 = ms2.open_output().load()
 
-    print(ds1['airtemp'].mean(), ds2['airtemp'].mean() + 273.15, ds1['airtemp'].mean() - ds2['airtemp'].mean() - 273.15)
-    print(time_step * sec_per_min * ds1['pptrate'].mean(), ds2['pptrate'].mean(), (time_step  *sec_per_min * ds1['pptrate'].mean()) - ds2['pptrate'].mean())
-
-    assert np.allclose(ds1['airtemp'].mean(), ds2['airtemp'].mean()+273.15, atol=tol)
-    assert np.allclose(time_step * sec_per_min * ds1['pptrate'].mean(), ds2['pptrate'].mean(), atol=tol)
+    assert np.allclose(ds1['airtemp'].mean(),
+                       ds2['airtemp'].mean()+273.15, atol=tol)
+    assert np.allclose(time_step * sec_per_min * ds1['pptrate'].mean(),
+                       ds2['pptrate'].mean(), atol=tol)
 
 
 
