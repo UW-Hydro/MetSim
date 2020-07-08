@@ -25,7 +25,7 @@ out_vars:
         units: 'K'
     prec:
         out_name: 'pptrate'
-        units: 'mm/s'
+        units: 'mm s-1'
     shortwave:
         out_name: 'SWradAtm'
     spec_humid:
