@@ -3,15 +3,21 @@
 What's New
 ==========
 
-.. _whats-new.2.2.0:
+.. _whats-new.2.3.0:
 
-v2.2.4
+v2.3.0
 ------
+Enchancements
+~~~~~~~~~~~~~
+- Allow for variable renaming in INI configuration files.
+- Added capability for new YAML configuration file format
+
 Bug fixes
 ~~~~~~~~~
 - Fixed a bug where `utc_offset` causes radiation to be
   incorrectly scaled
 
+.. _whats-new.2.2.0:
 
 v2.2.2
 -------
