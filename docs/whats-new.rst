@@ -11,6 +11,8 @@ Enchancements
 ~~~~~~~~~~~~~
 - Allow for variable renaming in INI configuration files.
 - Added capability for new YAML configuration file format
+- Added capability simple unit conversions on output when
+  using the YAML configuration file format
 
 Bug fixes
 ~~~~~~~~~
