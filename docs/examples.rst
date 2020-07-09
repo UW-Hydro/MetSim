@@ -10,7 +10,7 @@ get started using MetSim. They are located in the ``examples``
 directory.  For demonstration here is an example YAML configuration
 file:
 
-.. code-block:: yaml
+.. code-block::
     # This is an example of an input file for MetSim
     # Overall configuration, specification of parameters and input/output
     # paths goes in the "MetSim" section
