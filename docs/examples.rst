@@ -7,9 +7,7 @@ Basics
 ------
 Provided in the source are several examples that can help you to
 get started using MetSim. They are located in the ``examples``
-directory.  For demonstration here is an example YAML configuration
-file:
-
+directory.  For demonstration here is an example YAML configuration file:
 ::
 
     # This is an example of an input file for MetSim

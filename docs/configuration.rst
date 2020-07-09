@@ -108,8 +108,6 @@ available at: `<https://zenodo.org/record/1402223#.XEI-mM2IZPY>`.  For more
 information about the "triangle" method see :doc:`PtriangleMethod.pdf`.
 
 For more information about input and output variables see the :ref:`data` page.
-
-
 ::
 
     # Comments begin with hashtags
@@ -140,7 +138,6 @@ chunks section
 The ``chunks`` section describes how parallel computation should be grouped
 in space. For example, to parallelize over 10 by 10 chunks of latitude and
 longitude (with netcdf dimensions named ``lat`` and ``lon``, respectively) you would use:
-
 ::
 
     chunks:
@@ -148,7 +145,6 @@ longitude (with netcdf dimensions named ``lat`` and ``lon``, respectively) you w
         lon: 10
 
 Alternatively, for an HRU based run chunked into 50 element jobs you would use:
-
 ::
 
     chunks:
@@ -212,7 +208,6 @@ Options for subdaily output are:
  - wind
 
 The syntax for output specification is as follows:
-
 ::
 
     out_vars:
@@ -270,7 +265,6 @@ implementation there must be at least one non-constant entry in ``forcings_vars`
 (i.e. at least one entry that is not also in ``constant_vars``).
 
 For example:
-
 ::
 
     constant_vars:
@@ -281,7 +275,6 @@ does not need to be specified in the ``forcing_vars`` section. If it was, it
 will still be set to a constant value of 2 m/s.
 
 Similarly:
-
 ::
 
     constant_vars:
