@@ -11,6 +11,7 @@ directory.  For demonstration here is an example YAML configuration
 file:
 
 ::
+
     # This is an example of an input file for MetSim
     # Overall configuration, specification of parameters and input/output
     # paths goes in the "MetSim" section

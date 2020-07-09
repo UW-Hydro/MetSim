@@ -110,7 +110,7 @@ information about the "triangle" method see :doc:`PtriangleMethod.pdf`.
 For more information about input and output variables see the :ref:`data` page.
 
 
-.. code-block::
+::
 
     # Comments begin with hashtags
     # The first non-comment line must begin with the following:
@@ -142,6 +142,7 @@ in space. For example, to parallelize over 10 by 10 chunks of latitude and
 longitude (with netcdf dimensions named ``lat`` and ``lon``, respectively) you would use:
 
 ::
+
     chunks:
         lat: 10
         lon: 10
@@ -149,6 +150,7 @@ longitude (with netcdf dimensions named ``lat`` and ``lon``, respectively) you w
 Alternatively, for an HRU based run chunked into 50 element jobs you would use:
 
 ::
+
     chunks:
         hru: 50
 
@@ -212,6 +214,7 @@ Options for subdaily output are:
 The syntax for output specification is as follows:
 
 ::
+
     out_vars:
         metsim_varname:
             out_name: str
@@ -269,6 +272,7 @@ implementation there must be at least one non-constant entry in ``forcings_vars`
 For example:
 
 ::
+
     constant_vars:
         wind: 2.0
 
@@ -279,6 +283,7 @@ will still be set to a constant value of 2 m/s.
 Similarly:
 
 ::
+
     constant_vars:
         t_max = 30.0
         t_min = 10.0
