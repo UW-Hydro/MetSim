@@ -13,7 +13,6 @@ directory.  For demonstration here is an example YAML configuration file::
     # Overall configuration, specification of parameters and input/output
     # paths goes in the "MetSim" section
     MetSim:
-
         # Time step in minutes
         time_step: 30
         # Forcings begin here (year-month-day)
@@ -32,55 +31,44 @@ directory.  For demonstration here is an example YAML configuration file::
         utc_offset: True
 
     out_vars:
-
         temp:
-
             out_name: 'airtemp'
             units: 'K'
 
         prec:
-
             out_name: 'pptrate'
             units: 'mm/s'
 
         shortwave:
-
             out_name: 'SWradAtm'
 
         spec_humid:
-
             out_name: 'spechum'
 
         air_pressure:
-
             out_name: 'airpres'
             units: 'kPa'
 
         wind:
-
             out_name: 'windspd'
 
     chunks:
-
         lat: 3
         lon: 3
 
     forcing_vars:
-
         # Format is metsim_name: input_name
         prec  : 'Prec'
         t_max : 'Tmax'
         t_min : 'Tmin'
 
     state_vars:
-
         # Format is metsim_name: input_name
         prec  : 'Prec'
         t_max : 'Tmax'
         t_min : 'Tmin'
 
     domain_vars:
-
         # Format is metsim_name: input_name
         lat  : 'lat'
         lon  : 'lon'
@@ -90,7 +78,6 @@ directory.  For demonstration here is an example YAML configuration file::
         dur  : 'dur'
 
     constant_vars:
-
         wind : 2.0
 
 This is a minimal configuration file for MetSim. For a complete description of the
