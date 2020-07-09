@@ -217,6 +217,44 @@ The syntax for output specification is as follows:
             out_name: str
             units: str
 
+unit conversions
+================
+The ``out_vars`` section allows for specification of some simple unit conversions
+for MetSim output. The allowed options are as follows (invalid options will revert
+to the default after issuing a warning):
+
+ * prec
+   - ``mm timestep-1`` (default)
+   - ``mm s-1``
+   - ``mm h-1``
+ * pet (daily output only)
+   - ``mm timestep-1`` (default)
+   - ``mm s-1``
+   - ``mm h-1``
+ * t_max (daily output only)
+   - ``C`` (default)
+   - ``K``
+ * t_min (daily output only)
+   - ``C`` (default)
+   - ``K``
+ * temp
+   - ``C`` (default)
+   - ``K``
+ * vapor_pressure
+   - ``kPa`` (default)
+   - ``hPa``
+   - ``Pa``
+ * air_pressure
+   - ``kPa`` (default)
+   - ``hPa``
+   - ``Pa``
+ * tskc (cloud fraction)
+   - ``fraction`` (default)
+   - ``%``
+ * rel_humid
+   - ``%`` (default)
+   - ``fraction``
+
 constant_vars section
 -------------------
 The ``constant_vars`` section is optional and allows you to set some of the
