@@ -1,10 +1,16 @@
-.. _configuration:
+.. _configuration_ini:
 
-Configuration Specifications
-============================
+INI Configuration Specifications
+================================
+
+.. warning:: This page provides documentation only for backwards compatibility.
+  New users should use the YAML configuration file format, as it is more flexible
+  and is where new features will be added. The INI format will be depreciated in
+  version 3 of MetSim.
+
 This page documents the various options and
 parameters that can be set in the configuration
-file. An example configuration file can be found on the examples page.
+file.
 
 MetSim Section
 --------------
@@ -108,47 +114,23 @@ available at: `<https://zenodo.org/record/1402223#.XEI-mM2IZPY>`.  For more
 information about the "triangle" method see :doc:`PtriangleMethod.pdf`.
 
 For more information about input and output variables see the :ref:`data` page.
-::
-
-    # Comments begin with hashtags
-    # The first non-comment line must begin with the following:
-    Metsim:
-        time_step: int
-        start: YYYY-MM-DD
-        stop: YYYY-MM-DD
-
-        # Paths to input files
-        forcing: str
-        domain: str
-        state: str
-
-        # Output file specification
-        out_dir: str
-        out_prefix: str
-
-        # Algorithmic controls
-        utc_offset: bool
-        prec_type: str
-        lw_type: str
-        lw_cloud: str
-
 
 chunks section
 --------------
 The ``chunks`` section describes how parallel computation should be grouped
 in space. For example, to parallelize over 10 by 10 chunks of latitude and
 longitude (with netcdf dimensions named ``lat`` and ``lon``, respectively) you would use:
-::
 
-    chunks:
-        lat: 10
-        lon: 10
+.. code-block:: ini
+    [chunks]
+    lat = 10
+    lon = 10
 
 Alternatively, for an HRU based run chunked into 50 element jobs you would use:
-::
 
-    chunks:
-        hru: 50
+.. code-block:: ini
+    [chunks]
+    hru = 50
 
 As a general rule of thumb, try to evenly chunk the domain in such a way that
 the number of jobs to run is some multiple of the number of processors you wish
@@ -156,14 +138,44 @@ to run on.
 
 forcing_vars and state_vars section
 ---------------
-The ``forcing_vars`` and ``state_vars`` sections are where you can specify which
-variables are in your input data, and the corresponding symbols which MetSim will
-recognize.  The ``in_vars`` section for acts as a mapping between the variable
+The ``forcing_vars`` and ``state_vars`` sections are where you can specify which variables are in your
+input data, and the corresponding symbols which MetSim will recognize. The
+format of this section depends on the value given in the ``in_fmt`` entry in
+the ``MetSim`` section of the configuration file.  See below for conventions for
+each input type.
+
+
+netcdf and data
+```````````````
+The ``in_vars`` section for NetCDF and xarray input acts as a mapping between the variable
 names in the input dataset to the variable names expected by MetSim.  The format
-is given as ``metsim_varname: netcdf_varname``.  The minimum required variables
+is given as ``metsim_varname = netcdf_varname``.  The minimum required variables
 given have ``metsim_varname``\s corresponding to ``t_min``, ``t_max``, and
 ``prec``; these variable names correspond to minimum daily temperature (Celcius),
 maximum daily temperature (Celcius), and precipitation (mm/day).
+
+ascii
+`````
+The ``in_vars`` section for ASCII input acts similarly to the NetCDF input
+format, except for one key point.  Variables should be given as a tautology: the
+format is given as ``metsim_varname = metsim_varname``.  The order that the
+variables are given corresponds to the column numbers that they appear in the
+input files.  The minimum required variables are ``t_min``, ``t_max``, and
+``prec``; these variable names correspond to minimum daily temperature (Celcius),
+maximum daily temperature (Celcius), and precipitation (mm/day).
+
+binary
+``````
+This section has an input style for binary files that mimics the VIC version 4
+input style.  Each line is specified as ``varname = scale cdatatype``, where
+``varname`` is the name that MetSim should use for the column, ``scale`` is a
+floating point scaling factor that should be applied after conversion from
+binary to floating point; the conversion applied by the ``scale`` is applied
+after the value in the input is converted from binary to the ``cdatatype``
+specified for each variable.  Valid ``cdatatype``\s are ``signed`` and
+``unsigned``.  ``signed`` values are interpreted as values which can be positive
+or negative, whereas ``unsigned`` values are interpreted as values that can only
+be greater than or equal to zero.
 
 domain_vars section
 -------------------
@@ -207,57 +219,19 @@ Options for subdaily output are:
  - spec_humid
  - wind
 
-The syntax for output specification is as follows:
-::
+It may also be preferable to write the output with different variable names.
+MetSim allows for this in a similar way as the ``forcing_vars`` section.
+The syntax for this type of output specification is as follows:
 
-    out_vars:
-        metsim_varname:
-            out_name: str
-            units: str
-
-unit conversions
-================
-The ``out_vars`` section allows for specification of some simple unit conversions
-for MetSim output. The allowed options are as follows (invalid options will revert
-to the default after issuing a warning):
-
- * prec
-   - ``mm timestep-1`` (default)
-   - ``mm s-1``
-   - ``mm h-1``
- * pet (daily output only)
-   - ``mm timestep-1`` (default)
-   - ``mm s-1``
-   - ``mm h-1``
- * t_max (daily output only)
-   - ``C`` (default)
-   - ``K``
- * t_min (daily output only)
-   - ``C`` (default)
-   - ``K``
- * temp
-   - ``C`` (default)
-   - ``K``
- * vapor_pressure
-   - ``kPa`` (default)
-   - ``hPa``
-   - ``Pa``
- * air_pressure
-   - ``kPa`` (default)
-   - ``hPa``
-   - ``Pa``
- * tskc (cloud fraction)
-   - ``fraction`` (default)
-   - ``%``
- * rel_humid
-   - ``%`` (default)
-   - ``fraction``
+.. code-block:: ini
+    [out_vars]
+    metsim_varname = output_varname
 
 constant_vars section
 -------------------
 The ``constant_vars`` section is optional and allows you to set some of the
 forcing inputs to a constant value. The specification simply consists of entries
-of the form ``metsim_varname: value``, where ``value`` is a number that can be
+of the form ``metsim_varname = value``, where ``value`` is a number that can be
 converted to a double. There can only be one entry per line. If the
 ``metsim_varname`` corresponds to an entry that is already in the ``forcing_vars``
 section, then the constant value will take precedence. In the current
@@ -265,22 +239,14 @@ implementation there must be at least one non-constant entry in ``forcings_vars`
 (i.e. at least one entry that is not also in ``constant_vars``).
 
 For example:
-::
-
-    constant_vars:
-        wind: 2.0
-
+``wind = 2.0``
 will result in a constant wind field in the output file. In this case ``wind``
 does not need to be specified in the ``forcing_vars`` section. If it was, it
 will still be set to a constant value of 2 m/s.
 
 Similarly:
-::
-
-    constant_vars:
-        t_max = 30.0
-        t_min = 10.0
-
+``t_max = 30
+t_min = 10``
 will result in output with a diurnal cycle in which the temperature varies at
 all locations between 10C and 30C. However, all estimation and disaggregation
 routines are still evaluated, with constant ``t_max`` and ``t_min`` as input.

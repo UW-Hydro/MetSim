@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import sys
+import warnings
 import time as tm
 from collections import Iterable, OrderedDict
 from getpass import getuser
@@ -54,6 +55,7 @@ from metsim.datetime import date_range
 from metsim.disaggregate import disaggregate
 from metsim.methods import mtclim
 from metsim.physics import solar_geom
+from metsim.units import converters
 
 NO_SLICE = {}
 DASK_CORE_SCHEDULERS = ['multiprocessing', 'threading', 'synchronous',
@@ -102,21 +104,24 @@ attrs = {'pet': {'units': 'mm timestep-1',
          'rel_humid': {'units': '%', 'long_name': 'relative humidity',
                        'standard_name': 'relative_humidity',
                        'missing_value': np.nan, 'fill_value': np.nan},
-         'spec_humid': {'units': '', 'long_name': 'specific humidity',
+         'spec_humid': {'units': 'g g-1', 'long_name': 'specific humidity',
                         'standard_name': 'specific_humidity',
                         'missing_value': np.nan, 'fill_value': np.nan},
-         'wind': {'units': 'm/s', 'long_name': 'wind speed',
+         'wind': {'units': 'm s-1', 'long_name': 'wind speed',
                   'standard_name': 'wind_speed',
                   'missing_value': np.nan, 'fill_value': np.nan},
          '_global': {'conventions': '1.6', 'title': 'Output from MetSim',
                      'institution': 'University of Washington',
                      'source': 'metsim.py',
                      'history': 'Created: {0} by {1}'.format(now, user),
-                     'references': references,
                      'comment': 'no comment at this time'}}
 
 attrs = {k: OrderedDict(v) for k, v in attrs.items()}
 
+available_outputs = {n : {'out_name': n, 'units': attrs[n]['units']}
+                     for n in attrs if n != '_global'}
+default_outputs = ['temp', 'prec', 'shortwave', 'longwave',
+                     'vapor_pressure', 'rel_humid']
 
 class MetSim(object):
     """
@@ -137,6 +142,7 @@ class MetSim(object):
         "out_prefix": 'forcing',
         "start": 'forcing',
         "stop": 'forcing',
+        "forcing_fmt": 'netcdf',
         "time_step": -1,
         "calendar": 'standard',
         "prec_type": 'uniform',
@@ -151,8 +157,7 @@ class MetSim(object):
         "rain_scalar": 0.75,
         "tday_coef": 0.45,
         "lapse_rate": 0.0065,
-        "out_vars": ['temp', 'prec', 'shortwave', 'longwave',
-                     'vapor_pressure', 'rel_humid'],
+        "out_vars": {n: available_outputs[n] for n in default_outputs},
         "out_freq": None,
         "chunks": NO_SLICE,
         "scheduler": 'distributed',
@@ -212,6 +217,22 @@ class MetSim(object):
         self._times = self._get_output_times(
             freq=self.params['out_freq'],
             period_ending=self.params['period_ending'])
+
+        self._update_unit_attrs(self.params['out_vars'])
+
+    def _update_unit_attrs(self, out_vars):
+        for k, v in out_vars.items():
+            if 'units' in v.keys():
+                if v['units'] in converters[k].keys():
+                    attrs[k]['units'] = v['units']
+                else:
+                    self.logger.warn(
+                        f'Could not find unit conversion for {k} to {v["units"]}!'
+                        f' We will use the default units of'
+                        f' {available_outputs[k]["units"]} instead.' )
+                    v['units'] = available_outputs[k]['units']
+            else:
+                v['units'] = available_outputs[k]['units']
 
     def _validate_force_times(self, force_times):
 
@@ -343,9 +364,9 @@ class MetSim(object):
             for d, size in zip(var_dims, dim_sizes):
                 ncout.createDimension(d, size)
             # vars
-            for varname in self.params['out_vars']:
+            for varname, varconf in self.params['out_vars'].items():
                 ncout.createVariable(
-                    varname, self.params['out_precision'], var_dims,
+                    varconf['out_name'], self.params['out_precision'], var_dims,
                     **create_kwargs)
 
             # add metadata and coordinate variables (time/lat/lon)
@@ -365,10 +386,14 @@ class MetSim(object):
                 dim_var = ncout.createVariable(dim, dim_dtype, (dim, ))
                 dim_var[:] = dim_vals
 
-            for p in ['elev', 'lat', 'lon', 'is_worker']:
-                if p in self.params:
-                    self.params.pop(p)
+            # parameters to not record in the metadata
+            skip_params = ['elev', 'lat', 'lon', 'is_worker', 'out_vars',
+                           'forcing_vars', 'domain_vars', 'state_vars',
+                           'constant_vars', 'references', 'verbose',
+                           'num_workers',]
             for k, v in self.params.items():
+                if k in skip_params:
+                    continue
                 # Need to convert some parameters to strings
                 if k in ['start', 'stop', 'utc_offset', 'period_ending']:
                     v = str(v)
@@ -390,9 +415,12 @@ class MetSim(object):
                 setattr(ncout, key, val)
 
             # set variable attrs
-            for varname in ncout.variables:
+            for key, value in attrs.get('time', {}).items():
+                setattr(ncout.variables['time'], key, value)
+            for varname, varconf  in self.params['out_vars'].items():
+                outname = varconf['out_name']
                 for key, val in attrs.get(varname, {}).items():
-                    setattr(ncout.variables[varname], key, val)
+                    setattr(ncout.variables[outname], key, val)
 
     def write_chunk(self, locks=None):
         '''write data from a single chunk'''
@@ -404,11 +432,12 @@ class MetSim(object):
             time_slice = slice(times[0], times[-1])
             with lock:
                 with Dataset(filename, mode="r+") as ncout:
-                    for varname in self.params['out_vars']:
-                        dims = ncout.variables[varname].dimensions[1:]
+                    for varname, varconf in self.params['out_vars'].items():
+                        outname = varconf['out_name']
+                        dims = ncout.variables[outname].dimensions[1:]
                         write_slice = ((slice(None), ) + tuple(
                             self._domain_slice[d] for d in dims))
-                        ncout.variables[varname][write_slice] = (
+                        ncout.variables[outname][write_slice] = (
                             self.output[varname].sel(time=time_slice).values)
 
     def run_slice(self):
@@ -446,8 +475,12 @@ class MetSim(object):
                                       self.disagg, times)
 
             # Cut the returned data down to the correct time index
+            # and do any required unit conversions
             for varname in self.params['out_vars']:
-                self.output[varname][locs] = df[varname].values
+                desired_units = self.params['out_vars'][varname]['units']
+                out_vals = converters[varname][desired_units](
+                     df[varname].values, int(self.params['time_step']))
+                self.output[varname][locs] = out_vals
 
     def _unpack_state(self, result: pd.DataFrame, locs: dict):
         """Put restart values in the state dataset"""
@@ -707,13 +740,8 @@ def wrap_run_cell(func: callable, params: dict,
         # chunks - if no data is available, just repeat some
         # default values (this case is used at the very
         # beginning and end of the record)
-        try:
-            prevday = out_times[0] - pd.Timedelta('1 days')
-            t_begin = [ds['t_min'].sel(time=prevday),
-                       ds['t_max'].sel(time=prevday)]
-        except (KeyError, ValueError):
-            t_begin = [state['t_min'].values[-1],
-                       state['t_max'].values[-1]]
+        t_begin = [state['t_min'].values[-1],
+                   state['t_max'].values[-1]]
         try:
             nextday = out_times[-1] + pd.Timedelta('1 days')
             t_end = [ds['t_min'].sel(time=nextday),
