@@ -30,9 +30,9 @@ converters = {
             'K': lambda x, ts: x + 273.15,
             },
         'vapor_pressure': {
-            'kPa': lambda x, ts: x,
-            'hPa': lambda x, ts: x * 100.,
-            'Pa': lambda x, ts: x * 1000.,
+            'Pa': lambda x, ts: x,
+            'hPa': lambda x, ts: x / 100.,
+            'kPa': lambda x, ts: x / 1000.,
             },
         'air_pressure': {
             'kPa': lambda x, ts: x,
