@@ -5,6 +5,14 @@ What's New
 
 .. _whats-new.2.3.0:
 
+v2.3.1
+------
+
+Bug fixes
+~~~~~~~~~
+- Fixed an error in unit conversions for vapor pressure
+- Fixed documentation on vapor pressure units
+
 v2.3.0
 ------
 Enchancements

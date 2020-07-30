@@ -89,7 +89,7 @@ step:
 * ``t_min`` : Minimum temperature (also a required input value) (C)
 * ``t_max`` : Maximum temperature (also a required input value) (C)
 * ``prec`` : Precipitation (also a required input value) (mm/day)
-* ``vapor_pressure`` : Vapor pressure (kPa)
+* ``vapor_pressure`` : Vapor pressure (Pa)
 * ``shortwave`` : Shortwave radiation (W/m^2)
 * ``tskc`` : Cloud cover fraction
 * ``pet`` : Potential evapotranpiration (mm/day)
@@ -125,7 +125,7 @@ The following variables (and name conventions) are allowed to be specified for s
 * ``temp`` : Temperature (C)
 * ``prec`` : Precipitation (mm/timestep)
 * ``shortwave`` : Shortwave radiation (W/m^2)
-* ``vapor_pressure`` : Vapor pressure (kPa)
+* ``vapor_pressure`` : Vapor pressure (Pa)
 * ``air_pressure`` : Air pressure (kPa)
 * ``rel_humid`` : Relative humidity
 * ``spec_humid`` : Specific humidity
