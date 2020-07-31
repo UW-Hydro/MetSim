@@ -469,9 +469,9 @@ def specific_humidity(vapor_pressure: np.array,
     Parameters
     ----------
     vapor_pressure:
-        A sub-daily timeseries of vapor pressure (kPa)
+        A sub-daily timeseries of vapor pressure (Pa)
     air_pressure:
-        A sub-daily timeseries of air pressure (kPa)
+        A sub-daily timeseries of air pressure (Pa)
 
     Returns
     -------

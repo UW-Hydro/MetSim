@@ -239,9 +239,9 @@ to the default after issuing a warning):
    - ``C`` (default)
    - ``K``
  * vapor_pressure
-   - ``kPa`` (default)
+   - ``Pa`` (default)
    - ``hPa``
-   - ``Pa``
+   - ``KPa``
  * air_pressure
    - ``kPa`` (default)
    - ``hPa``
