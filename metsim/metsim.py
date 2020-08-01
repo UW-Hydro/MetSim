@@ -152,6 +152,7 @@ class MetSim(object):
         "utc_offset": False,
         "lw_cloud": 'cloud_deardorff',
         "lw_type": 'prata',
+        "prec_type": 'uniform',
         "tdew_tol": 1e-6,
         "tmax_daylength_fraction": 0.67,
         "rain_scalar": 0.75,
@@ -235,7 +236,6 @@ class MetSim(object):
                 v['units'] = available_outputs[k]['units']
 
     def _validate_force_times(self, force_times):
-
         for p, i in [('start', 0), ('stop', -1)]:
             # infer times from force_times
             if isinstance(self.params[p], str):
@@ -269,6 +269,14 @@ class MetSim(object):
             attrs['time'] = {'units': DEFAULT_TIME_UNITS,
                              'long_name': 'local time at grid location',
                              'standard_name': 'local_time'}
+
+    def convert_monthly_param(self, name):
+        self.met_data[name] = self.met_data['prec'].copy()
+        months = self.met_data['time'].dt.month
+        for m in range(12):
+            param = self.domain[name].sel(month=m)
+            locations = {'time': self.met_data['time'].isel(time=months == m)}
+            self.met_data[name].loc[locations] = param
 
     @property
     def domain(self):
@@ -458,14 +466,12 @@ class MetSim(object):
         params['tday_coef'] = float(params['tday_coef'])
         params['tmax_daylength_fraction'] = float(params['tmax_daylength_fraction'])
         params['lapse_rate'] = float(params['lapse_rate'])
+        if self.params['prec_type'].upper() in ['TRIANGLE', 'MIX']:
+            self.convert_monthly_param('dur')
+            self.convert_monthly_param('t_pk')
         for index, mask_val in np.ndenumerate(self.domain['mask'].values):
             if mask_val > 0:
                 locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
-                if self.params['prec_type'].upper() in ['TRIANGLE', 'MIX']:
-                    # add variables for triangle precipitation disgregation
-                    # method to parameters
-                    params['dur'], params['t_pk'] = (
-                        add_prec_tri_vars(self.domain.isel(**locs)))
             else:
                 continue
 
@@ -826,52 +832,3 @@ class DummyLock(object):
     @property
     def locked(self):
         return False
-
-
-def add_prec_tri_vars(domain):
-    """
-    Check that variables for triangle precipitation method exist and have
-    values that are within allowable ranges. Return these variables.
-
-    Parameters
-    ----------
-    domain:
-        Dataset of domain variables for given location.
-
-    Returns
-    -------
-    dur
-        Array of climatological monthly storm durations. [minutes]
-    t_pk
-        Array of climatological monthly times to storm peaks. [minutes]
-    """
-    # Check that variables exist
-    try:
-        dur = domain['dur']
-    except Exception as e:
-        raise e("Storm duration and time to peak values are "
-                "required in the domain file for the triangle "
-                "preciptation disagregation method.")
-    try:
-        t_pk = domain['t_pk']
-    except Exception as e:
-        raise e("Storm duration and time to peak values are "
-                "required in the domain file for the triangle "
-                "preciptation disagregation method.")
-
-    # Check that variable values are within allowable ranges.
-    day_length = cnst.MIN_PER_HOUR * cnst.HOURS_PER_DAY
-    dur_zero_test = dur <= 0
-    dur_day_test = dur > day_length
-    if dur_zero_test.any() or dur_day_test.any():
-        raise ValueError('Storm duration must be greater than 0 and less than',
-                         day_length, '(i.e. the day length in minutes)')
-
-    t_pk_zero_test = t_pk < 0
-    t_pk_day_test = t_pk > day_length
-    if t_pk_zero_test.any() or t_pk_day_test.any():
-        raise ValueError('Storm time to peak must be greater than or equal to '
-                         '0, and less than', day_length,
-                         '(i.e. the end of a day)')
-
-    return dur, t_pk
