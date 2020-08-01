@@ -254,7 +254,7 @@ def read_ascii(data_handle, domain=None, is_worker=False,
                var_dict=None) -> xr.Dataset:
     """Read in an ascii forcing file"""
     dates = date_range(start, stop, calendar=calendar)
-    names = var_dict.keys()
+    names = list(var_dict.keys())
     ds = pd.read_csv(data_handle, header=None, delim_whitespace=True,
                      names=names).head(len(dates))
     ds.index = dates
