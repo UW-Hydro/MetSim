@@ -280,40 +280,39 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
     prec:
         A sub-daily timeseries of precipitation. [mm]
     """
-    #def prec_TRIANGLE(prec: pd.Series, t_min: pd.Series,
-    #                  month_of_year: int, do_mix: bool, params: dict):
     def prec_TRIANGLE(daily_prec, t_min, prec_peak, prec_dur, ts, do_mix):
         '''Triangular disaggregation'''
         ts_per_day = int(cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR)
         n_days = len(daily_prec)
-        # Scale to desired timestep
-        #prec_peak /= ts
-        #prec_dur /= ts
         disagg_prec = np.zeros(int(n_days*ts_per_day))
 
         # Loop over days
         for i, (t, P) in enumerate(daily_prec.iteritems()):
-            times_day = np.arange(ts_per_day)
-            prec_day = np.zeros(ts_per_day)
 
-            # Look up climatology
-            t_pk = prec_peak[t]
-            t_dur = prec_dur[t]
+            if do_mix and t_min[t] < 0:
+                prec_day = P * np.ones(ts_per_day)  / ts_per_day
+            else:
+                times_day = np.arange(ts_per_day)
+                prec_day = np.zeros(ts_per_day)
 
-            # Rising and falling time
-            t_start = t_pk - 0.5 * t_dur
-            t_stop = t_pk + 0.5 * t_dur
-            t_plus = times_day[
-                    np.logical_and(times_day <= t_pk, times_day >= t_start)]
-            t_minus = times_day[
-                    np.logical_and(times_day >= t_pk, times_day <= t_stop)]
+                # Look up climatology
+                t_pk = prec_peak[t]
+                t_dur = prec_dur[t]
 
-            # Begin with relative intensity
-            prec_day[t_plus] = np.linspace(0, 1.0, len(t_plus))
-            prec_day[t_minus] = np.linspace(1.0, 0, len(t_minus))
+                # Rising and falling time
+                t_start = t_pk - 0.5 * t_dur
+                t_stop = t_pk + 0.5 * t_dur
+                t_plus = times_day[
+                        np.logical_and(times_day <= t_pk, times_day >= t_start)]
+                t_minus = times_day[
+                        np.logical_and(times_day >= t_pk, times_day <= t_stop)]
 
-            # Scale to input precipitation
-            prec_day = (P / np.sum(prec_day)) * prec_day
+                # Begin with relative intensity
+                prec_day[t_plus] = np.linspace(0, 1.0, len(t_plus))
+                prec_day[t_minus] = np.linspace(1.0, 0, len(t_minus))
+
+                # Scale to input precipitation
+                prec_day = (P / np.sum(prec_day)) * prec_day
             disagg_prec[i*ts_per_day:(i+1)*ts_per_day] = prec_day
         return disagg_prec
 
