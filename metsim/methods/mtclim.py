@@ -22,193 +22,235 @@ import numpy as np
 import pandas as pd
 
 import metsim.constants as cnst
-from metsim.physics import svp, calc_pet, atm_pres
+from metsim.physics import atm_pres, calc_pet, svp
 
 
-def run(forcing: pd.DataFrame, params: dict, sg: dict,
-        elev: float, swe: float):
+def run(df: pd.DataFrame, params: dict) -> pd.DataFrame:
     """
-    Run all of the mtclim forcing generation
+    Runs the entire mtclim set of estimation routines. This will take
+    a set of daily t_min, t_max, and prec to return a set of estimated
+    variables. See the documentation for the other mtclim functions for
+    more information about which variables are estimated.
+
+    Note: this function modifies the input dictionary and returns it
 
     Parameters
     ----------
-    forcing: pd.DataFrame
-        The daily forcings given from input
-    params: dict
-        Dictionary of parameters from a MetSim object
-    solar_geom: dict
-        Solar geometry of the site
-    elev: float
-        Elevation of the site being simulated
-    swe: float
-        Initial snow water equivalent (SWE) for
-        the site being simulated
+    df:
+        Dataframe containing daily inputs.
+    params:
+        A dictionary containing the class parameters
+        of the MetSim object.
 
     Returns
     -------
-    forcing:
-        Dataframe of daily or subdaily forcings
+    df:
+        The same dataframe with estimated variables added
     """
-    params['n_days'] = len(forcing)
-    calc_t_air(forcing, elev, params)
-    calc_snowpack(forcing, params, swe)
-    calc_srad_hum(forcing, sg, elev, params)
+    df['t_day'] = t_day(df['t_min'].values, df['t_max'].values, params)
+    df['tfmax'] = tfmax(df['dtr'].values, df['smoothed_dtr'].values,
+                        df['prec'].values, params)
+    df['tskc'] = tskc(df['tfmax'].values, params)
 
-    return forcing
+    tdew_old = df['t_min'].values
+    vp_temp = vapor_pressure(df['t_min'].values)
+    sw_temp = shortwave(df['tfmax'].values, vp_temp,
+                        df['tt_max'], df['potrad'].values)
+    pet_temp = pet(sw_temp, df['t_day'].values, df['daylength'].values, params)
+    tdew_temp = tdew(pet_temp, df['t_min'].values, df['seasonal_prec'].values,
+                     df['dtr'].values)
+
+    while np.sqrt(np.mean((tdew_temp - tdew_old)**2)) > params['tdew_tol']:
+        tdew_old = tdew_temp.copy()
+        vp_temp = vapor_pressure(tdew_temp)
+        sw_temp = shortwave(df['tfmax'].values, vp_temp,
+                            df['tt_max'].values, df['potrad'].values)
+        pet_temp = pet(sw_temp, df['t_day'].values, df['daylength'].values,
+                       params)
+        tdew_temp = tdew(pet_temp, df['t_min'].values,
+                         df['seasonal_prec'].values, df['dtr'].values)
+
+    df['tdew'] = tdew_temp
+    df['vapor_pressure'] = vapor_pressure(df['tdew'].values)
+    df['shortwave'] = shortwave(df['tfmax'].values,
+                                df['vapor_pressure'].values,
+                                df['tt_max'].values, df['potrad'].values)
+    df['pet'] = pet(df['shortwave'].values, df['t_day'].values,
+                    df['daylength'].values, params)
+    return df
 
 
-def calc_t_air(df: pd.DataFrame, elev: float, params: dict):
+def t_day(t_min: np.ndarray, t_max: np.ndarray, params: dict) -> np.ndarray:
     """
-    Calculate mean daily temperature
+    Computes the daylight average temperature, based on a
+    weighted parameterization.
 
     Parameters
     ----------
-    df:
-        Dataframe with daily max and min temperatures
-    elev:
-        Elevation in meters
+    t_min:
+        Timeseries of daily minimum temperature
+    t_max:
+        Timeseries of daily maximum temperature
     params:
-        Dictionary containing parameters from a
-        MetSim object.
+        Dictionary of class parameters from the MetSim object
+        Note this must contain the key 'tday_coef'
+
+    Returns
+    -------
+    tday:
+        Daily average temperature during daylight hours
     """
-    t_mean = (df['t_min'] + df['t_max']) / 2
-    df['t_day'] = ((df['t_max'] - t_mean) * params['tday_coef']) + t_mean
+    t_mean = (t_min + t_max) / 2
+    return ((t_max - t_mean) * params['tday_coef']) + t_mean
 
 
-def calc_snowpack(df: pd.DataFrame, params: dict, snowpack: float=0.0):
+def tfmax(dtr, sm_dtr, prec, params):
     """
-    Estimate snowpack as swe.
+    Computes the maximum daily transmittance of the amtosphere
+    under cloudy conditions
 
     Parameters
     ----------
-    df:
-        Dataframe with daily timeseries of precipitation
-        and minimum temperature.
-    snowpack:
-        (Optional - defaults to 0) Initial snowpack
-    """
-    swe = pd.Series(snowpack, index=df.index)
-    accum = (df['t_min'] <= params['snow_crit_temp'])
-    melt = (df['t_min'] > params['snow_crit_temp'])
-    swe[accum] += df['prec'][accum]
-    swe[melt] -= (params['snow_melt_rate']
-                  * (df['t_min'][melt] - params['snow_crit_temp']))
-    df['swe'] = np.maximum(np.cumsum(swe), 0.0)
-
-
-def calc_srad_hum(df: pd.DataFrame, sg: dict, elev: float,
-                  params: dict):
-    """
-    Calculate shortwave, humidity
-
-    Parameters
-    ----------
-    df:
-        Dataframe containing daily timeseries
-    elev:
-        Elevation in meters
-    params:
-        A dictionary of parameters from the
-        MetSim object
-    """
-    def _calc_tfmax(prec, dtr, sm_dtr):
-        """Estimate cloudy day transmittance"""
-        b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
-        t_fmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
-        inds = np.array(prec > params['sw_prec_thresh'])
-        t_fmax[inds] *= params['rain_scalar']
-        return t_fmax
-
-    # Calculate the diurnal temperature range
-    df['t_max'] = np.maximum(df['t_max'], df['t_min'])
-    dtr = df['t_max'] - df['t_min']
-    df['dtr'] = dtr
-    sm_dtr = df['smoothed_dtr']
-    df['tfmax'] = _calc_tfmax(df['prec'], dtr, sm_dtr)
-    tdew = df.get('tdew', df['t_min'])
-    pva = df.get('hum', svp(tdew.values))
-    pa = atm_pres(elev, params['lapse_rate'])
-    yday = df.index.dayofyear - 1
-    df['dayl'] = sg['daylength'][yday]
-
-    # Calculation of tdew and shortwave. tdew is iterated on until
-    # it converges sufficiently
-    tdew_old = tdew
-    tdew, pva = sw_hum_iter(df, sg, pa, pva, dtr, params)
-    while(np.sqrt(np.mean((tdew-tdew_old)**2)) > params['tdew_tol']):
-        tdew_old = np.copy(tdew)
-        tdew, pva = sw_hum_iter(df, sg, pa, pva, dtr, params)
-    df['vapor_pressure'] = pva
-
-
-def sw_hum_iter(df: pd.DataFrame, sg: dict, pa: float, pva: pd.Series,
-                dtr: pd.Series, params: dict):
-    """
-    Calculated updated values for dewpoint temperature
-    and saturation vapor pressure.
-
-    Parameters
-    ----------
-    df:
-        Dataframe containing daily timeseries of
-        cloud cover fraction, tfmax, swe, and
-        shortwave radiation
-    sg:
-        Solar geometry dictionary, calculated with
-        `metsim.physics.solar_geom`.
-    pa:
-        Air pressure in Pascals
-    pva:
-        Vapor presure in Pascals
     dtr:
         Daily temperature range
+    sm_dtr:
+        Smoothed daily temperature range using 30 moving window
+    prec:
+        Daily total precipitation
     params:
-        A dictionary of parameters from a MetSim object
+        Dictionary of class parameters from the MetSim object
+        Note this must contain the keys 'sw_prec_thresh' and 'rain_scalar'
 
     Returns
     -------
-    (tdew, svp):
-        A tuple of dewpoint temperature and saturation
-        vapor pressure
+    tfmax:
+        Daily maximum cloudy-sky transmittance
     """
-    tt_max0 = sg['tt_max0']
-    potrad = sg['potrad']
-    daylength = sg['daylength']
-    yday = df.index.dayofyear - 1
+    b = cnst.B0 + cnst.B1 * np.exp(-cnst.B2 * sm_dtr)
+    tfmax = 1.0 - 0.9 * np.exp(-b * np.power(dtr, cnst.C))
+    inds = np.array(prec > params['sw_prec_thresh'])
+    tfmax[inds] *= params['rain_scalar']
+    return tfmax
 
-    t_tmax = np.maximum(tt_max0[yday] + (cnst.ABASE * pva), 0.0001)
-    t_final = t_tmax * df['tfmax']
-    df['pva'] = pva
-    df['tfinal'] = t_final
 
-    # Snowpack contribution
-    sc = np.zeros_like(df['swe'])
-    if (params['mtclim_swe_corr']):
-        inds = np.logical_and(df['swe'] > 0.,  daylength[yday] > 0.)
-        sc[inds] = ((1.32 + 0.096 * df['swe'][inds]) *
-                    1.0e6 / daylength[yday][inds])
-        sc = np.maximum(sc, 100.)
+def pet(shortwave, t_day, daylength, params):
+    """
+    Computes potential evapotranspiration
+    Note this should be jointly computed iteratively with
+    ``tdew``, ``vapor_pressure``, and ``shortwave`` as used
+    in the main ``run`` function.
 
-    # Calculation of shortwave is split into 2 components:
-    # 1. Radiation from incident light
-    # 2. Influence of snowpack - optionally set by MTCLIM_SWE_CORR
-    df['shortwave'] = potrad[yday] * t_final + sc
+    Parameters
+    ----------
+    shortwave:
+        Daily estimated shortwave radiation
+    t_day:
+        Daylight average temperature
+    daylength:
+        Daily length of daylight
+    params:
+        Dictionary of class parameters from the MetSim object
+        Note this must contain the keys 'sw_prec_thresh' and 'rain_scalar'
 
-    # Calculate cloud effect
+    Returns
+    -------
+    pet:
+        Estimated potential evapotranspiration
+    """
+    pa = atm_pres(params['elev'], params['lapse_rate'])
+    return calc_pet(shortwave, t_day, daylength, pa) * cnst.MM_PER_CM
+
+
+def tdew(pet, t_min, seasonal_prec, dtr):
+    """
+    Computes dewpoint temperature
+    Note this should be jointly computed iteratively with
+    ``pet``, ``vapor_pressure``, and ``shortwave`` as used
+    in the main ``run`` function.
+
+    Parameters
+    ----------
+    pet:
+        Estimated potential evapotranspiration
+    t_min:
+        Daily minimum temperature
+    seasonal_prec:
+        90 running total precipitation
+    dtr:
+        Daily temperature range
+
+    Returns
+    -------
+    tdew:
+        Estimated dewpoint temperature
+    """
+    parray = seasonal_prec < 80.0
+    seasonal_prec[parray] = 80.0
+    ratio = pet / seasonal_prec
+    return np.array((t_min + cnst.KELVIN)
+                    * (-0.127 + 1.121 * (1.003 - 1.444 * ratio + 12.312
+                                         * np.power(ratio, 2) - 32.766
+                                         * np.power(ratio, 3)) + 0.0006 * dtr)
+                    - cnst.KELVIN)
+
+
+def vapor_pressure(tdew):
+    """
+    Computes vapor pressure
+    Note this should be jointly computed iteratively with
+    ``pet``, ``tdew``, and ``shortwave`` as used
+    in the main ``run`` function.
+
+    Parameters
+    ----------
+    tdew:
+        Daily dewpoint temperature
+
+    Returns
+    -------
+    vapor_pressure:
+        Estimated vapor pressure
+    """
+    return svp(tdew)
+
+
+def shortwave(tfmax, vapor_pressure, tt_max, potrad):
+    """
+    Computes shortwave radiation
+    Note this should be jointly computed iteratively with
+    ``pet``, ``tdew``, and ``vapor_pressure`` as used
+    in the main ``run`` function.
+
+    Parameters
+    ----------
+    tfmax:
+        Daily maximum cloudy-sky transmittance
+
+    Returns
+    -------
+    vapor_pressure:
+        Estimated vapor pressure
+    """
+    t_tmax = np.maximum(tt_max + (cnst.ABASE * vapor_pressure), 0.0001)
+    return potrad * t_tmax * tfmax
+
+
+def tskc(tfmax, params):
+    """
+    Computes cloud cover fraction
+
+    Parameters
+    ----------
+    tfmax:
+        Daily maximum cloudy-sky transmittance
+    params:
+        Dictionary of class parameters from the MetSim object
+
+    Returns
+    -------
+    tskc:
+        Daily estimated cloud cover fraction
+    """
     if (params['lw_cloud'].upper() == 'CLOUD_DEARDORFF'):
-        df['tskc'] = (1. - df['tfmax'])
-    else:
-        df['tskc'] = np.sqrt((1. - df['tfmax']) / 0.65)
-
-    # Compute PET using SW radiation estimate, and update Tdew, pva **
-    pet = calc_pet(df['shortwave'].values, df['t_day'].values,
-                   df['dayl'].values, pa)
-    # Calculate ratio (PET/effann_prcp) and correct the dewpoint
-    parray = df['seasonal_prec'] / cnst.MM_PER_CM
-    ratio = pet / parray.where(parray > 8.0, 8.0)
-    df['pet'] = pet * cnst.MM_PER_CM
-    tmink = df['t_min'] + cnst.KELVIN
-    tdew = tmink * (-0.127 + 1.121 * (1.003 - 1.444 * ratio +
-                    12.312 * np.power(ratio, 2) -
-                    32.766 * np.power(ratio, 3)) + 0.0006 * dtr) - cnst.KELVIN
-    return tdew, svp(tdew.values)
+        return 1. - tfmax
+    return np.sqrt((1. - tfmax) / 0.65)

@@ -1,0 +1,32 @@
+{
+	"creators": [
+		{
+			"name": "Andrew Bennett",
+			"affililiation": "University of Washington"
+		},
+		{
+			"name": "Joe Hamman",
+			"affililiation": "NCAR"
+		},
+		{
+			"name": "Bart Nijssen",
+			"affililiation": "University of Washington"
+		},
+		{
+			"name": "Elizabeth Clark",
+			"affililiation": "University of Washington"
+		},
+		{
+			"name": "Kostas Andreadis",
+			"affililiation": "Jet Propulsion Laboratory"
+		},
+		{
+			"name": "Kristen Whitney",
+			"affililiation": "School of Earth and Space Exploration, Arizona State University"
+		},
+		{
+			"name": "Theodore Bohn",
+			"affililiation": "School of Earth and Space Exploration, Arizona State University"
+		}
+	]
+}

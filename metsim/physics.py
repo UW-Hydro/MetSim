@@ -21,6 +21,7 @@ physics
 import numpy as np
 import pandas as pd
 from numba import jit
+
 import metsim.constants as cnst
 
 
@@ -116,11 +117,10 @@ def atm_pres(elev: float, lr: float) -> float:
         Atmospheric pressure (Pa)
     '''
     t1 = 1.0 - (lr * elev) / cnst.T_STD
-    t2 = cnst.G_STD / (lr * (cnst.R/cnst.MA))
+    t2 = cnst.G_STD / (lr * (cnst.R / cnst.MA))
     return cnst.P_STD * np.power(t1, t2)
 
 
-@jit(nopython=True)
 def svp(temp: np.array, a: float=0.61078, b: float=17.269, c: float=237.3):
     '''
     Compute the saturated vapor pressure.
@@ -144,6 +144,8 @@ def svp(temp: np.array, a: float=0.61078, b: float=17.269, c: float=237.3):
     svp:
         Saturated vapor pressure (Pa)
     '''
+    if isinstance(temp, pd.Series):
+        raise Exception()
     svp = a * np.exp((b * temp) / (c + temp))
     inds = np.nonzero(temp < 0.)[0]
     svp[inds] *= 1.0 + .00972 * temp[inds] + .000042 * np.power(temp[inds], 2)
@@ -192,8 +194,8 @@ def solar_geom(elev: float, lat: float, lr: float) -> tuple:
         (tiny_rad_fract, daylength, flat_potrad, tt_max0)
     """
     # optical airmass by degrees
-    OPTAM = [2.90,  3.05,  3.21,  3.39,  3.69,  3.82,  4.07,
-             4.37,  4.72,  5.12,  5.60,  6.18,  6.88,  7.77,
+    OPTAM = [2.90, 3.05, 3.21, 3.39, 3.69, 3.82, 4.07,
+             4.37, 4.72, 5.12, 5.60, 6.18, 6.88, 7.77,
              8.90, 10.39, 12.44, 15.36, 19.79, 26.96, 30.00]
     dayperyear = int(np.ceil(cnst.DAYS_PER_YEAR))
     tt_max0 = np.zeros(dayperyear)
@@ -201,12 +203,14 @@ def solar_geom(elev: float, lat: float, lr: float) -> tuple:
     flat_potrad = np.zeros(dayperyear)
 
     # Calculate pressure ratio as a function of elevation
-    t1 = 1.0 - (lr * elev)/cnst.T_STD
+    t1 = 1.0 - (lr * elev) / cnst.T_STD
     t2 = cnst.G_STD / (lr * (cnst.R / cnst.MA))
     trans = np.power(cnst.TBASE, np.power(t1, t2))
 
     # Translate lat to rad
-    lat = np.minimum(np.maximum(lat * cnst.RAD_PER_DEG, -np.pi/2.), np.pi/2.0)
+    lat = np.minimum(
+        np.maximum(
+            lat * cnst.RAD_PER_DEG, -np.pi / 2.), np.pi / 2.0)
     coslat = np.cos(lat)
     sinlat = np.sin(lat)
 
@@ -217,7 +221,7 @@ def solar_geom(elev: float, lat: float, lr: float) -> tuple:
     # Allocate the radiation arrays
     tiny_step_per_day = int(cnst.SEC_PER_DAY / cnst.SW_RAD_DT)
     tiny_rad_fract = np.zeros((dayperyear, tiny_step_per_day))
-    for i in range(dayperyear-1):
+    for i in range(dayperyear - 1):
         # Declination and quantities of interest
         decl = cnst.MIN_DECL * np.cos((i + cnst.DAYS_OFF) * cnst.RAD_PER_DAY)
         cosdecl = np.cos(decl)
@@ -231,7 +235,7 @@ def solar_geom(elev: float, lat: float, lr: float) -> tuple:
         daylength[i] = min(2.0 * hss * cnst.SEC_PER_RAD, cnst.SEC_PER_DAY)
         # Extraterrestrial radiation perpendicular to beam,
         # total over the timestep (J)
-        dir_beam_topa = (1368.0+45.5 * np.sin(
+        dir_beam_topa = (1368.0 + 45.5 * np.sin(
             (2.0 * np.pi * i / cnst.DAYS_PER_YEAR) + 1.7)) * dt
         sum_trans = 0
         sum_flat_potrad = 0
@@ -259,7 +263,7 @@ def solar_geom(elev: float, lat: float, lr: float) -> tuple:
 
             tinystep = int(min(max(
                 (12 * cnst.SEC_PER_HOUR + h * cnst.SEC_PER_RAD) / dt, 0),
-                               tiny_step_per_day - 1))
+                tiny_step_per_day - 1))
             tiny_rad_fract[i][tinystep] = dir_flat_topa
 
         if daylength[i] and sum_flat_potrad > 0:
@@ -274,8 +278,8 @@ def solar_geom(elev: float, lat: float, lr: float) -> tuple:
             # No daytime - no radiation
             tt_max0[i] = 0.
             flat_potrad[i] = 0.
-    tt_max0[dayperyear-1] = tt_max0[dayperyear-2]
-    flat_potrad[dayperyear-1] = flat_potrad[dayperyear-2]
-    daylength[dayperyear-1] = daylength[dayperyear-2]
-    tiny_rad_fract[dayperyear-1] = tiny_rad_fract[dayperyear-2]
+    tt_max0[dayperyear - 1] = tt_max0[dayperyear - 2]
+    flat_potrad[dayperyear - 1] = flat_potrad[dayperyear - 2]
+    daylength[dayperyear - 1] = daylength[dayperyear - 2]
+    tiny_rad_fract[dayperyear - 1] = tiny_rad_fract[dayperyear - 2]
     return tiny_rad_fract, daylength, flat_potrad, tt_max0
