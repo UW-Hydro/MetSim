@@ -5,6 +5,13 @@ What's New
 
 .. _whats-new.2.3.0:
 
+v2.3.3
+------
+
+Bug fixes
+~~~~~~~~~
+- Fix a bug in use of alternate calendars due to xarray change
+
 v2.3.2
 ------
 
