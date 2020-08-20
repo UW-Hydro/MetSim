@@ -55,21 +55,17 @@ def date_range(start=None, end=None, periods=None, freq='D', tz=None,
     else:
         # start and end are give
         if (start is not None) and (end is not None) and (periods is None):
-
             steps, units = decode_freq(freq)
             start_num, end_num = date2num(
                 pd.to_datetime([start, end]).to_pydatetime(),
                 units, calendar=calendar)
-            # Todo divide by freq
             periods = int((end_num - start_num) / steps) + 1
 
             times = num2date(
                 np.linspace(start_num, end_num, periods,
                             endpoint=True,
                             dtype=np.float128), units, calendar)
-
-            index = pd.DatetimeIndex(xr.conventions.nctime_to_nptime(times))
-
+            index = xr.CFTimeIndex(times).to_datetimeindex()
             return index
 
         else:
