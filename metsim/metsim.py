@@ -53,7 +53,7 @@ import metsim.constants as cnst
 from metsim import io
 from metsim.datetime import date_range
 from metsim.disaggregate import disaggregate
-from metsim.methods import mtclim
+from metsim.methods import mtclim, passthrough
 from metsim.physics import solar_geom
 from metsim.units import converters
 
@@ -131,7 +131,7 @@ class MetSim(object):
     """
 
     # Class variables
-    methods = {'mtclim': mtclim}
+    methods = {'mtclim': mtclim, 'passthrough': passthrough}
     params = {
         "period_ending": False,
         "is_worker": False,
