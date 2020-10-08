@@ -53,7 +53,7 @@ import metsim.constants as cnst
 from metsim import io
 from metsim.datetime import date_range
 from metsim.disaggregate import disaggregate
-from metsim.methods import mtclim
+from metsim.methods import mtclim, passthrough
 from metsim.physics import solar_geom
 from metsim.units import converters
 
@@ -104,6 +104,9 @@ attrs = {'pet': {'units': 'mm timestep-1',
          'rel_humid': {'units': '%', 'long_name': 'relative humidity',
                        'standard_name': 'relative_humidity',
                        'missing_value': np.nan, 'fill_value': np.nan},
+         'daylength': {'units': 's', 'long_name': 'daylength',
+                       'standard_name': 'length of day',
+                       'missing_value': np.nan, 'fill_value': np.nan},
          'spec_humid': {'units': 'g g-1', 'long_name': 'specific humidity',
                         'standard_name': 'specific_humidity',
                         'missing_value': np.nan, 'fill_value': np.nan},
@@ -131,7 +134,7 @@ class MetSim(object):
     """
 
     # Class variables
-    methods = {'mtclim': mtclim}
+    methods = {'mtclim': mtclim, 'passthrough': passthrough}
     params = {
         "period_ending": False,
         "is_worker": False,
@@ -474,7 +477,6 @@ class MetSim(object):
                 locs = {d: i for d, i in zip(self.domain['mask'].dims, index)}
             else:
                 continue
-
             df, state = wrap_run_cell(self.method.run, params,
                                       self.met_data.isel(**locs),
                                       self.state.isel(**locs),
@@ -654,7 +656,7 @@ class MetSim(object):
 
         # Check output variables are valid
         daily_out_vars = ['t_min', 't_max', 't_day', 'prec', 'vapor_pressure',
-                          'shortwave', 'tskc', 'pet', 'wind']
+                          'shortwave', 'tskc', 'pet', 'wind', 'daylength']
         out_var_check = ['temp', 'prec', 'shortwave', 'vapor_pressure',
                          'air_pressure', 'rel_humid', 'spec_humid',
                          'longwave', 'tskc', 'wind']
@@ -778,7 +780,13 @@ def wrap_run_cell(func: callable, params: dict,
         # If we're outputting daily values, we dont' need to
         # change the output dates - see inside of `if` condition
         # above for more explanation
-        new_times = out_times
+        start = out_times.values[0]
+        stop = (out_times.values[-1] + pd.Timedelta('1 days') -
+                pd.Timedelta("{} minutes".format(params['time_step'])))
+        new_times = date_range(
+            start, stop, freq='{}T'.format(params['time_step']),
+            calendar=params['calendar'])
+        df_base.index = new_times
         df_complete = df_base
 
     # Cut the returned data down to the correct time index
