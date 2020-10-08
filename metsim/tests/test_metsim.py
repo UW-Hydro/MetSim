@@ -303,49 +303,30 @@ def test_passthrough():
                            'shortwave': {'out_name': 'shortwave'}},
               'forcing_vars': in_vars_section['binary'],
               'domain_vars': domain_section['binary']}
-    # First run will be just daily output
-    #params1 = dict()
-    #params1.update(params)
-    #params1['time_step'] = "1440"
-    #params1['out_vars'] = {
-    #        't_min': {'out_name': 't_min'},
-    #        't_max': {'out_name': 't_max'},
-    #        'prec':  {'out_name': 'prec'},
-    #        'wind':  {'out_name': 'wind'},
-    #        'vapor_pressure': {'out_name': 'vapor_pressure'},
-    #        'shortwave': {'out_name': 'shortwave'}}
-    #params1['out_prefix'] = 'daily'
-    #ms1 = MetSim(params1)
-    #ms1.run()
-    #ds_daily = ms1.open_output().load()
-    #out_suffix = ms1.get_nc_output_suffix(ds_daily["time"].to_series())
-    #out_filename = f'{params1["out_prefix"]}_{out_suffix}.nc'
-    #daily_input_path = f"{os.path.abspath(ms1.params['out_dir'])}/{out_filename}"
-    #print(daily_input_path)
 
     # Second run will be to use mtclim and hourly disagg
-    params2 = dict()
-    params2.update(params)
-    params2['out_prefix'] = 'mtclim'
-    ms2 = MetSim(params2)
-    ms2.run()
-    with ms2.open_output() as ds:
+    params1 = dict()
+    params1.update(params)
+    params1['out_prefix'] = 'mtclim'
+    ms1 = MetSim(params1)
+    ms1.run()
+    with ms1.open_output() as ds:
         mtclim_ds = ds.load()
 
     # Third run will be to use passthrough and hourly disagg
     # with input data from teh first run
-    params3 = dict()
-    params3.update(params)
-    params3['method'] = 'passthrough'
-    params3['out_prefix'] = 'passthrough'
-    params3['forcing_vars'] = OrderedDict(
+    params2 = dict()
+    params2.update(params)
+    params2['method'] = 'passthrough'
+    params2['out_prefix'] = 'passthrough'
+    params2['forcing_vars'] = OrderedDict(
         prec='prec', t_max='t_max', t_min='t_min',
         wind='wind', shortwave='shortwave', vapor_pressure='vapor_pressure')
-    params3['forcing_fmt'] = 'netcdf'
-    params3['forcing'] = './metsim/data/passthrough.nc'
-    ms3 = MetSim(params3)
-    ms3.run()
-    with ms3.open_output() as ds:
+    params2['forcing_fmt'] = 'netcdf'
+    params2['forcing'] = './metsim/data/passthrough.nc'
+    ms2 = MetSim(params2)
+    ms2.run()
+    with ms2.open_output() as ds:
         passthrough_ds = ds.load()
 
     tol = 1e-4
