@@ -145,6 +145,11 @@ Or in BibTeX:
 }
 ```
 
+Acknowledgements
+================
+MetSim has greatly benefited from the user community, who have contributed code, tested features, provided feedback, and helped with documentation.
+We would like to thank and acknowledge the work of Ted Bohn, Andy Wood, Kristen Whitney, Yifan Cheng, Liz Clark, Oriana Chegwidden, Ethan Gutmann, Kostas Andreadis, Thomas Remke, Ed Maurer, and Philipp Sommer for their help.
+
 
 References
 ==========

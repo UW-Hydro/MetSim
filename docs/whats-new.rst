@@ -17,6 +17,24 @@ Enchancements
 
 .. _whats-new.2.3.0:
 
+v2.3.3
+------
+
+Bug fixes
+~~~~~~~~~
+- Fix a bug in use of alternate calendars due to xarray change
+
+v2.3.2
+------
+
+Bug fixes
+~~~~~~~~~
+- Fix a bug in ascii input reading due to pandas change
+
+Enhancements
+~~~~~~~~~~~~
+- Drastically speed up PITRI precipitation disaggregation
+
 v2.3.1
 ------
 
@@ -27,7 +45,7 @@ Bug fixes
 
 v2.3.0
 ------
-Enchancements
+Enhancements
 ~~~~~~~~~~~~~
 - Allow for variable renaming in INI configuration files.
 - Added capability for new YAML configuration file format
