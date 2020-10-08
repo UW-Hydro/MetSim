@@ -52,5 +52,8 @@ converters = {
             },
         'wind': {
             'm s-1': lambda x, ts: x,
+            },
+        'daylength': {
+            's': lambda x, ts: x,
             }
         }

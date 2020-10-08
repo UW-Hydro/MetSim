@@ -38,6 +38,11 @@ the ``forcing`` entry.  Can be one of the following: ``ascii``, ``binary``,
 
 **Optional Variables**
 
+``method ::str``: The method to use for estimation of meteorological quantities.
+This can be either ``mtclim`` to estimate missing variables or ``passthrough`` if
+some of the meteorological variables have already been estimated (for example, by
+DayMet, PRISM, or GridMET). Defaults to ``mtclim``.
+
 ``out_prefix :: str``: The output file base name. Defaults to ``forcing``.
 
 ``out_precision :: str``: Precision to use when writing output.  Defaults to
