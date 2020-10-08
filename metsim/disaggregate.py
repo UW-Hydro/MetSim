@@ -104,9 +104,13 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
 
     df_disagg['tskc'] = tskc(df_daily['tskc'].values, ts, params)
 
+    if 'longwave' in df_daily:
+        daily_lw = df_daily['longwave']
+    else:
+        daily_lw = None
     df_disagg['longwave'] = longwave(
         df_disagg['temp'].values, df_disagg['vapor_pressure'].values,
-        df_disagg['tskc'].values, params)
+        df_disagg['tskc'].values, params, daily_lw)
 
     df_disagg['prec'] = prec(df_daily['prec'].values, df_daily['t_min'].values,
                              ts, params, df_daily.index.month)
@@ -547,7 +551,7 @@ def vapor_pressure(vp_daily: np.array, temp: np.array, t_t_min: np.array,
 
 
 def longwave(air_temp: np.array, vapor_pressure: np.array,
-             tskc: np.array, params: dict) -> np.array:
+             tskc: np.array, params: dict, daily_lw=None) -> np.array:
     """
     Calculate longwave. This calculation can be performed
     using a variety of parameterizations for both the
@@ -638,6 +642,13 @@ def longwave(air_temp: np.array, vapor_pressure: np.array,
     emiss_func = cloud_calc[params['lw_cloud'].upper()]
     emissivity = emiss_func(emissivity_clear, tskc)
     lwrad = emissivity * cnst.STEFAN_B * np.power(air_temp, 4)
+    if daily_lw is not  None:
+        ts = int(params['time_step'])
+        ts_per_day = int(cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
+        factor = np.mean(lwrad.reshape(-1, ts_per_day), axis=1).flatten()
+        factor = daily_lw.values / factor
+        factor = np.repeat(factor, ts_per_day)
+        lwrad *= factor
     return lwrad
 
 
@@ -699,7 +710,7 @@ def shortwave(sw_rad: np.array, daylength: np.array, day_of_year: np.array,
     rad_fract_per_day = int(cnst.SEC_PER_DAY / cnst.SW_RAD_DT)
     tmp_rad = np.repeat(tmp_rad, rad_fract_per_day)
     if params['utc_offset']:
-        utc_offset = int((params['lon']  / cnst.DEG_PER_REV) * rad_fract_per_day)
+        utc_offset = int((params['lon'] / cnst.DEG_PER_REV) * rad_fract_per_day)
         tiny_rad_fract = np.roll(tiny_rad_fract.flatten(), -utc_offset)
         tmp_rad = np.roll(tmp_rad.flatten(), -utc_offset)
         tiny_rad_fract = tiny_rad_fract.flatten()
