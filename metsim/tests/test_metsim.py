@@ -277,6 +277,87 @@ def test_variable_rename():
     assert 'SWRadAtm' in ds.variables
 
 
+def test_passthrough():
+    """Test to make sure passing through previously estimated
+       variables doesn't alter the values from disaggregation"""
+    loc = data_locations['binary']
+    data_files = [os.path.join(loc, f) for f in os.listdir(loc)]
+    out_dir = '.'
+    params = {'start': dates['binary'][0],
+              'stop': dates['binary'][1],
+              'forcing_fmt': 'binary',
+              'domain_fmt': 'netcdf',
+              'state_fmt': 'netcdf',
+              'domain': './metsim/data/stehekin.nc',
+              'state': './metsim/data/state_vic.nc',
+              'forcing': data_files,
+              'method': 'mtclim',
+              'scheduler': 'threading',
+              'time_step': "60",
+              'out_dir': out_dir,
+              'out_state': os.path.join(out_dir, 'state.nc'),
+              'out_vars': {'prec': {'out_name': 'prec'},
+                           'temp': {'out_name': 'temp'},
+                           'longwave': {'out_name': 'longwave'},
+                           'vapor_pressure': {'out_name': 'vapor_pressure'},
+                           'shortwave': {'out_name': 'shortwave'}},
+              'forcing_vars': in_vars_section['binary'],
+              'domain_vars': domain_section['binary']}
+    # First run will be just daily output
+    #params1 = dict()
+    #params1.update(params)
+    #params1['time_step'] = "1440"
+    #params1['out_vars'] = {
+    #        't_min': {'out_name': 't_min'},
+    #        't_max': {'out_name': 't_max'},
+    #        'prec':  {'out_name': 'prec'},
+    #        'wind':  {'out_name': 'wind'},
+    #        'vapor_pressure': {'out_name': 'vapor_pressure'},
+    #        'shortwave': {'out_name': 'shortwave'}}
+    #params1['out_prefix'] = 'daily'
+    #ms1 = MetSim(params1)
+    #ms1.run()
+    #ds_daily = ms1.open_output().load()
+    #out_suffix = ms1.get_nc_output_suffix(ds_daily["time"].to_series())
+    #out_filename = f'{params1["out_prefix"]}_{out_suffix}.nc'
+    #daily_input_path = f"{os.path.abspath(ms1.params['out_dir'])}/{out_filename}"
+    #print(daily_input_path)
+
+    # Second run will be to use mtclim and hourly disagg
+    params2 = dict()
+    params2.update(params)
+    params2['out_prefix'] = 'mtclim'
+    ms2 = MetSim(params2)
+    ms2.run()
+    with ms2.open_output() as ds:
+        mtclim_ds = ds.load()
+
+    # Third run will be to use passthrough and hourly disagg
+    # with input data from teh first run
+    params3 = dict()
+    params3.update(params)
+    params3['method'] = 'passthrough'
+    params3['out_prefix'] = 'passthrough'
+    params3['forcing_vars'] = OrderedDict(
+        prec='prec', t_max='t_max', t_min='t_min',
+        wind='wind', shortwave='shortwave', vapor_pressure='vapor_pressure')
+    params3['forcing_fmt'] = 'netcdf'
+    params3['forcing'] = './metsim/data/passthrough.nc'
+    ms3 = MetSim(params3)
+    ms3.run()
+    with ms3.open_output() as ds:
+        passthrough_ds = ds.load()
+
+    tol = 1e-4
+    assert np.allclose(passthrough_ds['shortwave'].mean(),
+                       mtclim_ds['shortwave'].mean(), atol=tol)
+    assert np.allclose(passthrough_ds['vapor_pressure'].mean(),
+                       mtclim_ds['vapor_pressure'].mean(), atol=tol)
+    assert np.allclose(passthrough_ds['longwave'].mean(),
+                       mtclim_ds['longwave'].mean(), atol=tol)
+
+
+
 def test_unit_conversion():
     """Tests to make sure that variable renaming works"""
     loc = data_locations['binary']

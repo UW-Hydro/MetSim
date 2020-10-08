@@ -703,7 +703,10 @@ def shortwave(sw_rad: np.array, daylength: np.array, day_of_year: np.array,
     """
     ts = int(params['time_step'])
     ts_hourly = float(ts) / cnst.MIN_PER_HOUR
-    tmp_rad = (sw_rad * daylength) / (cnst.SEC_PER_HOUR * ts_hourly)
+    if params['method'] == 'mtclim' or params.get('sw_averaging', '') == 'daylight':
+        tmp_rad = (sw_rad * daylength) / (cnst.SEC_PER_HOUR * ts_hourly)
+    else:
+        tmp_rad = sw_rad * 24
     n_days = len(tmp_rad)
     ts_per_day = int(cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
     disaggrad = np.zeros(int(n_days * ts_per_day))

@@ -3,6 +3,18 @@
 What's New
 ==========
 
+.. _whats-new.2.4.0:
+
+v2.4.0
+------
+Enchancements
+~~~~~~~~~~~~~
+- Allow for passing already estimated met variables
+  (such as shortwave and/or longwave radiation)
+  through to the disaggregation routines. This
+  functionality can be accessed by setting the
+  ``method`` to ``passthrough`` in the configuration
+
 .. _whats-new.2.3.0:
 
 v2.3.1

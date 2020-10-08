@@ -27,9 +27,6 @@ from metsim.methods.mtclim import t_day, tfmax, tskc, pet, tdew, vapor_pressure
 
 def run(df, params):
     assert 'shortwave' in df
-    assert 'longwave' in df
-    assert 'air_pressure' in df
-    assert 'rel_humid' in df
 
     if 't_day' not in df:
         df['t_day'] = t_day(df['t_min'].values, df['t_max'].values, params)
