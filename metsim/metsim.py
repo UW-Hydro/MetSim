@@ -35,7 +35,8 @@ import os
 import sys
 import warnings
 import time as tm
-from collections import Iterable, OrderedDict
+from collections import OrderedDict
+from collections.abc import Iterable
 from getpass import getuser
 
 import numpy as np
