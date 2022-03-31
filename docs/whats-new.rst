@@ -2,6 +2,14 @@
 
 What's New
 ==========
+.. _whats-new.2.4.1:
+
+v2.4.1
+------
+Bug fixes
+~~~~~~~~~
+- Move `from collections import Iterable` to `from collections.abc import Iterable`
+  for compatibility with newer python versions
 
 .. _whats-new.2.4.0:
 
