@@ -71,8 +71,9 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     n_days = len(df_daily)
     n_disagg = len(df_disagg)
     ts = int(params['time_step'])
-    #if params['method'] == 'passthrough':
-    df_daily['daylength'] = 86400.0
+    ### assume passthrough implies shortwave was computed using entire day not just daylight like mtclim uses to derive its shortwave
+    if params['method'] == 'passthrough':
+      df_daily['daylength'] = 86400.0
     df_disagg['shortwave'] = shortwave(df_daily['shortwave'].values,
                                        df_daily['daylength'].values,
                                        df_daily.index.dayofyear,
@@ -639,6 +640,7 @@ def shortwave(sw_rad: np.array, daylength: np.array, day_of_year: np.array,
     if params['method'] == 'mtclim' or params.get('sw_averaging', '') == 'daylight':
         tmp_rad = (sw_rad * daylength) / (cnst.SEC_PER_HOUR * ts_hourly)
     else:
+        ### if passthrough, still want to do this...but rather than using dailylight daylength uses entire day     
         tmp_rad = (sw_rad * daylength) / (cnst.SEC_PER_HOUR * ts_hourly) #tmp_rad = sw_rad * 24
     n_days = len(tmp_rad)
     ts_per_day = int(cnst.HOURS_PER_DAY * cnst.MIN_PER_HOUR / ts)
