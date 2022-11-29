@@ -72,7 +72,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     n_disagg = len(df_disagg)
     ts = int(params['time_step'])
     ### assume passthrough implies shortwave was computed using entire day not just daylight like mtclim uses to derive its shortwave
-    if params['method'] == 'passthrough':
+    if (params['method'] == 'passthrough') & (params.get('sw_averaging', '') != 'daylight'):
       df_daily['daylength'] = 86400.0
     df_disagg['shortwave'] = shortwave(df_daily['shortwave'].values,
                                        df_daily['daylength'].values,
