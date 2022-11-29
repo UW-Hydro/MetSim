@@ -62,6 +62,8 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg:
         A dataframe with sub-daily timeseries.
     """
+    if params['method'] == 'passthrough':
+        df_daily['daylength'] = 86400.0
     stop = (df_daily.index[-1] + pd.Timedelta('1 days') -
             pd.Timedelta("{} minutes".format(params['time_step'])))
     dates_disagg = date_range(df_daily.index[0], stop,
