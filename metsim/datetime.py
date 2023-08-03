@@ -9,7 +9,7 @@ DEFAULT_ORIGIN = '0001-01-01'
 
 
 def date_range(start=None, end=None, periods=None, freq='D', tz=None,
-               normalize=False, name=None, closed=None, calendar='standard',
+               normalize=False, name=None, inclusive='both', calendar='standard',
                **kwargs):
     ''' Return a fixed frequency datetime index, with day (calendar) as the
     default frequency
@@ -31,9 +31,8 @@ def date_range(start=None, end=None, periods=None, freq='D', tz=None,
         Normalize start/end dates to midnight before generating date range
     name : str, default None
         Name of the resulting index
-    closed : string or None, default None
-        Make the interval closed with respect to the given frequency to
-        the 'left', 'right', or both sides (None)
+    inclusive : str {“both”, “neither”, “left”, “right”}, default 'both'
+        Include boundaries; Whether to set each bound as closed or open, both as default
     calendar : string
         Describes the calendar used in the time calculations. Default is a the
         standard calendar (with leap years)
@@ -51,7 +50,7 @@ def date_range(start=None, end=None, periods=None, freq='D', tz=None,
     if calendar in ['standard', 'gregorian', 'propoleptic_gregorian']:
         return pd.date_range(start=start, end=end, periods=periods,
                              freq=freq, tz=tz, normalize=normalize, name=name,
-                             closed=closed, **kwargs)
+                             inclusive=inclusive, **kwargs)
     else:
         # start and end are give
         if (start is not None) and (end is not None) and (periods is None):
