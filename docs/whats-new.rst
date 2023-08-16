@@ -2,6 +2,16 @@
 
 What's New
 ==========
+.. _whats-new.2.4.2:
+
+v2.4.2
+------
+Bug fixes
+~~~~~~~~~
+- Aligning longitude values to be within `[-180, +180]`
+  range to avoid inaccurate time-shifts when `UTC_offset`
+  option is set to `True`
+
 .. _whats-new.2.4.1:
 
 v2.4.1
