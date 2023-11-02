@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from datetime import datetime
 
 import metsim.cli.ms as cli
 import metsim.metsim
@@ -48,9 +49,9 @@ state_files = {'netcdf': './metsim/data/state_nc.nc',
                'binary': './metsim/data/state_vic.nc'}
 
 # Dates to run over
-dates = {'netcdf': (pd.datetime(1950, 1, 1), pd.datetime(1950, 1, 31)),
-         'binary': (pd.datetime(1949, 1, 1), pd.datetime(1949, 12, 31)),
-         'ascii': (pd.datetime(1949, 1, 1), pd.datetime(1949, 12, 31))}
+dates = {'netcdf': (datetime(1950, 1, 1), datetime(1950, 1, 31)),
+         'binary': (datetime(1949, 1, 1), datetime(1949, 12, 31)),
+         'ascii': (datetime(1949, 1, 1), datetime(1949, 12, 31))}
 
 # Domain vars
 domain_section = {'netcdf': OrderedDict(lat='lat', lon='lon', mask='mask',
