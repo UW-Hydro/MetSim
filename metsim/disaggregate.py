@@ -18,6 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import itertools
+import math
 from typing import Tuple
 
 import numpy as np
@@ -62,6 +63,10 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
     df_disagg:
         A dataframe with sub-daily timeseries.
     """
+    # adjust any longitude values to be within [-180, +180] range
+    lon_var = params['domain_vars']['lon']
+    params[lon_var] = math.remainder(params[lon_var], 360)
+
     stop = (df_daily.index[-1] + pd.Timedelta('1 days') -
             pd.Timedelta("{} minutes".format(params['time_step'])))
     dates_disagg = date_range(df_daily.index[0], stop,
