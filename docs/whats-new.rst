@@ -13,6 +13,8 @@ Bug fixes
   option is set to `True`
 - Some minor code changes to make MetSim compatible with
   pandas >v2.0.0
+- When using passthrough option consider shortwave as 
+  full day average rather than daylight average
 
 .. _whats-new.2.4.1:
 
