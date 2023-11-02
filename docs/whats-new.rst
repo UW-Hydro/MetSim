@@ -2,6 +2,20 @@
 
 What's New
 ==========
+.. _whats-new.2.4.2:
+
+v2.4.2
+------
+Bug fixes
+~~~~~~~~~
+- Aligning longitude values to be within `[-180, +180]`
+  range to avoid inaccurate time-shifts when `UTC_offset`
+  option is set to `True`
+- Some minor code changes to make MetSim compatible with
+  pandas >v2.0.0
+- When using passthrough option consider shortwave as 
+  full day average rather than daylight average
+
 .. _whats-new.2.4.1:
 
 v2.4.1
