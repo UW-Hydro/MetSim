@@ -292,7 +292,7 @@ def prec(prec: pd.Series, t_min: pd.Series, ts: float, params: dict,
         disagg_prec = np.zeros(int(n_days*ts_per_day))
 
         # Loop over days
-        for i, (t, P) in enumerate(daily_prec.iteritems()):
+        for i, (t, P) in enumerate(daily_prec.items()):
 
             if do_mix and t_min[t] < 0:
                 prec_day = P * np.ones(ts_per_day)  / ts_per_day

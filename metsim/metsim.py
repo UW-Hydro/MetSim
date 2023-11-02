@@ -47,6 +47,7 @@ import dask
 from dask.diagnostics import ProgressBar
 from netCDF4 import Dataset
 from cftime import date2num
+from datetime import datetime
 
 from xarray.backends.locks import get_write_lock, combine_locks, NETCDFC_LOCK
 
@@ -248,7 +249,7 @@ class MetSim(object):
                         force_times.values[i]).to_pydatetime()
                 elif '/' in self.params[p]:
                     year, month, day = map(int, self.params[p].split('/'))
-                    self.params[p] = pd.datetime(year, month, day)
+                    self.params[p] = datetime(year, month, day)
                 else:
                     self.params[p] = pd.to_datetime(self.params[p])
 
