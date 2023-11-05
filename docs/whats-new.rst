@@ -2,6 +2,16 @@
 
 What's New
 ==========
+
+.. _whats-new.2.4.3:
+
+v2.4.3
+------
+Bug fixes
+~~~~~~~~~
+- Fix a bug in the alignment of longitude values
+- Fix a bug with using non-standard spatial dimension names
+
 .. _whats-new.2.4.2:
 
 v2.4.2

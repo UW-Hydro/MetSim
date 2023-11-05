@@ -270,6 +270,12 @@ def read_netcdf(data_handle, domain=None, is_worker=False,
     else:
         ds = xr.open_dataset(data_handle)
 
+    # Needs to happen first to make sure variable names are correct
+    if var_dict is not None:
+        var_list = list(var_dict.keys())
+        ds = ds[var_list]
+        ds = ds.rename(var_dict)
+
     if domain is not None:
         ds = ds.sel({k: domain[k]
                      for k in list(domain.dims.keys())
@@ -288,11 +294,6 @@ def read_netcdf(data_handle, domain=None, is_worker=False,
             ds['time'] = ds.indexes['time'].to_datetimeindex()
         ds['time'] = (ds.indexes['time'] -
                       pd.Timedelta(hours=11, minutes=59, seconds=59)).round('D')
-
-    if var_dict is not None:
-        var_list = list(var_dict.keys())
-        ds = ds[var_list]
-        ds = ds.rename(var_dict)
 
     if start is not None or stop is not None:
         ds = ds.sel(time=slice(start, stop))

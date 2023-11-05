@@ -64,8 +64,7 @@ def disaggregate(df_daily: pd.DataFrame, params: dict,
         A dataframe with sub-daily timeseries.
     """
     # adjust any longitude values to be within [-180, +180] range
-    lon_var = params['domain_vars']['lon']
-    params[lon_var] = math.remainder(params[lon_var], 360)
+    params['lon'] = math.remainder(params['lon'], 360)
 
     stop = (df_daily.index[-1] + pd.Timedelta('1 days') -
             pd.Timedelta("{} minutes".format(params['time_step'])))
